@@ -15,14 +15,18 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Language.JVM.ClassFile
-                     , Language.JVM.Attribute
-                     , Language.JVM.Constant
-                     , Language.JVM.Field
-                     , Language.JVM.Method
+  exposed-modules:     Language.JVM.Binary.ClassFile
+                     , Language.JVM.Binary.Attribute
+                     , Language.JVM.Binary.Constant
+                     , Language.JVM.Binary.Field
+                     , Language.JVM.Binary.Method
+  other-modules:       Language.JVM.Binary.Helpers
   build-depends:       base >= 4.7 && < 5
                      , text
                      , bytestring
+                     , binary
+                     , vector
+                     , containers
   default-language:    Haskell2010
 
 test-suite jvmhs-test-suite
@@ -30,11 +34,13 @@ test-suite jvmhs-test-suite
   main-is: Main.hs
   hs-source-dirs: test-suite
   ghc-options: -Wall -rtsopts -threaded -with-rtsopts=-N
-  build-depends:
-      base
-      , jvmhs
-      , tasty
-      , tasty-hspec
+  build-depends: base
+               , jvmhs
+               , tasty
+               , tasty-hspec
+               , tasty-quickcheck
+               , binary
+               , bytestring
   default-language: Haskell2010
 
 source-repository head
