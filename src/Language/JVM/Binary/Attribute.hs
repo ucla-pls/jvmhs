@@ -27,3 +27,14 @@ instance Binary Attribute where
     putWord32be (fromIntegral . BS.length $ info attr)
     putByteString $ info attr
 
+-- type ConstantValue = ConstantRef
+
+-- data Code = Code
+--   { maxStack :: Int16
+--   , maxLocals :: Int16
+--   -- codeLength :: Int32
+--   , code :: ByteCode
+--   -- exceptionTableLength :: Int16
+--   , exceptionTable :: V.Vector Exception
+--   , attributes :: V.Vector Attribute
+--   } deriving (Show, Eq)

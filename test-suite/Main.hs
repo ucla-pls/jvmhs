@@ -8,7 +8,6 @@ import qualified Data.ByteString.Lazy   as LBS
 import qualified Data.ByteString.Char8  as BC
 import qualified Data.ByteString as BS
 
-
 import qualified Test.Tasty
 import           Test.Tasty.Hspec
 import           Test.Tasty.QuickCheck  as QC
