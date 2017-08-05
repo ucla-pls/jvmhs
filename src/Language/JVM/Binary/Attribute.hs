@@ -2,7 +2,6 @@ module Language.JVM.Binary.Attribute
   ( Attribute (..)
   ) where
 
-
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put

@@ -4,6 +4,7 @@ module Language.JVM.Binary.Constant
   , getConstantRef
   , putConstantRef
   , ConstantPool (..)
+  , poolSize
   ) where
 
 import Control.Monad (forM_)

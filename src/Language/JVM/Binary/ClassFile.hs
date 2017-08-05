@@ -1,6 +1,8 @@
 module Language.JVM.Binary.ClassFile
-  ( ClassFile(..)
+  ( ClassFile (..)
   , decodeClassFile
+  , AccessFlags (..)
+  , AccessFlag (..)
   ) where
 
 -- Information from http://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html#jvms-4.4
@@ -91,25 +93,27 @@ decodeClassFile = decodeFile
 
 data AccessFlag
   = Public
+  | Unused1
   | Unused2
   | Unused3
-  | Unused4
   | Final
   | Super
+  | Unused6
   | Unused7
   | Unused8
   | Unused9
-  | Unused10
   | Abstract
-  | Unused12
+  | Unused11
   | Synthetic
   | Annotation
   | Enum
+  | Unused15
   deriving (Ord, Show, Eq, Enum)
 
 
 newtype AccessFlags = AccessFlags (S.Set AccessFlag)
   deriving (Ord, Show, Eq)
+
 
 instance Binary AccessFlags where
   get = do
