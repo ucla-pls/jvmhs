@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Language.JVM.Binary.Field
   ( Field (..)
   , AccessFlags (..)
@@ -16,6 +17,9 @@ import           Language.JVM.Binary.Attribute (Attribute)
 import           Language.JVM.Binary.Constant  (ConstantRef, getConstantRef,
                                                 putConstantRef)
 import           Language.JVM.Binary.Helpers
+
+import           Data.Aeson
+import           Data.Aeson.TH
 
 data Field = Field
   { accessFlags     :: AccessFlags
@@ -57,7 +61,6 @@ data AccessFlag
   | Enum
   deriving (Ord, Show, Eq, Enum)
 
-
 newtype AccessFlags = AccessFlags (S.Set AccessFlag)
   deriving (Ord, Show, Eq)
 
@@ -69,3 +72,6 @@ instance Binary AccessFlags where
   put (AccessFlags f) = do
     let word = foldl' setBit zeroBits (map fromEnum $ S.toList f)
     putWord16be word
+
+deriveJSON defaultOptions ''AccessFlag
+deriveJSON defaultOptions ''AccessFlags

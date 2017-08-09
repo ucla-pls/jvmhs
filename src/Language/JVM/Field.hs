@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Language.JVM.Field
   ( Field (..)
   , fromBinary
@@ -12,6 +13,9 @@ import qualified Language.JVM.Binary.Field    as B
 
 import qualified Data.Text                    as Text
 
+import Data.Aeson
+import Data.Aeson.TH
+
 type FieldName = Text.Text
 
 data Field = Field
@@ -25,3 +29,5 @@ fromBinary cp f = do
   name <- C.lookupText (B.nameIndex f) cp
   descriptor <- C.lookupFieldDescriptor (B.descriptorIndex f) cp
   return $ Field (B.accessFlags f) name descriptor
+
+deriveJSON defaultOptions ''Field

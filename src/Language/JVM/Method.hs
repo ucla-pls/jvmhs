@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Language.JVM.Method
   ( Method (..)
   , B.AccessFlags (..)
@@ -9,9 +10,14 @@ import qualified Language.JVM.Binary.Constant as C
 
 import qualified Data.Text as Text
 
+import Data.Aeson
+import Data.Aeson.TH
+
+type MethodName = Text.Text
+
 data Method = Method
   { accessFlags :: B.AccessFlags
-  , name :: Text.Text
+  , name :: MethodName
   , descriptor :: C.MethodDescriptor
   } deriving (Eq, Show)
 
@@ -21,3 +27,5 @@ fromBinary cp m = do
   name <- C.lookupText (B.nameIndex m) cp
   descriptor <- C.lookupMethodDescriptor (B.descriptorIndex m) cp
   return $ Method (B.accessFlags m) name descriptor
+
+deriveJSON defaultOptions ''Method

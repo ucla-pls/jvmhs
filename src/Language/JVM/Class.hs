@@ -1,5 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
 module Language.JVM.Class
   ( Class (..)
 
@@ -28,6 +28,8 @@ import qualified Language.JVM.Method           as Method
 
 import qualified Data.Text                     as Text
 
+import Data.Aeson
+import Data.Aeson.TH
 
 data Class = Class
   { name       :: C.ClassName
@@ -35,8 +37,7 @@ data Class = Class
   , interfaces :: S.Set C.ClassName
   , fields     :: V.Vector Field.Field
   , methods    :: V.Vector Method.Method
-  } deriving (Eq, Show, Generic)
-
+  } deriving (Eq, Show)
 
 fromBinary :: B.ClassFile -> Maybe Class
 fromBinary clsf = do
@@ -86,3 +87,6 @@ decodeClassOrFail fp = do
         Just cl -> Right cl
         Nothing -> Left "Broken class-file format"
     Left msg -> Left $ "Could not decode class-file: " ++ msg
+
+
+deriveJSON defaultOptions ''Class

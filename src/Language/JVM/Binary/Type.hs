@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Language.JVM.Binary.Type
   ( Type (..)
   , ClassName (..)
@@ -20,9 +21,20 @@ import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.Put
 
+import Data.Aeson (ToJSON, toJSON, FromJSON, parseJSON, withText)
+import Data.Aeson.TH
+
 newtype ClassName =
   ClassName Text.Text
   deriving (Eq, Show, Ord)
+
+instance FromJSON ClassName where
+  parseJSON = withText "the classname" $ \text ->
+    return $ ClassName text
+
+instance ToJSON ClassName where
+  toJSON (ClassName text) =
+    toJSON text
 
 data Type
   = Byte
@@ -85,3 +97,14 @@ readMethodDesciptor = do
 
 methodDescriptorFromText :: Text.Text -> Either String MethodDescriptor
 methodDescriptorFromText = parseAll readMethodDesciptor
+
+concat <$> mapM
+  (deriveJSON
+    (defaultOptions {
+        sumEncoding = TaggedObject
+                      { tagFieldName      = "type"
+                      , contentsFieldName = "value"
+                      }})
+  ) [
+  ''Type, ''FieldDescriptor, ''MethodDescriptor
+  ]
