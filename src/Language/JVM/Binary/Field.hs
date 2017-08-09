@@ -1,5 +1,7 @@
 module Language.JVM.Binary.Field
   ( Field (..)
+  , AccessFlags (..)
+  , AccessFlag (..)
   ) where
 
 import           Data.Binary
@@ -18,7 +20,7 @@ import           Language.JVM.Binary.Helpers
 data Field = Field
   { accessFlags     :: AccessFlags
   , nameIndex       :: ConstantRef
-  , discriptorIndex :: ConstantRef
+  , descriptorIndex :: ConstantRef
   , attributes      :: V.Vector Attribute
   } deriving (Show, Eq)
 
@@ -32,7 +34,7 @@ instance Binary Field where
   put field = sequence_ $
     [ put . accessFlags
     , putConstantRef . nameIndex
-    , putConstantRef . discriptorIndex
+    , putConstantRef . descriptorIndex
     , putVector . attributes
     ] <*>  [ field ]
 

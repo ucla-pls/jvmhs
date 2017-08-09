@@ -1,5 +1,5 @@
 
-public class Main  {
+public class Main implements Runnable {
     
     private int someAttr = 2; 
     private double someOtherAttr = 4.0; 
@@ -12,4 +12,6 @@ public class Main  {
         someAttr = someAttr + 1;
         return someAttr;
     }
+
+    public void run () { }
 }

@@ -1,5 +1,7 @@
 module Language.JVM.Binary.Method
   ( Method (..)
+  , AccessFlags (..)
+  , AccessFlag (..)
   ) where
 
 import           Data.Binary

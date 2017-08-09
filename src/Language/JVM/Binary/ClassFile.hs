@@ -1,12 +1,14 @@
-module Language.JVM.Binary.ClassFile
-  ( ClassFile (..)
-  , decodeClassFile
-  , AccessFlags (..)
-  , AccessFlag (..)
-  ) where
-
 -- Information from http://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html#jvms-4.4
 -- And from https://en.wikipedia.org/wiki/Java_class_file#cite_note-jvms-4.4-4
+
+module Language.JVM.Binary.ClassFile
+  ( ClassFile (..)
+  , AccessFlags (..)
+  , AccessFlag (..)
+
+  , decodeClassFile
+  , decodeClassFileOrFail
+  ) where
 
 
 import           Data.Binary
@@ -66,8 +68,8 @@ instance Binary ClassFile where
 
     <*> get
 
-    <*> getConstantRef
-    <*> getConstantRef
+    <*> get
+    <*> get
 
     <*> getVector
     <*> getVector
@@ -90,6 +92,13 @@ instance Binary ClassFile where
 
 decodeClassFile :: FilePath -> IO ClassFile
 decodeClassFile = decodeFile
+
+decodeClassFileOrFail :: FilePath -> IO (Either String ClassFile)
+decodeClassFileOrFail fp = do
+  res <- decodeFileOrFail fp
+  return $ case res of
+    Right cf -> Right cf
+    Left (offset, msg) -> Left msg
 
 data AccessFlag
   = Public

@@ -1,24 +1,56 @@
 module Language.JVM.Binary.Constant
   ( Constant (..)
-  , ConstantRef
+  , ConstantRef (..)
   , getConstantRef
   , putConstantRef
   , ConstantPool (..)
   , poolSize
+
+  , lookup
+  , lookupText
+  , lookupClassName
+  , lookupFieldDescriptor
+  , lookupMethodDescriptor
+
+  , Type.ClassName (..)
+  , Type.FieldDescriptor (..)
+  , Type.MethodDescriptor (..)
   ) where
 
-import Control.Monad (forM_)
+import           Prelude                  hiding (lookup)
 
-import qualified Data.ByteString    as BS
+import           Control.Monad            (forM_)
+
+import qualified Data.ByteString          as BS
+import qualified Data.ByteString.Lazy     as BL
 import           Data.Int
-import qualified Data.IntMap.Strict as IM
+import qualified Data.IntMap.Strict       as IM
 import           Data.Word
 
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.Put
 
-type ConstantRef = Int16
+import qualified Data.Text                as Text
+import qualified Data.Text.Encoding       as TE
+
+import qualified Language.JVM.Binary.Type as Type
+
+newtype ConstantRef =
+  ConstantRef Int16
+  deriving (Eq, Show)
+
+getConstantRef :: Get ConstantRef
+getConstantRef =
+  ConstantRef <$> getInt16be
+
+putConstantRef :: ConstantRef -> Put
+putConstantRef (ConstantRef cr) =
+  putInt16be cr
+
+instance Binary ConstantRef where
+  get = getConstantRef
+  put = putConstantRef
 
 data Constant
   = String BS.ByteString
@@ -36,7 +68,6 @@ data Constant
   | MethodType ConstantRef
   | InvokeDynamic ConstantRef ConstantRef
   deriving (Show, Eq)
-
 
 instance Binary Constant where
   get = do
@@ -112,20 +143,16 @@ instance Binary Constant where
         putConstantRef i
         putConstantRef j
 
-poolSize :: Constant -> Int
-poolSize (Double _) = 2
-poolSize (Long _) = 2
-poolSize _ = 1
-
-getConstantRef :: Get ConstantRef
-getConstantRef = getInt16be
-
-putConstantRef :: ConstantRef -> Put
-putConstantRef = putInt16be
-
 newtype ConstantPool = ConstantPool
   { unConstantPool :: IM.IntMap Constant
   } deriving (Show, Eq)
+
+poolSize :: Constant -> Int
+poolSize x =
+  case x of
+    Double _ ->  2
+    Long _   -> 2
+    _        -> 1
 
 instance Binary ConstantPool where
   get = do
@@ -148,3 +175,33 @@ instance Binary ConstantPool where
         forM_ (IM.toAscList p) (put . snd)
       Nothing -> do
         putInt16be 0
+
+lookup :: ConstantRef -> ConstantPool -> Maybe Constant
+lookup (ConstantRef ref) (ConstantPool cp) =
+  IM.lookup (fromIntegral ref) cp
+
+lookupText :: ConstantRef -> ConstantPool -> Maybe Text.Text
+lookupText ref cp = do
+  String str <- lookup ref cp
+  case TE.decodeUtf8' str of
+    Left err  -> Nothing
+    Right txt -> Just txt
+
+lookupClassName :: ConstantRef -> ConstantPool -> Maybe Type.ClassName
+lookupClassName ref cp = do
+  (ClassRef ref) <- lookup ref cp
+  Type.ClassName <$> lookupText ref cp
+
+lookupFieldDescriptor :: ConstantRef -> ConstantPool -> Maybe Type.FieldDescriptor
+lookupFieldDescriptor ref cp = do
+  txt <- lookupText ref cp
+  case Type.fieldDescriptorFromText txt of
+    Right e -> return e
+    Left f -> fail f
+
+lookupMethodDescriptor :: ConstantRef -> ConstantPool -> Maybe Type.MethodDescriptor
+lookupMethodDescriptor ref cp = do
+  txt <- lookupText ref cp
+  case Type.methodDescriptorFromText txt of
+    Right e -> return e
+    Left f -> fail f

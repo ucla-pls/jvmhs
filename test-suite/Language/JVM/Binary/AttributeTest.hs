@@ -4,6 +4,7 @@ module Language.JVM.Binary.AttributeTest where
 import SpecHelper
 
 import Language.JVM.Binary.Attribute (Attribute (..))
+import Language.JVM.Binary.ConstantTest ()
 
 import qualified Data.ByteString as BS
 

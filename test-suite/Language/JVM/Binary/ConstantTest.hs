@@ -14,6 +14,10 @@ prop_encode_and_decode attr =
   (decode . encode) attr == attr
 
 
+instance Arbitrary ConstantRef where
+  arbitrary =
+    ConstantRef <$> arbitrary
+
 instance Arbitrary ConstantPool where
   arbitrary =
     ConstantPool . IM.fromList . go 1 <$> arbitrary
