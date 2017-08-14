@@ -1,7 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Language.JVM.Binary.Type
+module Language.JVM.Type
   ( Type (..)
-  , ClassName (..)
   , MethodDescriptor (..)
   , FieldDescriptor (..)
 
@@ -17,24 +16,10 @@ import Prelude hiding (fail)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TE
 
-import           Data.Binary
-import           Data.Binary.Get
-import           Data.Binary.Put
-
 import Data.Aeson (ToJSON, toJSON, FromJSON, parseJSON, withText)
 import Data.Aeson.TH
 
-newtype ClassName =
-  ClassName Text.Text
-  deriving (Eq, Show, Ord)
-
-instance FromJSON ClassName where
-  parseJSON = withText "the classname" $ \text ->
-    return $ ClassName text
-
-instance ToJSON ClassName where
-  toJSON (ClassName text) =
-    toJSON text
+import Language.JVM.ClassName
 
 data Type
   = Byte

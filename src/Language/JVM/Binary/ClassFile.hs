@@ -8,6 +8,8 @@ module Language.JVM.Binary.ClassFile
 
   , decodeClassFile
   , decodeClassFileOrFail
+  , decodeClassFileFrom
+  , decodeClassFileOrFailFrom
   ) where
 
 
@@ -19,41 +21,40 @@ import           Data.List                     (foldl')
 import qualified Data.Set                      as S
 import qualified Data.Vector                   as V
 
+import qualified Data.ByteString.Lazy          as BL
+
 import           Language.JVM.Binary.Attribute (Attribute)
-import           Language.JVM.Binary.Constant  ( ConstantRef
-                                               , getConstantRef
-                                               , putConstantRef
-                                               , ConstantPool
-                                               )
-import           Language.JVM.Binary.Helpers
+import           Language.JVM.Binary.Constant  (ConstantPool, ConstantRef,
+                                                getConstantRef, putConstantRef)
 import           Language.JVM.Binary.Field     (Field)
+import           Language.JVM.Binary.Helpers
 import           Language.JVM.Binary.Method    (Method)
 
 data ClassFile = ClassFile
-  { magicNumber       :: !Word32
+  { magicNumber  :: !Word32
 
-  , minorVersion      :: !Word16
-  , majorVersion      :: !Word16
+  , minorVersion :: !Word16
+  , majorVersion :: !Word16
 
   -- , constantPoolCount :: !Word16
-  , constantPool      :: ConstantPool
+  , constantPool :: ConstantPool
 
-  , accessFlags       :: AccessFlags
+  , accessFlags  :: AccessFlags
 
-  , thisClass         :: ConstantRef
-  , superClass        :: ConstantRef
+  , thisClass    :: ConstantRef
+  , superClass   :: ConstantRef
 
   -- , interfacesCount   :: !Word16
-  , interfaces        :: V.Vector ConstantRef
+  , interfaces   :: V.Vector ConstantRef
 
   -- , fieldsCount       :: !Word16
-  , fields            :: V.Vector Field
+  , fields       :: V.Vector Field
 
   -- , methodsCount      :: !Word16
-  , methods           :: V.Vector Method
+  , methods      :: V.Vector Method
 
   -- , attributeCount    :: !Word16
-  , attributes        :: V.Vector Attribute
+  , attributes   :: V.Vector Attribute
   } deriving (Show, Eq)
 
 instance Binary ClassFile where
@@ -90,14 +91,23 @@ instance Binary ClassFile where
     , putVector . attributes
     ] <*> [ clfile ]
 
-decodeClassFile :: FilePath -> IO ClassFile
-decodeClassFile = decodeFile
+decodeClassFile :: BL.ByteString -> ClassFile
+decodeClassFile = decode
 
-decodeClassFileOrFail :: FilePath -> IO (Either String ClassFile)
-decodeClassFileOrFail fp = do
+decodeClassFileOrFail :: BL.ByteString -> Either String ClassFile
+decodeClassFileOrFail bs = do
+  case decodeOrFail bs of
+    Right (_, _, cf) -> Right cf
+    Left (_, _, msg) -> Left msg
+
+decodeClassFileFrom :: FilePath -> IO ClassFile
+decodeClassFileFrom = decodeFile
+
+decodeClassFileOrFailFrom :: FilePath -> IO (Either String ClassFile)
+decodeClassFileOrFailFrom fp = do
   res <- decodeFileOrFail fp
   return $ case res of
-    Right cf -> Right cf
+    Right cf           -> Right cf
     Left (offset, msg) -> Left msg
 
 data AccessFlag

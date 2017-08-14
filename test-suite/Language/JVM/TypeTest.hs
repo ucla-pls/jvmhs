@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Language.JVM.Binary.TypeTest where
+module Language.JVM.TypeTest where
 
 
-import SpecHelper
+import           SpecHelper
 
-import Language.JVM.Binary.Type
+import           Language.JVM.Type
+import           Language.JVM.ClassName
 
 spec_typeFromText :: Spec
 spec_typeFromText = do

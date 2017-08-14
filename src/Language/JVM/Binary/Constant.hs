@@ -12,7 +12,6 @@ module Language.JVM.Binary.Constant
   , lookupFieldDescriptor
   , lookupMethodDescriptor
 
-  , Type.ClassName (..)
   , Type.FieldDescriptor (..)
   , Type.MethodDescriptor (..)
   ) where
@@ -34,7 +33,9 @@ import           Data.Binary.Put
 import qualified Data.Text                as Text
 import qualified Data.Text.Encoding       as TE
 
-import qualified Language.JVM.Binary.Type as Type
+import qualified Language.JVM.Type as Type
+
+import           Language.JVM.ClassName (ClassName(..))
 
 newtype ConstantRef =
   ConstantRef Int16
@@ -187,21 +188,21 @@ lookupText ref cp = do
     Left err  -> Nothing
     Right txt -> Just txt
 
-lookupClassName :: ConstantRef -> ConstantPool -> Maybe Type.ClassName
+lookupClassName :: ConstantRef -> ConstantPool -> Maybe ClassName
 lookupClassName ref cp = do
   (ClassRef ref) <- lookup ref cp
-  Type.ClassName <$> lookupText ref cp
+  ClassName <$> lookupText ref cp
 
 lookupFieldDescriptor :: ConstantRef -> ConstantPool -> Maybe Type.FieldDescriptor
 lookupFieldDescriptor ref cp = do
   txt <- lookupText ref cp
   case Type.fieldDescriptorFromText txt of
     Right e -> return e
-    Left f -> fail f
+    Left f  -> fail f
 
 lookupMethodDescriptor :: ConstantRef -> ConstantPool -> Maybe Type.MethodDescriptor
 lookupMethodDescriptor ref cp = do
   txt <- lookupText ref cp
   case Type.methodDescriptorFromText txt of
     Right e -> return e
-    Left f -> fail f
+    Left f  -> fail f
