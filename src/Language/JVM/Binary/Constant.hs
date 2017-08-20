@@ -16,9 +16,10 @@ module Language.JVM.Binary.Constant
   , Type.MethodDescriptor (..)
   ) where
 
-import           Prelude                  hiding (lookup)
+import           Prelude                  hiding (lookup, fail)
 
 import           Control.Monad            (forM_)
+import           Control.Monad.Fail        (fail)
 
 import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Lazy     as BL
@@ -90,7 +91,7 @@ instance Binary Constant where
       15 -> MethodHandle <$> getWord8 <*> getConstantRef
       16 -> MethodType <$> getConstantRef
       18 -> InvokeDynamic <$> getConstantRef <*> getConstantRef
-      _ -> error $ "Unkown identifier " ++ show ident
+      _ -> fail $ "Unkown identifier " ++ show ident
 
   put x =
     case x of

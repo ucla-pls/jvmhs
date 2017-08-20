@@ -1,12 +1,18 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Language.JVM.Method
   ( Method (..)
   , B.AccessFlags (..)
   , fromBinary
+  , methodDesc
   ) where
+
+import Language.JVM.ClassName
+import Data.Monoid
 
 import qualified Language.JVM.Binary.Method as B
 import qualified Language.JVM.Binary.Constant as C
+import qualified Language.JVM.Type as T
 
 import qualified Data.Text as Text
 
@@ -21,6 +27,9 @@ data Method = Method
   , descriptor :: C.MethodDescriptor
   } deriving (Eq, Show)
 
+methodDesc :: ClassName -> Method -> Text.Text
+methodDesc (ClassName cn) m =
+  cn <> "." <> (name m) <> ":" <> T.writeMethodDesciptor (descriptor m)
 
 fromBinary :: C.ConstantPool -> B.Method -> Maybe Method
 fromBinary cp m = do

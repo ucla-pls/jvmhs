@@ -36,7 +36,6 @@ fromBinary clsf = do
   _name <- C.lookupClassName (B.thisClass clsf) cp
   _super <- C.lookupClassName (B.superClass clsf) cp
 
-
   _interfaces <- S.fromList . V.toList <$>
     V.forM (B.interfaces clsf) (flip C.lookupClassName cp)
 

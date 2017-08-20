@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Language.JVM.Type
   ( Type (..)
@@ -7,6 +8,7 @@ module Language.JVM.Type
   , typeFromText
   , methodDescriptorFromText
   , fieldDescriptorFromText
+  , writeMethodDesciptor
   ) where
 
 import Text.Parser
@@ -53,6 +55,21 @@ readType = do
     '[' -> Array <$> readType
     _ -> fail $ "Unknown char " ++ show char
 
+writeType :: Type -> Text.Text
+writeType t = do
+  case t of
+    Byte -> "B"
+    Char -> "C"
+    Double -> "D"
+    Float -> "F"
+    Int -> "I"
+    Long -> "J"
+    Class (ClassName txt) ->
+      mconcat [ "L" , txt, ";"]
+    Short -> "S"
+    Boolean ->"Z"
+    Array t -> mconcat ["[", writeType t]
+
 typeFromText :: Text.Text -> Either String Type
 typeFromText = parseAll readType
 
@@ -79,6 +96,17 @@ readMethodDesciptor = do
   next ')'
   rtype <- (Just <$> readType <|> do { next 'V'; return Nothing })
   return $ MethodDescriptor args rtype
+
+writeMethodDesciptor :: MethodDescriptor -> Text.Text
+writeMethodDesciptor md =
+  mconcat
+    [ "("
+    , mconcat (map writeType (argumentTypes md))
+    , ")"
+    , case (returnType md) of
+       Just t -> writeType t
+       Nothing -> "V"
+    ]
 
 methodDescriptorFromText :: Text.Text -> Either String MethodDescriptor
 methodDescriptorFromText = parseAll readMethodDesciptor

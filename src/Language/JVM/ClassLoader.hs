@@ -1,12 +1,24 @@
+{-# LANGUAGE TupleSections #-}
 -- This module contains the virtual class loader
 
-module Language.JVM.ClassLoader where
+module Language.JVM.ClassLoader
+  ( ClassLoader (..)
+  , loadClass
+  , simple
+  , fromJreFolder
+  , xClass
+  ) where
 
 import           Language.JVM.Class
 import           Language.JVM.ClassName
+import           Language.JVM.Method
 import           System.Directory
 import           System.FilePath
 import           System.Process
+
+import qualified Data.Vector as V
+
+import Data.Maybe (catMaybes)
 
 import           Debug.Trace
 
@@ -17,23 +29,55 @@ import           Codec.Archive.Zip
 import qualified Data.Map.Lazy          as Map
 
 data ClassLoader = ClassLoader
-  { classpath :: [ FilePath ]
-  , ext       :: FilePath
-  , lib       :: FilePath
+  { lib       :: [ FilePath ]
+  , ext       :: [ FilePath ]
+  , classpath :: [ FilePath ]
   } deriving (Show, Eq)
 
 simple :: [ FilePath ] -> IO ClassLoader
 simple fps = do
   java <- readProcess "which" ["java"] ""
-  return $ fromJreFolder (takeDirectory (takeDirectory java) </> "jre") fps
+  fromJreFolder fps $ takeDirectory (takeDirectory java) </> "jre"
 
-fromJreFolder :: FilePath -> [ FilePath ] -> ClassLoader
-fromJreFolder jre clspath = do
-  ClassLoader clspath (jre </> "lib/ext") (jre </> "lib")
+-- creates a ClassLoader from a classpath
+fromJreFolder :: [ FilePath ] -> FilePath -> IO ClassLoader
+fromJreFolder clspath jre =
+  ClassLoader
+    <$> (jarsFromFolder $ jre </> "lib")
+    <*> (jarsFromFolder $ jre </> "lib/ext")
+    <*> pure clspath
 
-findClasses :: ClassLoader -> IO [ ClassName ]
-findClasses (ClassLoader cp ext rt) =
-  concat <$> sequence (map findClassesInFolder cp)
+-- Returns the paths in the order they should be checked for classes
+paths :: ClassLoader -> [ FilePath ]
+paths cl =
+  lib cl ++ ext cl ++ classpath cl
+
+loadClass :: ClassName -> ClassLoader -> IO [(FilePath, Either String Class)]
+loadClass cn cl = do
+  x <- mapM tryload $ paths cl
+  return $ catMaybes x
+  where
+    tryload path = do
+      bc <- read path
+      return $ case bc of
+        Just (path, bs) ->
+          Just (path, decodeClassOrFail bs)
+        Nothing ->
+          Nothing
+
+    read path | isJar path = do
+       arch <- readZipFile path
+       return $ (path,) . fromEntry <$>
+         findEntryByPath (pathOfClass "" cn) arch
+
+    read path = do
+      test <- doesFileExist path
+      if test
+        then do
+          bc <- BL.readFile path
+          return $ Just (path, bc)
+        else return Nothing
+
 
 findClassesInFolder :: FilePath -> IO [ ClassName ]
 findClassesInFolder fp = do
@@ -61,6 +105,26 @@ findClassesInZip :: FilePath -> IO [ ClassName ]
 findClassesInZip fp = do
   concatMap findClassesInFile <$> readZipFileContent fp
 
+xClass :: String -> IO Class
+xClass str = do
+  cl <- simple [ "test-suite/project" ]
+  list <- loadClass (fromDotStr str) cl
+  let Right x = snd . head $ list
+  return x
+
+displayMethods :: String -> IO ()
+displayMethods str = do
+  cls <- xClass str
+  V.forM_ (methods cls) $ \m ->
+    print $ methodDesc (Language.JVM.Class.name cls) m
+
+
+jarsFromFolder :: FilePath -> IO [ FilePath ]
+jarsFromFolder fp =
+  filter isJar <$> folderContents fp
+
+-- Helpers
+
 readZipFile :: FilePath -> IO Archive
 readZipFile fp = do
   toArchive <$> BL.readFile fp
@@ -69,42 +133,19 @@ readZipFileContent :: FilePath -> IO [ FilePath ]
 readZipFileContent fp = do
   filesInArchive <$> readZipFile fp
 
-
-loadClass :: ClassName -> ClassLoader -> IO Class
-loadClass cn cl = do
-  bootjars <- filter isJar <$> folderContents (lib cl)
-  extjars <- filter isJar <$> folderContents (ext cl)
-  let paths = bootjars ++ extjars ++ classpath cl
-
-  traceIO $ show paths
-  go paths
-  where
-    go (path:rest) | isJar path = do
-       traceIO $ show path
-       arch <- readZipFile path
-       case findEntryByPath (pathOfClass "" cn) arch of
-         Just entry' ->
-           case decodeClassOrFail . fromEntry $ entry' of
-             Right cls -> return cls
-             Left msg  -> go rest
-         _ -> go rest
-    go (path:rest) = do
-      let pc = pathOfClass path cn
-      test <- doesFileExist pc
-      if test then do
-        res <- decodeClassOrFailFrom $ pc
-        case res of
-          Right cls -> return cls
-          Left msg  -> go rest
-       else go rest
-    go [] = fail $ "Could not load " ++ show cn
-
-    isJar path = takeExtension path == ".jar"
-
-
-xClass :: String -> IO Class
-xClass str =
-  loadClass (fromDotStr str) =<< simple [ "test-suite/project" ]
-
+-- Folders
 folderContents :: FilePath -> IO [ FilePath ]
-folderContents fp = map (fp </>) <$> listDirectory fp
+folderContents fp =
+  map (fp </>) <$> listDirectory fp
+
+recursiveContents :: FilePath -> IO [ FilePath ]
+recursiveContents fp = do
+  test <- doesDirectoryExist fp
+  (fp:) <$> if test then do
+    content <- folderContents fp
+    concat <$> mapM recursiveContents content
+  else return []
+
+isJar :: FilePath -> Bool
+isJar path =
+  takeExtension path == ".jar"
