@@ -25,7 +25,7 @@ import qualified Data.ByteString.Lazy          as BL
 
 import           Language.JVM.Binary.Attribute (Attribute)
 import           Language.JVM.Binary.Constant  (ConstantPool, ConstantRef,
-                                                getConstantRef, putConstantRef)
+                                                putConstantRef)
 import           Language.JVM.Binary.Field     (Field)
 import           Language.JVM.Binary.Helpers
 import           Language.JVM.Binary.Method    (Method)
@@ -108,7 +108,7 @@ decodeClassFileOrFailFrom fp = do
   res <- decodeFileOrFail fp
   return $ case res of
     Right cf           -> Right cf
-    Left (offset, msg) -> Left msg
+    Left (_, msg) -> Left msg
 
 data AccessFlag
   = Public

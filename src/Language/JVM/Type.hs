@@ -16,9 +16,7 @@ import Text.Parser
 import Prelude hiding (fail)
 
 import qualified Data.Text as Text
-import qualified Data.Text.Encoding as TE
 
-import Data.Aeson (ToJSON, toJSON, FromJSON, parseJSON, withText)
 import Data.Aeson.TH
 
 import Language.JVM.ClassName
@@ -68,7 +66,7 @@ writeType t = do
       mconcat [ "L" , txt, ";"]
     Short -> "S"
     Boolean ->"Z"
-    Array t -> mconcat ["[", writeType t]
+    Array st -> mconcat ["[", writeType st]
 
 typeFromText :: Text.Text -> Either String Type
 typeFromText = parseAll readType

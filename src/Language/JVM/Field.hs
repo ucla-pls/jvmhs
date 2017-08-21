@@ -1,17 +1,20 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Language.JVM.Field
   ( Field (..)
+
+  , name
+  , accessFlags
+  , descriptor
+
   , fromBinary
   ) where
-
-import           Control.Monad                (forM)
-import qualified Data.Set                     as S
-import qualified Data.Vector                  as V
 
 import qualified Language.JVM.Binary.Constant as C
 import qualified Language.JVM.Binary.Field    as B
 
 import qualified Data.Text                    as Text
+
+import Control.Lens
 
 import Data.Aeson
 import Data.Aeson.TH
@@ -19,15 +22,17 @@ import Data.Aeson.TH
 type FieldName = Text.Text
 
 data Field = Field
-  { accessFlags :: B.AccessFlags
-  , name        :: FieldName
-  , descriptor  :: C.FieldDescriptor
+  { _accessFlags :: B.AccessFlags
+  , _name        :: FieldName
+  , _descriptor  :: C.FieldDescriptor
   } deriving (Eq, Show)
+
+makeLenses ''Field
 
 fromBinary :: C.ConstantPool -> B.Field -> Maybe Field
 fromBinary cp f = do
-  name <- C.lookupText (B.nameIndex f) cp
-  descriptor <- C.lookupFieldDescriptor (B.descriptorIndex f) cp
-  return $ Field (B.accessFlags f) name descriptor
+  mname <- C.lookupText (B.nameIndex f) cp
+  mdescriptor <- C.lookupFieldDescriptor (B.descriptorIndex f) cp
+  return $ Field (B.accessFlags f) mname mdescriptor
 
-deriveJSON defaultOptions ''Field
+deriveJSON (defaultOptions { fieldLabelModifier = drop 1 }) ''Field

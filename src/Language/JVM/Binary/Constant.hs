@@ -22,7 +22,6 @@ import           Control.Monad            (forM_)
 import           Control.Monad.Fail        (fail)
 
 import qualified Data.ByteString          as BS
-import qualified Data.ByteString.Lazy     as BL
 import           Data.Int
 import qualified Data.IntMap.Strict       as IM
 import           Data.Word
@@ -186,13 +185,13 @@ lookupText :: ConstantRef -> ConstantPool -> Maybe Text.Text
 lookupText ref cp = do
   String str <- lookup ref cp
   case TE.decodeUtf8' str of
-    Left err  -> Nothing
+    Left _  -> Nothing
     Right txt -> Just txt
 
 lookupClassName :: ConstantRef -> ConstantPool -> Maybe ClassName
 lookupClassName ref cp = do
-  (ClassRef ref) <- lookup ref cp
-  ClassName <$> lookupText ref cp
+  (ClassRef r) <- lookup ref cp
+  ClassName <$> lookupText r cp
 
 lookupFieldDescriptor :: ConstantRef -> ConstantPool -> Maybe Type.FieldDescriptor
 lookupFieldDescriptor ref cp = do

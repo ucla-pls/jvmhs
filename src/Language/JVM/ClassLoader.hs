@@ -1,12 +1,12 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 -- This module contains the virtual class loader
 
 module Language.JVM.ClassLoader
   ( ClassLoader (..)
   , loadClass
-  , simple
+  , fromClassPath
   , fromJreFolder
-  , xClass
   ) where
 
 import           Language.JVM.Class
@@ -15,6 +15,10 @@ import           Language.JVM.Method
 import           System.Directory
 import           System.FilePath
 import           System.Process
+
+import Control.Lens
+
+import Control.Monad (forM_)
 
 import qualified Data.Vector as V
 
@@ -34,8 +38,8 @@ data ClassLoader = ClassLoader
   , classpath :: [ FilePath ]
   } deriving (Show, Eq)
 
-simple :: [ FilePath ] -> IO ClassLoader
-simple fps = do
+fromClassPath :: [ FilePath ] -> IO ClassLoader
+fromClassPath fps = do
   java <- readProcess "which" ["java"] ""
   fromJreFolder fps $ takeDirectory (takeDirectory java) </> "jre"
 
@@ -78,7 +82,6 @@ loadClass cn cl = do
           return $ Just (path, bc)
         else return Nothing
 
-
 findClassesInFolder :: FilePath -> IO [ ClassName ]
 findClassesInFolder fp = do
   items <- folderContents fp
@@ -104,20 +107,6 @@ findClassesInFile fp = do
 findClassesInZip :: FilePath -> IO [ ClassName ]
 findClassesInZip fp = do
   concatMap findClassesInFile <$> readZipFileContent fp
-
-xClass :: String -> IO Class
-xClass str = do
-  cl <- simple [ "test-suite/project" ]
-  list <- loadClass (fromDotStr str) cl
-  let Right x = snd . head $ list
-  return x
-
-displayMethods :: String -> IO ()
-displayMethods str = do
-  cls <- xClass str
-  V.forM_ (methods cls) $ \m ->
-    print $ methodDesc (Language.JVM.Class.name cls) m
-
 
 jarsFromFolder :: FilePath -> IO [ FilePath ]
 jarsFromFolder fp =

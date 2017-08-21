@@ -2,6 +2,12 @@
 module Language.JVM.Class
   ( Class (..)
 
+  , name
+  , fields
+  , interfaces
+  , methods
+  , super
+
   , fromBinary
   , decodeClassFrom
   , decodeClassOrFail
@@ -21,13 +27,14 @@ import           Language.JVM.ClassName
 import qualified Language.JVM.Field            as Field
 import qualified Language.JVM.Method           as Method
 
+import Control.Lens
 
 data Class = Class
-  { name       :: ClassName
-  , super      :: ClassName
-  , interfaces :: S.Set ClassName
-  , fields     :: V.Vector Field.Field
-  , methods    :: V.Vector Method.Method
+  { _name       :: ClassName
+  , _super      :: ClassName
+  , _interfaces :: S.Set ClassName
+  , _fields     :: [ Field.Field ]
+  , _methods    :: [ Method.Method ]
   } deriving (Eq, Show)
 
 fromBinary :: B.ClassFile -> Maybe Class
@@ -43,7 +50,9 @@ fromBinary clsf = do
 
   _methods <- V.forM (B.methods clsf) $ Method.fromBinary cp
 
-  return $ Class _name _super _interfaces _fields _methods
+  return $ Class _name _super _interfaces (V.toList _fields) (V.toList _methods)
+
+makeLenses ''Class
 
 decodeClassFrom :: FilePath -> IO Class
 decodeClassFrom fp = do
@@ -71,4 +80,4 @@ decodeClassOrFail bs = do
     Left msg ->
       Left $ "Could not decode class-file: " ++ msg
 
-deriveJSON defaultOptions ''Class
+deriveJSON (defaultOptions { fieldLabelModifier = drop 1}) ''Class
