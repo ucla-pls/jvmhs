@@ -30,8 +30,9 @@ Usage:
   javaq list-indirect-methods [options] <class>
 
 Options:
-  -c=<classpath> --classpath=<classpath>  The classpath
-  --only-classpath                        Do not search the stdlib
+  --classpath=<classpath>  The classpath
+  --only-classpath         Do not search the stdlib
+  --jre=<jre>         Specify the jre folder
 |]
 
 main = do
@@ -43,7 +44,9 @@ main = do
 
   classloader <- if args `isPresent` (longOption "only-classpath")
     then return $ ClassLoader [] [] classpath
-    else fromClassPath classpath
+    else case args `getArg` (longOption "jre") of
+           Just folder -> fromJreFolder classpath folder
+           Nothing -> fromClassPath classpath
 
   when (args `isPresent` (command "list-class")) $ do
     cn <- getArgOrExitWith patterns args $ argument "class"
