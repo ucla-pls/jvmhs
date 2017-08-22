@@ -1,9 +1,12 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Language.JVM.Hierarchy
   ( Hierarchy
   , getClass
+  , putText
+
   , runHierarchy
   , runHierarchyClassPath
   , runHierarchyClassLoader
@@ -33,8 +36,12 @@ import qualified Data.Set as S
 
 import qualified Data.Map as M
 
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
+
 data HierarchyLang a
   = GetClass ClassName (Class -> a)
+  | PutText T.Text (() -> a)
   deriving (Functor)
 
 type Hierarchy = Free HierarchyLang
@@ -42,6 +49,10 @@ type Hierarchy = Free HierarchyLang
 getClass :: ClassName -> Hierarchy Class
 getClass classname =
   Free $ GetClass classname Pure
+
+putText :: T.Text -> Hierarchy ()
+putText text =
+  Free $ PutText text Pure
 
 data HierarchyState a = HierarchyState
   { classes :: M.Map ClassName Class }
@@ -64,6 +75,8 @@ runHierarchy clf h =
                 (_, Right clz) : _ -> go (M.insert cn clz m) (f clz)
                 (_, Left msg) : _ -> fail msg
                 [] -> fail $ "Couldn't find " ++ show cn
+        (PutText t f)-> do
+          go m . f =<< TIO.putStrLn t
     go m (Pure a) =
       return a
 
