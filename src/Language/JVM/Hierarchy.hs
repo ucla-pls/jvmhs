@@ -6,6 +6,8 @@ module Language.JVM.Hierarchy
   , getClass
   , runHierarchy
   , runHierarchyClassPath
+  , runHierarchyClassLoader
+  , runHierarchyClassPreloader
 
   , allInterfaces
   , indirectInterfaces
@@ -41,12 +43,14 @@ getClass :: ClassName -> Hierarchy Class
 getClass classname =
   Free $ GetClass classname Pure
 
-
 data HierarchyState a = HierarchyState
   { classes :: M.Map ClassName Class }
 
-runHierarchy :: ClassLoader -> Hierarchy a -> IO a
-runHierarchy cl h =
+runHierarchy
+  :: (ClassName -> IO [(FilePath,Either String Class)])
+  -> Hierarchy a
+  -> IO a
+runHierarchy clf h =
   go M.empty h
   where
     go m (Free h) =
@@ -55,7 +59,7 @@ runHierarchy cl h =
           case M.lookup cn m of
             Just clz -> go m (f clz)
             Nothing -> do
-              clzes <- loadClass cn cl
+              clzes <- clf cn
               case clzes of
                 (_, Right clz) : _ -> go (M.insert cn clz m) (f clz)
                 (_, Left msg) : _ -> fail msg
@@ -63,10 +67,19 @@ runHierarchy cl h =
     go m (Pure a) =
       return a
 
+
+runHierarchyClassPreloader :: ClassPreloader -> Hierarchy a -> IO a
+runHierarchyClassPreloader cl h = do
+  runHierarchy (flip loadClassFromPreloader cl) h
+
+runHierarchyClassLoader :: ClassLoader -> Hierarchy a -> IO a
+runHierarchyClassLoader cl h = do
+  runHierarchy (flip loadClass cl) h
+
 runHierarchyClassPath :: [FilePath] -> Hierarchy a -> IO a
 runHierarchyClassPath classpath h = do
   cl <- fromClassPath classpath
-  runHierarchy cl h
+  runHierarchyClassLoader cl h
 
 hview :: Getter Class a -> ClassName -> Hierarchy a
 hview lens cn = view lens <$> getClass cn

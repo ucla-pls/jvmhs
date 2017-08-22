@@ -12,7 +12,7 @@ import           System.FilePath (FilePath, (<.>), (</>))
 import           Data.Aeson
 
 newtype ClassName =
-  ClassName Text.Text
+  ClassName { toText :: Text.Text }
   deriving (Eq, Show, Ord)
 
 instance FromJSON ClassName where

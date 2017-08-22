@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections     #-}
 -- This module contains the virtual class loader
 
 module Language.JVM.ClassLoader
@@ -7,6 +7,10 @@ module Language.JVM.ClassLoader
   , loadClass
   , fromClassPath
   , fromJreFolder
+
+  , preloadClasses
+  , loadClassFromPreloader
+  , ClassPreloader (..)
   ) where
 
 import           Language.JVM.Class
@@ -16,13 +20,13 @@ import           System.Directory
 import           System.FilePath
 import           System.Process
 
-import Control.Lens
+import           Control.Lens
 
-import Control.Monad (forM_)
+import           Control.Monad          (forM, forM_)
 
-import qualified Data.Vector as V
+import qualified Data.Vector            as V
 
-import Data.Maybe (catMaybes)
+import           Data.Maybe             (catMaybes)
 
 import           Debug.Trace
 
@@ -30,7 +34,7 @@ import qualified Data.ByteString.Lazy   as BL
 
 import           Codec.Archive.Zip
 
-import qualified Data.Map.Lazy          as Map
+import qualified Data.Map.Lazy          as M
 
 data ClassLoader = ClassLoader
   { lib       :: [ FilePath ]
@@ -75,44 +79,81 @@ loadClass cn cl = do
          findEntryByPath (pathOfClass "" cn) arch
 
     read path = do
-      test <- doesFileExist path
+      test <- doesFileExist (pathOfClass path cn)
       if test
         then do
-          bc <- BL.readFile path
+          bc <- BL.readFile (pathOfClass path cn)
           return $ Just (path, bc)
         else return Nothing
 
-findClassesInFolder :: FilePath -> IO [ ClassName ]
-findClassesInFolder fp = do
-  items <- folderContents fp
-  concat <$> sequence (map go items)
+
+-- Class preloader
+
+data PreloadedClass
+  = ArchiveClass FilePath Archive
+  | PathClass FilePath
+  deriving (Show)
+
+newtype ClassPreloader = ClassPreloader
+  { classMap :: M.Map ClassName [PreloadedClass]
+  } deriving (Show)
+
+preloadClasses :: ClassLoader -> IO ClassPreloader
+preloadClasses cl = do
+  classes <- forM (paths cl) preloadpath
+  return . ClassPreloader . M.fromListWith (++) . concat $ classes
   where
-    go fp = do
-     guard <- doesDirectoryExist fp
-     if guard
-       then findClassesInFolder fp
-       else do
-         let (filepath, ext) = splitExtension fp
-         if ext == ".class"
-           then return [ fromStr filepath ]
-           else return []
+    preloadpath fp
+      | isJar fp = do
+          arc <- readZipFile fp
+          let xs = catMaybes . map fromFile $ filesInArchive arc
+          return $ map (, [ArchiveClass fp arc]) xs
+      | True = do
+          xs <- catMaybes . map fromFile <$> folderContents fp
+          return $ map (, [PathClass fp]) xs
 
-findClassesInFile :: FilePath -> [ ClassName ]
-findClassesInFile fp = do
-  let (filepath, ext) = splitExtension fp
-  case ext of
-    ".class" -> return $ fromStr filepath
-    _        -> []
+    fromFile :: FilePath -> Maybe ClassName
+    fromFile fp = do
+      case splitExtension fp of
+        (filepath, ".class") -> return $ fromStr filepath
+        _                    -> Nothing
 
-findClassesInZip :: FilePath -> IO [ ClassName ]
-findClassesInZip fp = do
-  concatMap findClassesInFile <$> readZipFileContent fp
+loadClassFromPreloader
+  :: ClassName
+  -> ClassPreloader
+  -> IO [(FilePath, Either String Class)]
+loadClassFromPreloader cn (ClassPreloader cpl) =
+  case M.lookup cn cpl of
+    Just plc -> concat <$> mapM (loadPreloadedClass cn) plc
+    Nothing  -> return []
 
+loadPreloadedClass
+  :: ClassName
+  -> PreloadedClass
+  -> IO [(FilePath, Either String Class)]
+loadPreloadedClass cn plc =
+  reader <$> case plc of
+    ArchiveClass fp arch ->
+      return $ (fp,) . fromEntry <$>
+         maybe [] (:[]) (findEntryByPath (pathOfClass "" cn) arch)
+
+    PathClass fp -> do
+      let path = (pathOfClass fp cn)
+      test <- doesFileExist path
+      if test
+        then do
+          bs <- BL.readFile path
+          return [(fp, bs)]
+        else return []
+
+   where
+     reader = fmap (\(fp, bs) -> (fp, decodeClassOrFail bs))
+
+
+-- Helpers
 jarsFromFolder :: FilePath -> IO [ FilePath ]
 jarsFromFolder fp =
   filter isJar <$> folderContents fp
-
--- Helpers
 
 readZipFile :: FilePath -> IO Archive
 readZipFile fp = do
