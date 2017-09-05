@@ -1,39 +1,41 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Language.JVM.Binary.Attribute
   ( Attribute (..)
+  , nameIndex
+  , info
+  , name
   ) where
 
-import Data.Binary
-import Data.Binary.Get
-import Data.Binary.Put
+import           Data.Binary
+import           Data.Binary.Get
+import           Data.Binary.Put
 
-import qualified Data.ByteString as BS
+import qualified Data.Text as T
 
-import           Language.JVM.Binary.Constant (ConstantRef, getConstantRef, putConstantRef)
+import Control.Lens
+
+import qualified Data.ByteString              as BS
+
+import           Language.JVM.Binary.Constant (ConstantRef, ConstantPool, toText)
+
 
 data Attribute = Attribute
-  { attributeNameIndex :: ConstantRef
-  , info               :: BS.ByteString
+  { _nameIndex :: ConstantRef
+  , _info      :: BS.ByteString
   } deriving (Show, Eq)
+
+makeLenses ''Attribute
+
+name :: ConstantPool -> Getter Attribute (Maybe T.Text)
+name cp = nameIndex . toText cp
 
 instance Binary Attribute where
   get = do
-    nameIndex <- getConstantRef
+    nameIndex' <- get
     len <- getWord32be
-    Attribute nameIndex <$> getByteString (fromIntegral len)
+    Attribute nameIndex' <$> getByteString (fromIntegral len)
 
   put attr = do
-    putConstantRef (attributeNameIndex attr)
-    putWord32be (fromIntegral . BS.length $ info attr)
-    putByteString $ info attr
-
--- type ConstantValue = ConstantRef
-
--- data Code = Code
---   { maxStack :: Int16
---   , maxLocals :: Int16
---   -- codeLength :: Int32
---   , code :: ByteCode
---   -- exceptionTableLength :: Int16
---   , exceptionTable :: V.Vector Exception
---   , attributes :: V.Vector Attribute
---   } deriving (Show, Eq)
+    put (_nameIndex attr)
+    putWord32be (fromIntegral . BS.length $ _info attr)
+    putByteString $ _info attr

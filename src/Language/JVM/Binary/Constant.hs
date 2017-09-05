@@ -1,13 +1,15 @@
+{-# LANGUAGE RankNTypes #-}
 module Language.JVM.Binary.Constant
   ( Constant (..)
   , ConstantRef (..)
-  , getConstantRef
-  , putConstantRef
   , ConstantPool (..)
   , poolSize
 
   , lookup
+  , lookupL
+  , toText
   , lookupText
+  , toClassName
   , lookupClassName
   , lookupFieldDescriptor
   , lookupMethodDescriptor
@@ -22,7 +24,6 @@ import           Control.Monad            (forM_)
 import           Control.Monad.Fail        (fail)
 
 import qualified Data.ByteString          as BS
-import           Data.Int
 import qualified Data.IntMap.Strict       as IM
 import           Data.Word
 
@@ -30,28 +31,23 @@ import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.Put
 
+
+import Control.Lens
+
 import qualified Data.Text                as Text
 import qualified Data.Text.Encoding       as TE
 
 import qualified Language.JVM.Type as Type
 
-import           Language.JVM.ClassName (ClassName(..))
+import           Language.JVM.ClassName (ClassName(ClassName))
 
 newtype ConstantRef =
-  ConstantRef Int16
+  ConstantRef Word16
   deriving (Eq, Show)
 
-getConstantRef :: Get ConstantRef
-getConstantRef =
-  ConstantRef <$> getInt16be
-
-putConstantRef :: ConstantRef -> Put
-putConstantRef (ConstantRef cr) =
-  putInt16be cr
-
 instance Binary ConstantRef where
-  get = getConstantRef
-  put = putConstantRef
+  get = ConstantRef <$> get
+  put (ConstantRef x) = put x
 
 data Constant
   = String BS.ByteString
@@ -81,15 +77,15 @@ instance Binary Constant where
       4 -> Float <$> getWord32be
       5 -> Long <$> getWord64be
       6 -> Double <$> getWord64be
-      7 -> ClassRef <$> getConstantRef
-      8 -> StringRef <$> getConstantRef
-      9 -> FieldRef <$> getConstantRef <*> getConstantRef
-      10 -> MethodRef <$> getConstantRef <*> getConstantRef
-      11 -> InterfaceMethodRef <$> getConstantRef <*> getConstantRef
-      12 -> NameAndType <$> getConstantRef <*> getConstantRef
-      15 -> MethodHandle <$> getWord8 <*> getConstantRef
-      16 -> MethodType <$> getConstantRef
-      18 -> InvokeDynamic <$> getConstantRef <*> getConstantRef
+      7 -> ClassRef <$> get
+      8 -> StringRef <$> get
+      9 -> FieldRef <$> get <*> get
+      10 -> MethodRef <$> get <*> get
+      11 -> InterfaceMethodRef <$> get <*> get
+      12 -> NameAndType <$> get <*> get
+      15 -> MethodHandle <$> getWord8 <*> get
+      16 -> MethodType <$> get
+      18 -> InvokeDynamic <$> get <*> get
       _ -> fail $ "Unkown identifier " ++ show ident
 
   put x =
@@ -112,37 +108,37 @@ instance Binary Constant where
         putWord64be i
       ClassRef i -> do
         putWord8 7
-        putConstantRef i
+        put i
       StringRef i -> do
         putWord8 8
-        putConstantRef i
+        put i
       FieldRef i j -> do
         putWord8 9
-        putConstantRef i
-        putConstantRef j
+        put i
+        put j
       MethodRef i j -> do
         putWord8 10
-        putConstantRef i
-        putConstantRef j
+        put i
+        put j
       InterfaceMethodRef i j -> do
         putWord8 11
-        putConstantRef i
-        putConstantRef j
+        put i
+        put j
       NameAndType i j -> do
         putWord8 12
-        putConstantRef i
-        putConstantRef j
+        put i
+        put j
       MethodHandle i j -> do
         putWord8 15
         putWord8 i
-        putConstantRef j
+        put j
       MethodType i -> do
         putWord8 16
-        putConstantRef i
+        put i
       InvokeDynamic i j -> do
         putWord8 18
-        putConstantRef i
-        putConstantRef j
+        put i
+        put j
 
 newtype ConstantPool = ConstantPool
   { unConstantPool :: IM.IntMap Constant
@@ -158,28 +154,31 @@ poolSize x =
 instance Binary ConstantPool where
   get = do
     len <- fromIntegral <$> getInt16be
-    -- traceM $ "read length: " ++ show len
     list <- go len 1
     return . ConstantPool $ IM.fromList list
     where
       go len n | len > n = do
         constant <- get
-        -- traceM $ "read constant: " ++ show constant
         rest <- go len (n + poolSize constant)
         return $ (n, constant) : rest
       go _ _ = return []
   put (ConstantPool p)= do
     case IM.maxViewWithKey p of
       Just ((key, e), _) -> do
-        -- traceM $ "wrote length: " ++ show (key + poolSize e)
         putInt16be (fromIntegral (key + poolSize e))
         forM_ (IM.toAscList p) (put . snd)
       Nothing -> do
         putInt16be 0
 
+lookupL :: ConstantPool -> Getter ConstantRef (Maybe Constant)
+lookupL = to . flip lookup
+
 lookup :: ConstantRef -> ConstantPool -> Maybe Constant
 lookup (ConstantRef ref) (ConstantPool cp) =
   IM.lookup (fromIntegral ref) cp
+
+toText :: ConstantPool -> Getter ConstantRef (Maybe Text.Text)
+toText = to . flip lookupText
 
 lookupText :: ConstantRef -> ConstantPool -> Maybe Text.Text
 lookupText ref cp = do
@@ -187,6 +186,9 @@ lookupText ref cp = do
   case TE.decodeUtf8' str of
     Left _  -> Nothing
     Right txt -> Just txt
+
+toClassName :: ConstantPool -> Getter ConstantRef (Maybe ClassName)
+toClassName = to . flip lookupClassName
 
 lookupClassName :: ConstantRef -> ConstantPool -> Maybe ClassName
 lookupClassName ref cp = do

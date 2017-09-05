@@ -11,12 +11,10 @@ import           Data.Binary.Put
 import           Data.Bits
 import           Data.List                      (foldl')
 import qualified Data.Set                       as S
-import qualified Data.Vector                    as V
 
 import           Language.JVM.Binary.Attribute  (Attribute)
-import           Language.JVM.Binary.Constant   (ConstantRef, getConstantRef,
-                                                 putConstantRef)
-import           Language.JVM.Binary.Helpers
+import           Language.JVM.Binary.Constant   (ConstantRef)
+import           Language.JVM.Binary.SizedList
 
 import Data.Aeson
 import Data.Aeson.TH
@@ -25,21 +23,21 @@ data Method = Method
   { accessFlags     :: AccessFlags
   , nameIndex       :: ConstantRef
   , descriptorIndex :: ConstantRef
-  , attributes      :: V.Vector Attribute
+  , attributes      :: SizedList16 Attribute
   } deriving (Show, Eq)
 
 instance Binary Method where
   get = Method
     <$> get
-    <*> getConstantRef
-    <*> getConstantRef
-    <*> getVector
+    <*> get
+    <*> get
+    <*> get
 
   put method = sequence_ $
     [ put . accessFlags
-    , putConstantRef . nameIndex
-    , putConstantRef . descriptorIndex
-    , putVector . attributes
+    , put . nameIndex
+    , put . descriptorIndex
+    , put . attributes
     ] <*> [ method ]
 
 data AccessFlag
@@ -58,6 +56,7 @@ data AccessFlag
   | Synthetic
   | Unused14
   | Unused15
+  | Unused16
   deriving (Ord, Show, Eq, Enum)
 
 

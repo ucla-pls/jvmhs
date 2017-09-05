@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
 -- This module contains the virtual class loader
@@ -15,20 +17,14 @@ module Language.JVM.ClassLoader
 
 import           Language.JVM.Class
 import           Language.JVM.ClassName
-import           Language.JVM.Method
 import           System.Directory
 import           System.FilePath
 import           System.Process
 
 import           Control.Lens
-
-import           Control.Monad          (forM, forM_)
-
-import qualified Data.Vector            as V
+import           Data.Monoid
 
 import           Data.Maybe             (catMaybes)
-
-import           Debug.Trace
 
 import qualified Data.ByteString.Lazy   as BL
 
@@ -37,17 +33,23 @@ import           Codec.Archive.Zip
 import qualified Data.Map.Lazy          as M
 
 data ClassLoader = ClassLoader
-  { lib       :: [ FilePath ]
-  , ext       :: [ FilePath ]
-  , classpath :: [ FilePath ]
+  { _lib       :: [ FilePath ]
+  , _ext       :: [ FilePath ]
+  , _classpath :: [ FilePath ]
   } deriving (Show, Eq)
 
+makeLenses ''ClassLoader
+
+-- Constructors
+
+-- | Creates a 'ClassLoader' from a class path, automatically predicts
+-- the java version used using the 'which' command.
 fromClassPath :: [ FilePath ] -> IO ClassLoader
 fromClassPath fps = do
   java <- readProcess "which" ["java"] ""
   fromJreFolder fps $ takeDirectory (takeDirectory java) </> "jre"
 
--- creates a ClassLoader from a classpath
+-- | Creates a 'ClassLoader' from a classpath
 fromJreFolder :: [ FilePath ] -> FilePath -> IO ClassLoader
 fromJreFolder clspath jre =
   ClassLoader
@@ -55,30 +57,37 @@ fromJreFolder clspath jre =
     <*> (jarsFromFolder $ jre </> "lib/ext")
     <*> pure clspath
 
--- Returns the paths in the order they should be checked for classes
-paths :: ClassLoader -> [ FilePath ]
-paths cl =
-  lib cl ++ ext cl ++ classpath cl
+type ClassReader = ClassName -> IO [(FilePath, Either String Class)]
 
-loadClass :: ClassName -> ClassLoader -> IO [(FilePath, Either String Class)]
-loadClass cn cl = do
-  x <- mapM tryload $ paths cl
+-- | Returns the paths in the order they should be checked for classes
+paths
+  :: (Functor f, Monoid (f ClassLoader))
+  => ([FilePath] -> f [FilePath])
+  -> ClassLoader
+  -> f ClassLoader
+paths = lib <> ext <> classpath
+
+ -- <> ext <> classpath
+
+loadClass :: ClassLoader -> ClassReader
+loadClass cl cn = do
+  x <- mapM tryload $ cl ^. paths
   return $ catMaybes x
   where
     tryload path = do
-      bc <- read path
+      bc <- readPath path
       return $ case bc of
-        Just (path, bs) ->
-          Just (path, decodeClassOrFail bs)
+        Just (path', bs) ->
+          Just (path', decodeClassOrFail bs)
         Nothing ->
           Nothing
 
-    read path | isJar path = do
+    readPath path | isJar path = do
        arch <- readZipFile path
        return $ (path,) . fromEntry <$>
          findEntryByPath (pathOfClass "" cn) arch
 
-    read path = do
+    readPath path = do
       test <- doesFileExist (pathOfClass path cn)
       if test
         then do
@@ -87,7 +96,7 @@ loadClass cn cl = do
         else return Nothing
 
 
--- Class preloader
+-- ClassPreloader
 
 data PreloadedClass
   = ArchiveClass FilePath Archive
@@ -100,7 +109,7 @@ newtype ClassPreloader = ClassPreloader
 
 preloadClasses :: ClassLoader -> IO ClassPreloader
 preloadClasses cl = do
-  classes <- forM (paths cl) preloadpath
+  classes <- mapM preloadpath $ cl ^. paths
   return . ClassPreloader . M.fromListWith (++) . concat $ classes
   where
     preloadpath fp
@@ -109,7 +118,7 @@ preloadClasses cl = do
           let xs = catMaybes . map fromFile $ filesInArchive arc
           return $ map (, [ArchiveClass fp arc]) xs
       | True = do
-          xs <- catMaybes . map fromFile <$> folderContents fp
+          xs <- catMaybes . map fromFile <$> recursiveContents fp
           return $ map (, [PathClass fp]) xs
 
     fromFile :: FilePath -> Maybe ClassName
@@ -118,14 +127,12 @@ preloadClasses cl = do
         (filepath, ".class") -> return $ fromStr filepath
         _                    -> Nothing
 
+
 loadClassFromPreloader
-  :: ClassName
-  -> ClassPreloader
-  -> IO [(FilePath, Either String Class)]
-loadClassFromPreloader cn (ClassPreloader cpl) =
-  case M.lookup cn cpl of
-    Just plc -> concat <$> mapM (loadPreloadedClass cn) plc
-    Nothing  -> return []
+  :: ClassPreloader
+  -> ClassReader
+loadClassFromPreloader (ClassPreloader cpl) cn = do
+  concat <$> mapM (loadPreloadedClass cn) (cpl ^. at cn . _Just)
 
 loadPreloadedClass
   :: ClassName
@@ -149,7 +156,6 @@ loadPreloadedClass cn plc =
    where
      reader = fmap (\(fp, bs) -> (fp, decodeClassOrFail bs))
 
-
 -- Helpers
 jarsFromFolder :: FilePath -> IO [ FilePath ]
 jarsFromFolder fp =
@@ -159,9 +165,9 @@ readZipFile :: FilePath -> IO Archive
 readZipFile fp = do
   toArchive <$> BL.readFile fp
 
-readZipFileContent :: FilePath -> IO [ FilePath ]
-readZipFileContent fp = do
-  filesInArchive <$> readZipFile fp
+-- readZipFileContent :: FilePath -> IO [ FilePath ]
+-- readZipFileContent fp = do
+--   filesInArchive <$> readZipFile fp
 
 -- Folders
 folderContents :: FilePath -> IO [ FilePath ]

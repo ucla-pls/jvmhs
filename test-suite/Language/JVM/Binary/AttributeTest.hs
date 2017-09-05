@@ -14,7 +14,7 @@ prop_encode_and_decode attr =
 
 instance Arbitrary Attribute where
   arbitrary = do
-    index <- arbitrary
+    idx <- arbitrary
     len <- choose (0, 50)
     bs <- BS.pack <$> sequence (replicate len arbitrary)
-    return $ Attribute index bs
+    return $ Attribute idx bs
