@@ -1,6 +1,14 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveGeneric #-}
 module Language.JVM.Binary.Code
   ( Code (..)
+
+  , maxStack
+  , maxLocals
+  , bytecode
+  , exceptionTable
+  , attributes
+
   , ByteCode (..)
   , ExceptionTable (..)
 
@@ -11,7 +19,7 @@ module Language.JVM.Binary.Code
   , LocalType (..)
   , ArrayType (..)
 
-  , ByteCodes (..)
+  , ByteCodeInst (..)
 
   , fromAttribute
   ) where
@@ -44,31 +52,32 @@ import Language.JVM.Binary.Attribute
 import Language.JVM.Binary.Constant (ConstantRef(..))
 
 data Code = Code
-  { maxStack :: Int16
-  , maxLocals :: Int16
-  -- codeLength :: Int32
-  , code :: ByteCodes
-  , exceptionTable :: SizedList16 ExceptionTable
-  , attributes :: SizedList16 Attribute
+  { _maxStack :: Int16
+  , _maxLocals :: Int16
+  , _bytecode :: ByteCode
+  , _exceptionTable :: SizedList16 ExceptionTable
+  , _attributes :: SizedList16 Attribute
   } deriving (Show, Eq, Generic)
 
 instance Binary Code where
   -- Auto implemented by generic
 
-newtype ByteCodes = ByteCodes { unByteCodes :: [ByteCode] } deriving (Show, Eq)
+newtype ByteCode = ByteCode
+  { unByteCode :: [ByteCodeInst]
+  } deriving (Show, Eq)
 
-instance Binary ByteCodes where
+instance Binary ByteCode where
   get = do
     x <- getWord32be
     bs <- getLazyByteString (fromIntegral x)
     case runGetOrFail go bs of
-      Right (_,_,bcs) -> return $ ByteCodes bcs
+      Right (_,_,bcs) -> return $ ByteCode bcs
       Left (_,_,msg) -> fail msg
     where
       go = isEmpty >>= \t -> if t then return [] else (:) <$> get <*> go
 
 
-  put (ByteCodes lst)= do
+  put (ByteCode lst)= do
     let bs = runPut (mapM_ put lst)
     putWord32be (fromIntegral $ BL.length bs)
     putLazyByteString bs
@@ -179,7 +188,7 @@ data CmpOpr
   = CEq | CNe | CLt | CGe | CGt | CLe
   deriving (Show, Eq)
 
-data ByteCode
+data ByteCodeInst
   = ArrayLoad (ArrayType ())
   -- ^ aaload baload ...
   | ArrayStore (ArrayType ())
@@ -268,7 +277,7 @@ data ByteCode
 
   deriving (Show, Eq)
 
-instance Binary ByteCode where
+instance Binary ByteCodeInst where
   get = do
     cmd <- getWord8
     case cmd of
@@ -607,3 +616,5 @@ instance Binary ByteCode where
       Push (CRef Two (ConstantRef r)) -> putInt8 0x14 >> put r
 
       _ -> P.fail $ "Is not able to print '" ++ show bc ++ "' yet."
+
+makeLenses ''Code

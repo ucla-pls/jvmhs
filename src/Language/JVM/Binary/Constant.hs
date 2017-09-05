@@ -1,4 +1,5 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RankNTypes    #-}
 module Language.JVM.Binary.Constant
   ( Constant (..)
   , ConstantRef (..)
@@ -18,13 +19,15 @@ module Language.JVM.Binary.Constant
   , Type.MethodDescriptor (..)
   ) where
 
-import           Prelude                  hiding (lookup, fail)
+import           GHC.Generics           (Generic)
 
-import           Control.Monad            (forM_)
-import           Control.Monad.Fail        (fail)
+import           Prelude                hiding (fail, lookup)
 
-import qualified Data.ByteString          as BS
-import qualified Data.IntMap.Strict       as IM
+import           Control.Monad          (forM_)
+import           Control.Monad.Fail     (fail)
+
+import qualified Data.ByteString        as BS
+import qualified Data.IntMap.Strict     as IM
 import           Data.Word
 
 import           Data.Binary
@@ -32,22 +35,20 @@ import           Data.Binary.Get
 import           Data.Binary.Put
 
 
-import Control.Lens
+import           Control.Lens
 
-import qualified Data.Text                as Text
-import qualified Data.Text.Encoding       as TE
+import qualified Data.Text              as Text
+import qualified Data.Text.Encoding     as TE
 
-import qualified Language.JVM.Type as Type
+import qualified Language.JVM.Type      as Type
 
-import           Language.JVM.ClassName (ClassName(ClassName))
+import           Language.JVM.ClassName (ClassName (ClassName))
 
 newtype ConstantRef =
   ConstantRef Word16
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 instance Binary ConstantRef where
-  get = ConstantRef <$> get
-  put (ConstantRef x) = put x
 
 data Constant
   = String BS.ByteString
@@ -70,23 +71,21 @@ instance Binary Constant where
   get = do
     ident <- getWord8
     case ident of
-      1 -> do
-        len <- getInt16be
-        String <$> getByteString (fromIntegral len)
-      3 -> Integer <$> getWord32be
-      4 -> Float <$> getWord32be
-      5 -> Long <$> getWord64be
-      6 -> Double <$> getWord64be
-      7 -> ClassRef <$> get
-      8 -> StringRef <$> get
-      9 -> FieldRef <$> get <*> get
+      1  -> do len <- getInt16be; String <$> getByteString (fromIntegral len)
+      3  -> Integer <$> getWord32be
+      4  -> Float <$> getWord32be
+      5  -> Long <$> getWord64be
+      6  -> Double <$> getWord64be
+      7  -> ClassRef <$> get
+      8  -> StringRef <$> get
+      9  -> FieldRef <$> get <*> get
       10 -> MethodRef <$> get <*> get
       11 -> InterfaceMethodRef <$> get <*> get
       12 -> NameAndType <$> get <*> get
       15 -> MethodHandle <$> getWord8 <*> get
       16 -> MethodType <$> get
       18 -> InvokeDynamic <$> get <*> get
-      _ -> fail $ "Unkown identifier " ++ show ident
+      _  -> fail $ "Unkown identifier " ++ show ident
 
   put x =
     case x of
@@ -94,51 +93,19 @@ instance Binary Constant where
         putWord8 1
         putInt16be . fromIntegral $ BS.length bs
         putByteString bs
-      Integer i -> do
-        putWord8 3
-        putWord32be i
-      Float i -> do
-        putWord8 4
-        putWord32be i
-      Long i -> do
-        putWord8 5
-        putWord64be i
-      Double i -> do
-        putWord8 6
-        putWord64be i
-      ClassRef i -> do
-        putWord8 7
-        put i
-      StringRef i -> do
-        putWord8 8
-        put i
-      FieldRef i j -> do
-        putWord8 9
-        put i
-        put j
-      MethodRef i j -> do
-        putWord8 10
-        put i
-        put j
-      InterfaceMethodRef i j -> do
-        putWord8 11
-        put i
-        put j
-      NameAndType i j -> do
-        putWord8 12
-        put i
-        put j
-      MethodHandle i j -> do
-        putWord8 15
-        putWord8 i
-        put j
-      MethodType i -> do
-        putWord8 16
-        put i
-      InvokeDynamic i j -> do
-        putWord8 18
-        put i
-        put j
+      Integer i              -> do putWord8 3; putWord32be i
+      Float i                -> do putWord8 4; putWord32be i
+      Long i                 -> do putWord8 5; putWord64be i
+      Double i               -> do putWord8 6; putWord64be i
+      ClassRef i             -> do putWord8 7; put i
+      StringRef i            -> do putWord8 8; put i
+      FieldRef i j           -> do putWord8 9; put i; put j
+      MethodRef i j          -> do putWord8 10; put i; put j
+      InterfaceMethodRef i j -> do putWord8 11; put i; put j
+      NameAndType i j        -> do putWord8 12; put i; put j
+      MethodHandle i j       -> do putWord8 15; putWord8 i; put j
+      MethodType i           -> do putWord8 16; put i;
+      InvokeDynamic i j      -> do putWord8 18; put i; put j
 
 newtype ConstantPool = ConstantPool
   { unConstantPool :: IM.IntMap Constant
@@ -184,7 +151,7 @@ lookupText :: ConstantRef -> ConstantPool -> Maybe Text.Text
 lookupText ref cp = do
   String str <- lookup ref cp
   case TE.decodeUtf8' str of
-    Left _  -> Nothing
+    Left _    -> Nothing
     Right txt -> Just txt
 
 toClassName :: ConstantPool -> Getter ConstantRef (Maybe ClassName)

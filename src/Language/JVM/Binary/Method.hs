@@ -1,9 +1,12 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Language.JVM.Binary.Method
   ( Method (..)
   , AccessFlags (..)
   , AccessFlag (..)
   ) where
+
+import GHC.Generics (Generic)
 
 import           Data.Binary
 import           Data.Binary.Get
@@ -24,21 +27,9 @@ data Method = Method
   , nameIndex       :: ConstantRef
   , descriptorIndex :: ConstantRef
   , attributes      :: SizedList16 Attribute
-  } deriving (Show, Eq)
+  } deriving (Show, Eq, Generic)
 
 instance Binary Method where
-  get = Method
-    <$> get
-    <*> get
-    <*> get
-    <*> get
-
-  put method = sequence_ $
-    [ put . accessFlags
-    , put . nameIndex
-    , put . descriptorIndex
-    , put . attributes
-    ] <*> [ method ]
 
 data AccessFlag
   = Public
@@ -58,7 +49,6 @@ data AccessFlag
   | Unused15
   | Unused16
   deriving (Ord, Show, Eq, Enum)
-
 
 newtype AccessFlags = AccessFlags (S.Set AccessFlag)
   deriving (Ord, Show, Eq)

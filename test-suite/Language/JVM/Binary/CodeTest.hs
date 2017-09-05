@@ -52,7 +52,7 @@ instance Arbitrary ArithmeticType where
 instance Arbitrary LocalType where
   arbitrary = elements [ LInt, LLong, LFloat, LDouble, LRef ]
 
-instance Arbitrary ByteCode where
+instance Arbitrary ByteCodeInst where
   arbitrary = oneof
     [ pure Nop
     , Push <$> arbitrary
@@ -87,8 +87,8 @@ instance Arbitrary Constant where
     , CRef Two <$> arbitrary
     ]
 
-instance Arbitrary ByteCodes where
-  arbitrary = ByteCodes <$> arbitrary
+instance Arbitrary ByteCode where
+  arbitrary = ByteCode <$> arbitrary
 
 instance Arbitrary ExceptionTable where
   arbitrary = ExceptionTable
