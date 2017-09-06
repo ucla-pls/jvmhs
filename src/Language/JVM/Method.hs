@@ -33,9 +33,6 @@ import qualified Data.Text as Text
 
 import Control.Lens
 
--- -- import Data.Aeson
--- -- import Data.Aeson.TH
-
 type MethodName = Text.Text
 
 type MethodId = (MethodName, C.MethodDescriptor)
@@ -54,16 +51,13 @@ identifier = to $ \m -> (m ^. name, m ^. descriptor)
 
 desc :: ClassName -> Method -> Text.Text
 desc (ClassName cn) m =
-  cn <> "." <> (m ^. name) <> ":" <> T.writeMethodDesciptor (m ^. descriptor)
+  cn <> "." <> m ^. name <> ":" <> m ^. descriptor . to T.writeMethodDesciptor
 
 fromBinary :: C.ConstantPool -> B.Method -> Maybe Method
 fromBinary cp m = do
   mname <- C.lookupText (B.nameIndex m) cp
   mdescriptor <- C.lookupMethodDescriptor (B.descriptorIndex m) cp
-  let mcode = B.attributes m ^? traverse
-                           . filtered ((== Just "Code") . view (A.name cp))
-                           . to Code.fromAttribute
-                           . _Right
+  mcode <- case B.attributes m ^? traverse . filtered ((== Just "Code") . view (A.name cp)) of
+    Just x -> x ^? to Code.fromAttribute . _Right . to Just
+    Nothing -> Just Nothing
   return $ Method mname mdescriptor (B.accessFlags m) mcode
-
--- deriveJSON (defaultOptions { fieldLabelModifier = drop 1 }) ''Method
