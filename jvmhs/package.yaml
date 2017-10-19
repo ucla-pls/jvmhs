@@ -24,4 +24,10 @@ library:
     - base >= 4.9 && < 4.10
     - jvm-binary >= 0.1.0 && < 0.2.0
     - lens
+    - zip-archive
+    - bytestring
+    - directory
+    - filepath
+    - process
+    - containers
   source-dirs: src

@@ -2,6 +2,7 @@ resolver: lts-9.3
 packages:
 - jvmhs
 - ../jvm-binary
-extra-deps: [ ]
+extra-deps: 
+- megaparsec-6.2.0
 flags: {}
 extra-package-dbs: []

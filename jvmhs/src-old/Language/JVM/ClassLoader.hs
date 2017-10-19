@@ -2,9 +2,15 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
--- This module contains the virtual class loader
+{-|
+Module      : Jvmhs.Data.ClassLoader
+Copyright   : (c) Christian Gram Kalhauge, 2017
+License     : MIT
+Maintainer  : kalhuage@cs.ucla.edu
 
-module Language.JVM.ClassLoader
+-}
+
+module Jvmhs.Data.ClassLoader
   ( ClassLoader (..)
   , loadClass
   , fromClassPath
