@@ -21,13 +21,18 @@ extra-source-files:
 
 library:
   dependencies:
-    - base >= 4.9 && < 4.10
+    - base >= 4.10 && < 4.11
     - jvm-binary >= 0.1.0 && < 0.2.0
     - lens
+    - lens-action
     - zip-archive
     - bytestring
     - directory
     - filepath
     - process
     - containers
+    - text
+    - mtl
+    - fgl
+    - fgl-visualize
   source-dirs: src

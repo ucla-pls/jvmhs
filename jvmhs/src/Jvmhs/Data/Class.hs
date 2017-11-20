@@ -22,11 +22,20 @@ module Jvmhs.Data.Class
   , classMethods
   , classBootstrapMethods
 
+  , dependencies
+
   , Field (..)
   , fieldAccessFlags
   , fieldName
   , fieldDescriptor
   , fieldConstantValue
+
+  , Method (..)
+  , methodAccessFlags
+  , methodName
+  , methodDescriptor
+  , methodCode
+  , methodExceptions
 
   -- * Helpers
 
@@ -71,46 +80,83 @@ data Field = Field
   -- ^ an optional constant value
   } deriving (Eq, Show)
 
-data Method = Method deriving (Eq, Show)
-data BootstrapMethod = BootstrapMethod deriving (Eq, Show)
+-- This is the method
+data Method = Method
+  { _methodAccessFlags :: Set.Set B.MAccessFlag
+  -- ^ the set of access flags
+  , _methodName :: Text.Text
+  -- ^ the name of the method
+  , _methodDescriptor :: MethodDescriptor
+  -- ^ the method type descriptor
+  , _methodCode :: Maybe B.Code
+  -- ^ optionally the method can contain code
+  , _methodExceptions :: [ ClassName ]
+  -- ^ the method can have one or more exceptions
+  } deriving (Eq, Show)
+
+data BootstrapMethod =
+  BootstrapMethod
+  deriving (Eq, Show)
 
 makeLenses ''Class
 makeLenses ''Field
+makeLenses ''Method
 
-failWith :: String -> Maybe a -> Either String a
-failWith s ma =
-  case ma of
-    Just a -> Right a
-    Nothing -> Left s
+-- | The dependencies of a class
+dependencies :: Class -> [ ClassName ]
+dependencies cls =
+  cls ^. classSuper : cls ^. classInterfaces
 
+
+-- | An Isomorphism between classfiles and checked classes.
 checked :: Iso' B.ClassFile (Either String Class)
 checked = iso fromBinary toBinary
   where
     fromBinary clsfile = do
-      let c = B.cConstantPool clsfile
-      cn <- failWith "Could not find 'this' class" $ B.cThisClass c clsfile
-      cs <- failWith "Could not find 'super' class" $ B.cSuperClass c clsfile
+      either (Left . show) id . flip B.runWithPool (B.cConstantPool clsfile) $ do
+        cn <- B.cThisClass clsfile
+        cs <- if cn == (strCls "java/lang/Object")
+          then return cn
+          else B.cSuperClass clsfile
+        interfaces <- B.cInterfaces clsfile
 
-      is <- failWith "Could not load 'interfaces'"
-        . sequence . map (B.deref c)
-        $ B.cInterfaces clsfile
+        fields <- fmap sequence <$>
+          mapM fieldFromBinary . B.cFields $ clsfile
+        methods <- fmap sequence <$>
+          mapM methodFromBinary . B.cMethods $ clsfile
 
-      flds <- sequence $ clsfile ^.. to B.cFields . traverse . checkedField
-      mths <- sequence $ clsfile ^.. to B.cMethods . traverse . checkedMethod
-
-      let btms = []
-      return $ Class cn cs is flds mths btms
-
+        return (
+          Class
+            cn cs interfaces
+            <$> fields
+            <*> methods
+            <*> pure []
+         )
     toBinary = undefined
 
-checkedField :: Iso' B.Field (Either String Field)
-checkedField = iso fromBinary toBinary
-  where
-    fromBinary = undefined
-    toBinary = undefined
+fieldFromBinary :: B.Field -> B.PoolAccess (Either String Field)
+fieldFromBinary f = do
+  let acc = B.fAccessFlags f
+  name <- B.fName f
+  descriptor <- B.fDescriptor f
+  constvalue <- B.fConstantValue f
+  return (Field acc name descriptor <$> invert constvalue)
 
-checkedMethod :: Iso' B.Method (Either String Method)
-checkedMethod = iso fromBinary toBinary
-  where
-    fromBinary = undefined
-    toBinary = undefined
+
+methodFromBinary :: B.Method -> B.PoolAccess (Either String Method)
+methodFromBinary m = do
+  let acc = B.mAccessFlags m
+  name <- B.mName m
+  desc <- B.mDescriptor m
+  code <- B.mCode m
+  exceptions <- B.mExceptions m
+  return (Method acc name desc <$> invert code <*> exceptions)
+
+
+-- | helper
+invert :: Maybe (Either m b) -> Either m (Maybe b)
+invert x =
+  case x of
+    Just (Left msg) -> Left msg
+    Just (Right a) -> return $ Just a
+    Nothing -> return $ Nothing

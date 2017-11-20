@@ -1,8 +1,9 @@
-resolver: lts-9.3
+resolver: nightly-2017-11-17 
 packages:
 - jvmhs
 - ../jvm-binary
 extra-deps: 
-- megaparsec-6.2.0
+  - fgl-visualize-0.1.0.1
+  - dotgen-0.4.2
 flags: {}
-extra-package-dbs: []
+extra-package-dbs:
