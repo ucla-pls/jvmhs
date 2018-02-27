@@ -29,6 +29,7 @@ module Jvmhs.Data.Class
   , fieldName
   , fieldDescriptor
   , fieldConstantValue
+  , fieldType
 
   , Method (..)
   , methodAccessFlags
@@ -36,12 +37,14 @@ module Jvmhs.Data.Class
   , methodDescriptor
   , methodCode
   , methodExceptions
+  , methodReturnType
+  , methodArgumentTypes
 
   -- * Helpers
 
   , checked
 
-  -- * Rexports
+  -- * Re-exports
   , module Language.JVM.Type
   ) where
 
@@ -102,11 +105,41 @@ makeLenses ''Class
 makeLenses ''Field
 makeLenses ''Method
 
+-- lens :: (s -> a) -> (s -> b -> t) -> Lens s t a b
+
+-- | Get the type from a field descriptor
+fieldDType :: Lens' FieldDescriptor JType
+fieldDType =
+  lens fieldDescriptorType (const FieldDescriptor)
+
+-- | Get the type of field
+fieldType :: Lens' Field JType
+fieldType =
+  fieldDescriptor . fieldDType
+
+-- | Get a the argument types from a method descriptor
+methodDArguments :: Lens' MethodDescriptor [JType]
+methodDArguments =
+  lens methodDescriptorArguments (\md a -> md { methodDescriptorArguments = a})
+
+-- | Get a the return type from a method descriptor
+methodDReturnType :: Lens' MethodDescriptor (Maybe JType)
+methodDReturnType =
+  lens methodDescriptorReturnType (\md a -> md { methodDescriptorReturnType = a})
+
+-- | Get the type of field
+methodArgumentTypes :: Lens' Method [JType]
+methodArgumentTypes =
+  methodDescriptor . methodDArguments
+
+methodReturnType :: Lens' Method (Maybe JType)
+methodReturnType =
+  methodDescriptor . methodDReturnType
+
 -- | The dependencies of a class
 dependencies :: Class -> [ ClassName ]
 dependencies cls =
   cls ^. classSuper : cls ^. classInterfaces
-
 
 -- | An Isomorphism between classfiles and checked classes.
 checked :: Iso' B.ClassFile (Either String Class)
