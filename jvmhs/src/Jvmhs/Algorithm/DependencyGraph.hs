@@ -21,7 +21,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import Data.Monoid ((<>))
-import qualified Data.Text as Text
+-- import qualified Data.Text as Text
 
 import Jvmhs.Hierarchy
 import Jvmhs.ClassReader
@@ -34,12 +34,11 @@ data Dependency
   | InMethod Text.Text
   deriving (Show, Eq)
 
-
 dependencyGraph
   :: forall r
    . ClassReader r
   => ClassName
-  -> Hierarchy r (Gr ClassName IEdge)
+  -> Hierarchy r (Gr ClassName Dependency)
 dependencyGraph classname = do
   (ns, es) <- depthFirst depends classname
   let m = Map.fromList $ zip ns [1..]
@@ -118,20 +117,19 @@ depthFirst f =
         (b <>) . fold <$> mapM go as
 
 
-
 testIt :: IO ()
 testIt = do
-  Right (gr, _) <-
+  x <-
     runHierarchyInClassPath
-      [ "../jvm-binary/test-suite/data/project"]
+      [ "../../jvm-binary/test/data/project"]
       (dependencyGraph (strCls "Main"))
 
-  prettyPrint gr
+  case x of
+    Right (gr, _) -> do
+      -- prettyPrint gr
 
-  Right (gr', _) <-
-    runHierarchyInClassPath
-      [ "../jvm-binary/test-suite/data/project"]
-      (dependencyGraph (strCls "Main"))
+      let dot = fglToDotString (bimap (Text.unpack . classNameAsText) show gr)
+      writeFile "test.dot" (showDot dot)
 
-  let dot = fglToDotString (bimap (Text.unpack . classNameAsText) show gr)
-  writeFile "test.dot" (showDot dot)
+    Left err -> do
+      print err

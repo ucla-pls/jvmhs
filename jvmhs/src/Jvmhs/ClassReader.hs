@@ -104,7 +104,7 @@ recursiveContents fp = do
 data ClassReadError
  = ClassNotFound
  -- ^ Class was not found
- | MalformedClass String
+ | MalformedClass B.ClassFileError
  -- ^ An error happened while reading the class.
  deriving (Show, Eq)
 
@@ -114,7 +114,7 @@ class ClassReader m where
   readClassFile
     :: m
     -> ClassName
-    -> IO (Either ClassReadError B.ClassFile)
+    -> IO (Either ClassReadError (B.ClassFile B.High))
 
   -- | Returns a list of `ClassName` and the containers they are in.
   classes
@@ -128,10 +128,8 @@ readClass
   -> ClassName
   -> IO (Either ClassReadError Class)
 readClass m cn = do
-  ocls <- readClassFile m cn
-  return $ do
-    cls <- ocls
-    (cls ^. checked) & _Left %~ MalformedClass
+  cls <- readClassFile m cn
+  return (cls & _Right %~ view isoBinary)
 
 -- | Classes can be in a folder
 newtype CFolder = CFolder
@@ -153,8 +151,7 @@ instance ClassReader CFolder where
     if x
       then do
         file <- BL.readFile cls
-        return $ B.decodeClassFile file &
-          _Left %~ MalformedClass
+        return $ B.readClassFile file & _Left %~ MalformedClass
       else return $ Left ClassNotFound
 
   classes this@(CFolder fp) = do
@@ -184,7 +181,7 @@ instance ClassReader CJar where
   readClassFile (CJar _ arch) cn =
     case findEntryByPath (pathOfClass "" cn) arch of
       Just f ->
-        return $ B.decodeClassFile (fromEntry f) & _Left %~ MalformedClass
+        return $ B.readClassFile (fromEntry f) & _Left %~ MalformedClass
       Nothing ->
         return $ Left ClassNotFound
 

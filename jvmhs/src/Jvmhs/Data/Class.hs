@@ -1,7 +1,7 @@
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-|
 Module      : Jvmhs.Data.Class
-Copyright   : (c) Christian Gram Kalhauge, 2017
+Copyright   : (c) Christian Gram Kalhauge, 2018
 License     : MIT
 Maintainer  : kalhuage@cs.ucla.edu
 
@@ -41,31 +41,44 @@ module Jvmhs.Data.Class
   , methodArgumentTypes
 
   -- * Helpers
-
-  , checked
+  , isoBinary
 
   -- * Re-exports
   , module Language.JVM.Type
+
+  -- ** Wraped Types
+  , BootstrapMethod (..)
+  , Constant (..)
   ) where
 
-import qualified Language.JVM as B
-import Language.JVM.Type
+import qualified Language.JVM                            as B
+import qualified Language.JVM.Attribute.BootstrapMethods as B
+import qualified Language.JVM.Attribute.ConstantValue as B
+import           Language.JVM.Type
 
-import qualified Data.Set as Set
-import qualified Data.Text as Text
-import Control.Lens
+import           Control.Lens
+import qualified Data.Set                                as Set
+import qualified Data.Text                               as Text
+
+newtype Constant = Constant
+  { unConstant :: B.Constant B.High
+  } deriving (Show, Eq)
+
+newtype BootstrapMethod = BootstrapMethod
+  { unBootstrapMethod :: B.BootstrapMethod B.High
+  } deriving (Show, Eq)
 
 -- This is the class
 data Class = Class
-  { _className :: ClassName
+  { _className             :: ClassName
   -- ^ the name of the class
-  , _classSuper :: ClassName
+  , _classSuper            :: ClassName
   -- ^ the name of the super class
-  , _classInterfaces :: [ ClassName ]
+  , _classInterfaces       :: [ ClassName ]
   -- ^ a list of interfaces implemented by the class
-  , _classFields :: [ Field ]
+  , _classFields           :: [ Field ]
   -- ^ a list of fields
-  , _classMethods :: [ Method ]
+  , _classMethods          :: [ Method ]
   -- ^ a list of methods
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
@@ -73,13 +86,13 @@ data Class = Class
 
 -- This is the field
 data Field = Field
-  { _fieldAccessFlags :: Set.Set B.FAccessFlag
+  { _fieldAccessFlags   :: Set.Set B.FAccessFlag
   -- ^ the set of access flags
-  , _fieldName :: Text.Text
+  , _fieldName          :: Text.Text
   -- ^ the name of the field
-  , _fieldDescriptor :: FieldDescriptor
+  , _fieldDescriptor    :: FieldDescriptor
   -- ^ the field type descriptor
-  , _fieldConstantValue :: Maybe B.ConstantValue
+  , _fieldConstantValue :: Maybe Constant
   -- ^ an optional constant value
   } deriving (Eq, Show)
 
@@ -87,19 +100,15 @@ data Field = Field
 data Method = Method
   { _methodAccessFlags :: Set.Set B.MAccessFlag
   -- ^ the set of access flags
-  , _methodName :: Text.Text
+  , _methodName        :: Text.Text
   -- ^ the name of the method
-  , _methodDescriptor :: MethodDescriptor
+  , _methodDescriptor  :: MethodDescriptor
   -- ^ the method type descriptor
-  , _methodCode :: Maybe B.Code
+  , _methodCode        :: Maybe (B.Code B.High)
   -- ^ optionally the method can contain code
-  , _methodExceptions :: [ ClassName ]
+  , _methodExceptions  :: [ ClassName ]
   -- ^ the method can have one or more exceptions
   } deriving (Eq, Show)
-
-data BootstrapMethod =
-  BootstrapMethod
-  deriving (Eq, Show)
 
 makeLenses ''Class
 makeLenses ''Field
@@ -142,54 +151,31 @@ dependencies cls =
   cls ^. classSuper : cls ^. classInterfaces
 
 -- | An Isomorphism between classfiles and checked classes.
-checked :: Iso' B.ClassFile (Either String Class)
-checked = iso fromBinary toBinary
+isoBinary :: Iso' (B.ClassFile B.High) Class
+isoBinary = iso fromClassFile toClassFile
   where
-    fromBinary clsfile = do
-      either (Left . show) id . flip B.runWithPool (B.cConstantPool clsfile) $ do
-        cn <- B.cThisClass clsfile
-        cs <- if cn == (strCls "java/lang/Object")
-          then return cn
-          else B.cSuperClass clsfile
-        interfaces <- B.cInterfaces clsfile
+    fromClassFile =
+      Class
+      <$> B.cThisClass
+      <*> B.cSuperClass
+      <*> B.cInterfaces
+      <*> map fromBField . B.cFields
+      <*> map fromBMethod . B.cMethods
+      <*> fmap BootstrapMethod . B.cBootstrapMethods
 
-        fields <- fmap sequence <$>
-          mapM fieldFromBinary . B.cFields $ clsfile
-        methods <- fmap sequence <$>
-          mapM methodFromBinary . B.cMethods $ clsfile
+    fromBField =
+      Field
+      <$> B.fAccessFlags
+      <*> B.fName
+      <*> B.fDescriptor
+      <*> fmap (Constant . B.constantValue) . B.fConstantValue
 
-        return (
-          Class
-            cn cs interfaces
-            <$> fields
-            <*> methods
-            <*> pure []
-         )
-    toBinary = undefined
+    fromBMethod =
+      Method
+      <$> B.mAccessFlags
+      <*> B.mName
+      <*> B.mDescriptor
+      <*> B.mCode
+      <*> B.mExceptions
 
-fieldFromBinary :: B.Field -> B.PoolAccess (Either String Field)
-fieldFromBinary f = do
-  let acc = B.fAccessFlags f
-  name <- B.fName f
-  descriptor <- B.fDescriptor f
-  constvalue <- B.fConstantValue f
-  return (Field acc name descriptor <$> invert constvalue)
-
-
-methodFromBinary :: B.Method -> B.PoolAccess (Either String Method)
-methodFromBinary m = do
-  let acc = B.mAccessFlags m
-  name <- B.mName m
-  desc <- B.mDescriptor m
-  code <- B.mCode m
-  exceptions <- B.mExceptions m
-  return (Method acc name desc <$> invert code <*> exceptions)
-
-
--- | helper
-invert :: Maybe (Either m b) -> Either m (Maybe b)
-invert x =
-  case x of
-    Just (Left msg) -> Left msg
-    Just (Right a) -> return $ Just a
-    Nothing -> return $ Nothing
+    toClassFile = undefined
