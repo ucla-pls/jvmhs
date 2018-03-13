@@ -6,8 +6,10 @@
 {-# LANGUAGE TupleSections     #-}
 
 module Jvmhs.ClassReader
-  (
-    ClassReadError (..)
+  ( ClassReadError (..)
+
+  , ClassPath
+  , splitClassPath
 
   , ClassReader (..)
   , readClass
@@ -242,6 +244,9 @@ instance ClassReader (ClassContainer) where
 makeLenses ''CFolder
 makeLenses ''CJar
 
+
+type ClassPath = [ FilePath ]
+
 -- | ClassLoader contains all the paths used by the class loader.
 data ClassLoader = ClassLoader
   { _lib       :: [ FilePath ]
@@ -250,6 +255,24 @@ data ClassLoader = ClassLoader
   } deriving (Show, Eq)
 
 makeLenses ''ClassLoader
+
+-- | split splits a list on an element
+-- >> split ':' "Hello:World"
+-- [ "Hello", "World" ]
+-- split :: Char -> [Char] -> [[Char]]
+split :: (Eq a) => a -> ([a] -> [[a]])
+split a = go []
+  where
+    go lst [] =
+      [ reverse lst ]
+    go lst (b':rest)
+      | b' == a =
+        reverse lst : go [] rest
+      | otherwise =
+        go (b':lst) rest
+
+splitClassPath :: String -> ClassPath
+splitClassPath = split ':'
 
 -- | Creates a 'ClassLoader' from a class path, automatically predicts
 -- the java version used using the 'which' command.
@@ -270,7 +293,7 @@ fromJreFolder clspath jre =
     <*> (jarsFromFolder $ jre </> "lib/ext")
     <*> pure clspath
 
--- | Returns the paths in the order they should be checked for classes
+
 paths
   :: (Functor f, Monoid (f ClassLoader))
   => ([FilePath] -> f [FilePath])

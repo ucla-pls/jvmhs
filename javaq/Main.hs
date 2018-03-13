@@ -37,7 +37,7 @@ data Cmd
 
 -- | The config file dictates the execution of the program
 data Config = Config
-  { _cfgClassPath :: [FilePath]
+  { _cfgClassPath :: ClassPath
   , _cfgJre       :: Maybe FilePath
   , _cfgUseStdlib :: Bool
   , _cfgCmd       :: Cmd
@@ -63,7 +63,7 @@ parseConfig args = do
   cmd <- parseCommand args
   return $ Config
     { _cfgClassPath =
-        case concatMap (split ':') $ getAllArgs args (longOption "cp") of
+        case concatMap splitClassPath $ getAllArgs args (longOption "cp") of
           [] -> ["."]
           as -> as
     , _cfgUseStdlib = isPresent args (longOption "stdlib")
@@ -112,15 +112,3 @@ createClassLoader cfg
         fromJreFolder (cfg ^. cfgClassPath) jre
   | otherwise =
     return $ ClassLoader [] [] (cfg ^. cfgClassPath)
-
-
-split :: (Eq a) => a -> [a] -> [[a]]
-split = go []
-  where
-    go tmp a (a':rest)
-      | a == a' =
-        reverse tmp : go [] a rest
-      | otherwise =
-        go (a' : tmp) a rest
-    go tmp _ [] =
-      [reverse tmp]
