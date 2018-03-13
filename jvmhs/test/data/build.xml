@@ -1,0 +1,13 @@
+<project name="TestCode" default="compile" basedir=".">
+    <property name="src" location="src"/>
+    <property name="classes" location="classes"/>
+    <target name="init">
+        <mkdir dir="${classes}"/>
+    </target>
+    <target name="compile" depends="init" >
+        <javac srcdir="${src}" destdir="${classes}"/>
+    </target>
+    <target name="clean" >
+        <delete dir="${build}"/>
+    </target>
+</project>

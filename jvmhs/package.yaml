@@ -19,20 +19,31 @@ extra-source-files:
   - package.yaml
   - README.md
 
+dependencies:
+  - base >= 4.10 && < 4.11
+  - jvm-binary >= 0.1.0 && < 0.2.0
+  - lens
+  - aeson
+  - lens-action
+  - zip-archive
+  - bytestring
+  - directory
+  - filepath
+  - process
+  - containers
+  - text
+  - mtl
+  - fgl
+  - fgl-visualize
+
 library:
-  dependencies:
-    - base >= 4.10 && < 4.11
-    - jvm-binary >= 0.1.0 && < 0.2.0
-    - lens
-    - lens-action
-    - zip-archive
-    - bytestring
-    - directory
-    - filepath
-    - process
-    - containers
-    - text
-    - mtl
-    - fgl
-    - fgl-visualize
   source-dirs: src
+
+tests:
+  jvmhs-test:
+    source-dirs: test
+    main: Spec.hs
+    dependencies:
+      - jvmhs
+      - tasty
+      - tasty-hunit

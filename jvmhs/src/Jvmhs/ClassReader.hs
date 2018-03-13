@@ -11,6 +11,7 @@ module Jvmhs.ClassReader
 
   , ClassReader (..)
   , readClass
+  , writeClass
 
   , CFolder
   , toFilePath
@@ -120,6 +121,17 @@ class ClassReader m where
   classes
     :: m
     -> IO [ (ClassName, ClassContainer) ]
+
+-- | write a class to a folder
+writeClass ::
+     FilePath
+  -> Class
+  -> IO ()
+writeClass fp c = do
+  let path = pathOfClass fp $ c^.className
+  createDirectoryIfMissing True (takeDirectory path)
+  let clf = (toClassFile (52,0) c)
+  BL.writeFile path $ B.writeClassFile clf
 
 -- | Read a checked class from a class reader.
 readClass
@@ -243,9 +255,12 @@ makeLenses ''ClassLoader
 -- the java version used using the 'which' command.
 fromClassPath :: [ FilePath ] -> IO ClassLoader
 fromClassPath fps = do
+  fromJreFolder fps =<< guessJre
+
+guessJre :: IO FilePath
+guessJre = do
   java <- readProcess "which" ["java"] ""
-  fromJreFolder fps $
-    takeDirectory (takeDirectory java) </> "jre"
+  return $ takeDirectory (takeDirectory java) </> "jre"
 
 -- | Creates a 'ClassLoader' from a classpath and the jre folder
 fromJreFolder :: [ FilePath ] -> FilePath -> IO ClassLoader

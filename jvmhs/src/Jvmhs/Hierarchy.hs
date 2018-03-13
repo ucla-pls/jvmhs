@@ -46,7 +46,7 @@ makeLenses ''HierarchyState
 
 data HierarchyError
   = ErrorWhileReadingClass ClassName ClassReadError
-  deriving (Show)
+  deriving (Show, Eq)
 
 type Hierarchy r = StateT (HierarchyState r) (ExceptT HierarchyError IO)
 

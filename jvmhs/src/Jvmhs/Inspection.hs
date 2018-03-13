@@ -22,6 +22,7 @@ instance Inspectable Class where
     Class
       <$> g (_className c)
       <*> g (_classSuper c)
+      <*> pure (_classAccessFlags c)
       <*> traverse g (_classInterfaces c)
       <*> traverse (classNames g) (_classFields c)
       <*> traverse (classNames g) (_classMethods c)
@@ -33,7 +34,7 @@ instance Inspectable Field where
       <$> pure (_fieldAccessFlags f)
       <*> pure (_fieldName f)
       <*> classNames g (_fieldDescriptor f)
-      <*> pure (_fieldConstantValue f)
+      <*> traverse (classNames g) (_fieldConstantValue f)
 
 instance Inspectable Method where
   classNames g m =
@@ -41,10 +42,14 @@ instance Inspectable Method where
       <$> pure (_methodAccessFlags m)
       <*> pure (_methodName m)
       <*> classNames g (_methodDescriptor m)
-      <*> pure (_methodCode m)
+      <*> traverse (classNames g) (_methodCode m)
       <*> traverse g (_methodExceptions m)
 
 instance Inspectable BootstrapMethod where
+
+instance Inspectable Code where
+
+instance Inspectable Constant where
 
 instance Inspectable FieldDescriptor where
   classNames g fd =
@@ -61,4 +66,5 @@ instance Inspectable JType where
   classNames g t =
     case t of
       JTClass cn -> JTClass <$> g cn
+      JTArray t' -> JTArray <$> classNames g t'
       a -> pure a
