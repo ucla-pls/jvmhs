@@ -1,31 +1,30 @@
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TupleSections       #-}
 module Jvmhs.Algorithm.DependencyGraph
   ( dependencyGraph
   , testIt
   ) where
 
-import Data.Graph.Inductive.Graph
-import Data.Graph.Inductive.PatriciaTree
-import Data.Graph.Inductive.Dot
+import           Data.Graph.Inductive.Dot
+import           Data.Graph.Inductive.Graph
+import           Data.Graph.Inductive.PatriciaTree
 
-import qualified Data.Text as Text
-
-import Data.Foldable (fold)
-import Control.Monad.Trans (lift)
-import Control.Lens
+import           Control.Lens
+import           Control.Monad.Trans               (lift)
+import           Data.Foldable                     (fold)
+import qualified Data.Text                         as Text
 -- import Control.Lens.Action
-import Control.Monad.State (StateT, evalStateT, modify, get)
-import qualified Data.Map as Map
-import qualified Data.Set as Set
+import           Control.Monad.State               (StateT, evalStateT, get,
+                                                    modify)
+import qualified Data.Map                          as Map
+import           Data.Monoid                       ((<>))
+import qualified Data.Set                          as Set
 
-import Data.Monoid ((<>))
--- import qualified Data.Text as Text
-
-import Jvmhs.Hierarchy
-import Jvmhs.ClassReader
-import Jvmhs.Data.Class
+import           Jvmhs.ClassReader
+import           Jvmhs.Data.Class
+import           Jvmhs.Hierarchy
+import           Jvmhs.Inspection
 
 data Dependency
   = Implements
@@ -49,26 +48,6 @@ dependencyGraph classname = do
     getFrom :: Map.Map ClassName Node -> ClassName -> Node
     getFrom m = maybe 0 id . flip Map.lookup m
 
-    jTypeDepends :: Traversal' JType ClassName
-    jTypeDepends f s =
-      case s of
-        JTClass cn -> JTClass <$> f cn
-        JTArray t -> JTArray <$> jTypeDepends f t
-        _ -> pure s
-
-    fieldDepends :: Traversal' Field ClassName
-    fieldDepends = fieldType.jTypeDepends
-
-    methodDepends :: Traversal' Method ClassName
-    methodDepends =
-      failing
-        ( failing
-            (methodReturnType.traverse)
-            (methodArgumentTypes.traverse)
-        . jTypeDepends
-        )
-        (methodExceptions.traverse)
-
     depends cn = do
       cls <- loadClass cn
       let
@@ -79,11 +58,11 @@ dependencyGraph classname = do
         fieldD =
           cls ^.. classFields
                 . traverse
-                . fold'in fieldDepends
+                . fold'in classNames
         methodD =
           cls ^.. classMethods
                 . traverse
-                . fold'in methodDepends
+                . fold'in classNames
       return
         ( super:(interfaces ++ map snd fieldD ++ map snd methodD)
         , ( [cn]

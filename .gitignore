@@ -1,2 +1,3 @@
 .stack-work/
 *.cabal
+jvmhs/test/data/classes
