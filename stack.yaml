@@ -2,9 +2,10 @@ resolver: lts-10.5
 packages:
 - jvmhs
 - javaq
-- ../jvm-binary
+- jreduce
 extra-deps: 
   - fgl-visualize-0.1.0.1
   - dotgen-0.4.2
+  - ../jvm-binary
 flags: {}
 extra-package-dbs:
