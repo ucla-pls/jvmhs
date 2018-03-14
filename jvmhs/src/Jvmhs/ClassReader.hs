@@ -14,6 +14,7 @@ module Jvmhs.ClassReader
   , ClassReader (..)
   , readClass
   , writeClass
+  , writeClasses
 
   , CFolder
   , toFilePath
@@ -39,6 +40,7 @@ import           System.Process
 
 import           Control.Lens
 import           Data.Monoid
+import           Data.Foldable
 
 import           Data.Maybe             (catMaybes)
 
@@ -124,7 +126,7 @@ class ClassReader m where
     :: m
     -> IO [ (ClassName, ClassContainer) ]
 
--- | write a class to a folder
+-- | Write a class to a folder
 writeClass ::
      FilePath
   -> Class
@@ -134,6 +136,29 @@ writeClass fp c = do
   createDirectoryIfMissing True (takeDirectory path)
   let clf = (toClassFile (52,0) c)
   BL.writeFile path $ B.writeClassFile clf
+
+-- | Writes some classes to the filepath. If the filepath
+-- is a jar, a jar is created.
+writeClasses ::
+     (Foldable f)
+  => FilePath
+  -> f Class
+  -> IO ()
+writeClasses fp clss
+  | isJar fp = do
+      let archive = appEndo (foldMap (Endo . addClassToArchive) clss) emptyArchive
+      BL.writeFile fp $ fromArchive archive
+  | otherwise = do
+      forM_ clss $ \c -> do
+        writeClass fp c
+
+-- | Adds a class to an archive
+addClassToArchive :: Class -> Archive -> Archive
+addClassToArchive c =
+  addEntryToArchive $ toEntry
+    (Text.unpack (classNameAsText (c^.className)) ++ ".class")
+    0
+    (B.writeClassFile $ toClassFile (52,0) c)
 
 -- | Read a checked class from a class reader.
 readClass

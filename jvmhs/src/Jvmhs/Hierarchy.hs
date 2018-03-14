@@ -16,10 +16,13 @@ module Jvmhs.Hierarchy
 
    -- * Hierarchy implementation
   , Hierarchy
-  , HierarchyState (..)
   , runHierarchy
   , runHierarchy'
   , runHierarchyInClassPath
+
+  , HierarchyState (..)
+  , saveHierarchyState
+  , savePartialHierarchyState
 
   -- * Helpers
   , load
@@ -68,6 +71,21 @@ newtype Hierarchy r a =
 
 class (MonadError HierarchyError m, Monad m) => MonadHierarchy m where
   loadClass :: ClassName -> m Class
+
+saveHierarchyState :: FilePath -> HierarchyState r -> IO ()
+saveHierarchyState fp s =
+  writeClasses fp (s^.loadedClasses)
+
+savePartialHierarchyState ::
+     Foldable f
+  => FilePath
+  -> f ClassName
+  -> HierarchyState r
+  -> IO ()
+savePartialHierarchyState fp fs s =
+  writeClasses fp (fs^..folded.to (flip Map.lookup cl)._Just)
+  where
+    cl = s^.loadedClasses
 
 
 runHierarchy

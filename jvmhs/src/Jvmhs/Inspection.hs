@@ -17,6 +17,10 @@ import qualified Data.Set as S
 import Jvmhs.Data.Class
 import Jvmhs.Hierarchy
 
+-- import qualified Language.JVM as B
+-- import qualified Language.JVM.Attribute.BootstrapMethods as B
+-- import qualified Language.JVM.Attribute.Code as B
+
 class Inspectable a where
   classNames :: Traversal' a ClassName
   classNames _ = pure
