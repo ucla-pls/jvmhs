@@ -45,6 +45,7 @@ import           Data.Map               as Map
 
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
+import           Jvmhs.Data.Type
 
 data HierarchyState r = HierarchyState
   { _loadedClasses :: Map.Map ClassName Class

@@ -49,6 +49,7 @@ import qualified Data.Text as Text
 
 import           Codec.Archive.Zip
 import           Jvmhs.Data.Class
+import           Jvmhs.Data.Type
 import qualified Language.JVM as B
 
 import qualified Data.Map as Map
@@ -58,7 +59,7 @@ import qualified Data.Map as Map
 -- | Get the path of a class.
 pathOfClass :: FilePath -> ClassName -> FilePath
 pathOfClass fp cn =
-  fp ++ "/" ++ Text.unpack (classNameAsText cn) ++ ".class"
+  fp ++ "/" ++ Text.unpack (cn^.fullyQualifiedName) ++ ".class"
 
 -- | Return all the jars from in a folder.
 jarsFromFolder :: FilePath -> IO [ FilePath ]
@@ -156,7 +157,7 @@ writeClasses fp clss
 addClassToArchive :: Class -> Archive -> Archive
 addClassToArchive c =
   addEntryToArchive $ toEntry
-    (Text.unpack (classNameAsText (c^.className)) ++ ".class")
+    (Text.unpack (c^.className.fullyQualifiedName) ++ ".class")
     0
     (B.writeClassFile $ toClassFile (52,0) c)
 

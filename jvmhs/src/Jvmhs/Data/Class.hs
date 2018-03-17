@@ -1,13 +1,13 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE TemplateHaskell   #-}
 {-|
 Module      : Jvmhs.Data.Class
 Copyright   : (c) Christian Gram Kalhauge, 2018
 License     : MIT
-Maintainer  : kalhuage@cs.ucla.edu
+Maintainer  : kalhauge@cs.ucla.edu
 
 This module contains an syntaxtic interpretation of the class
 file in `Language.JVM`.
@@ -53,38 +53,33 @@ module Jvmhs.Data.Class
   , toClassFile
   , isoBinary
 
-  -- * Re-exports
-  , module Language.JVM.Type
-  , module Language.JVM.AccessFlag
-
   -- ** Wraped Types
+  , CAccessFlag (..)
+  , MAccessFlag (..)
+  , FAccessFlag (..)
+
   , BootstrapMethod (..)
-  , Constant (..)
   , Code (..)
   ) where
 
-import qualified Language.JVM                            as B
-import           Language.JVM.AccessFlag
-import qualified Language.JVM.Attribute.BootstrapMethods as B
-import qualified Language.JVM.Attribute.ConstantValue    as B
-import qualified Language.JVM.Attribute.Exceptions       as B
-import           Language.JVM.Type
-
 import           Control.Lens
+import           Control.Monad
+import           Data.Aeson
+import           Data.Aeson.TH
 import qualified Data.Set                                as Set
 import qualified Data.Text                               as Text
 import           Data.Word
-
-import GHC.Generics (Generic)
-import           Data.Aeson
-import           Data.Aeson.TH
+import           GHC.Generics                            (Generic)
+import           Unsafe.Coerce
 -- import           Data.Aeson.Encoding
 
-import           Jvmhs.LensHelpers
+import qualified Language.JVM                            as B
+import qualified Language.JVM.Attribute.BootstrapMethods as B
+import qualified Language.JVM.Attribute.ConstantValue    as B
+import qualified Language.JVM.Attribute.Exceptions       as B
 
-newtype Constant = Constant
-  { unConstant :: B.Constant B.High
-  } deriving (Show, Eq, Generic)
+import           Jvmhs.Data.Type
+import           Jvmhs.LensHelpers
 
 newtype BootstrapMethod = BootstrapMethod
   { unBootstrapMethod :: B.BootstrapMethod B.High
@@ -94,13 +89,14 @@ newtype Code = Code
   { unCode :: B.Code B.High
   } deriving (Show, Eq, Generic)
 
+
 -- This is the class
 data Class = Class
   { _className             :: ClassName
   -- ^ the name of the class
   , _classSuper            :: ClassName
   -- ^ the name of the super class
-  , _classAccessFlags      :: Set.Set B.CAccessFlag
+  , _classAccessFlags      :: Set.Set CAccessFlag
   -- ^ access flags of the class
   , _classInterfaces       :: [ ClassName ]
   -- ^ a list of interfaces implemented by the class
@@ -114,19 +110,19 @@ data Class = Class
 
 -- This is the field
 data Field = Field
-  { _fieldAccessFlags   :: Set.Set B.FAccessFlag
+  { _fieldAccessFlags   :: Set.Set FAccessFlag
   -- ^ the set of access flags
   , _fieldName          :: Text.Text
   -- ^ the name of the field
   , _fieldDescriptor    :: FieldDescriptor
   -- ^ the field type descriptor
-  , _fieldConstantValue :: Maybe Constant
+  , _fieldConstantValue :: Maybe JValue
   -- ^ an optional constant value
   } deriving (Eq, Show, Generic)
 
 -- This is the method
 data Method = Method
-  { _methodAccessFlags :: Set.Set B.MAccessFlag
+  { _methodAccessFlags :: Set.Set MAccessFlag
   -- ^ the set of access flags
   , _methodName        :: Text.Text
   -- ^ the name of the method
@@ -142,57 +138,14 @@ makeLenses ''Class
 makeLenses ''Field
 makeLenses ''Method
 
-instance ToJSON ClassName where
-  toJSON = String . classNameAsText
-
-instance ToJSON Constant where
-    toJSON _ = String "<constant>"
-
-instance ToJSON CAccessFlag where
-    toEncoding = genericToEncoding defaultOptions
-
-instance ToJSON FAccessFlag where
-    toEncoding = genericToEncoding defaultOptions
-
-instance ToJSON MAccessFlag where
-    toEncoding = genericToEncoding defaultOptions
-
-instance ToJSON FieldDescriptor where
-    toJSON = String . B.fieldDescriptorToText
-
-instance ToJSON MethodDescriptor where
-    toJSON = String . B.methodDescriptorToText
-
-instance ToJSON BootstrapMethod where
-    toJSON _ = String $ "<bootstrapmethod>"
-
-instance ToJSON Code where
-    toJSON _ = String $ "<code>"
-
-
 -- | A traversal of all Fields that uphold some getter.
 classFieldsWhere :: (Getter Field Bool) -> Traversal' Class Field
 classFieldsWhere f = classFields.traverse.which f
-
--- | Get the type from a field descriptor
-fieldDType :: Lens' FieldDescriptor JType
-fieldDType =
-  lens fieldDescriptorType (const FieldDescriptor)
 
 -- | Get the type of field
 fieldType :: Lens' Field JType
 fieldType =
   fieldDescriptor . fieldDType
-
--- | Get a the argument types from a method descriptor
-methodDArguments :: Lens' MethodDescriptor [JType]
-methodDArguments =
-  lens methodDescriptorArguments (\md a -> md { methodDescriptorArguments = a})
-
--- | Get a the return type from a method descriptor
-methodDReturnType :: Lens' MethodDescriptor (Maybe JType)
-methodDReturnType =
-  lens methodDescriptorReturnType (\md a -> md { methodDescriptorReturnType = a})
 
 -- | Get the type of field
 methodArgumentTypes :: Lens' Method [JType]
@@ -225,7 +178,7 @@ fromClassFile =
       <$> B.fAccessFlags
       <*> B.fName
       <*> B.fDescriptor
-      <*> fmap (Constant . B.constantValue) . B.fConstantValue
+      <*> (preview valueFromConstant . B.constantValue <=< B.fConstantValue)
 
     fromBMethod =
       Method
@@ -248,7 +201,8 @@ toClassFile (majorv, minorv) =
     <*> B.SizedList . map toBMethod . _classMethods
     <*> ( B.ClassAttributes
             <$> compress (B.BootstrapMethods . B.SizedList)
-                . map unBootstrapMethod . _classBootstrapMethods
+                . map unBootstrapMethod
+                . _classBootstrapMethods
             <*> pure [])
 
   where
@@ -259,13 +213,13 @@ toClassFile (majorv, minorv) =
         <*> B.RefV . _fieldDescriptor
         <*> ( B.FieldAttributes
                 <$> maybe [] (:[])
-                    . fmap (B.ConstantValue . B.DeepRef . B.RefV . unConstant)
-                    . _fieldConstantValue
+                    . fmap (B.ConstantValue . B.DeepRef . B.RefV)
+                    . fmap (review valueFromConstant) . _fieldConstantValue
                 <*> pure [])
 
     toBMethod =
       B.Method
-        <$> B.BitSet . _methodAccessFlags
+        <$> unsafeCoerce . _methodAccessFlags
         <*> B.RefV . _methodName
         <*> B.RefV . _methodDescriptor
         <*> ( B.MethodAttributes
@@ -281,6 +235,12 @@ toClassFile (majorv, minorv) =
 -- | An Isomorphism between classfiles and checked classes.
 isoBinary :: Iso' (B.ClassFile B.High) Class
 isoBinary = iso fromClassFile (toClassFile (52,0))
+
+instance ToJSON BootstrapMethod where
+    toJSON _ = String $ "<bootstrapmethod>"
+
+instance ToJSON Code where
+    toJSON _ = String $ "<code>"
 
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)

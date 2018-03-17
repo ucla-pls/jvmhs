@@ -15,6 +15,7 @@ import Control.Lens
 import qualified Data.Set as S
 
 import Jvmhs.Data.Class
+import Jvmhs.Data.Type
 import Jvmhs.Hierarchy
 
 -- import qualified Language.JVM as B
@@ -81,8 +82,6 @@ instance Inspectable BootstrapMethod where
 
 instance Inspectable Code where
 
-instance Inspectable Constant where
-
 instance Inspectable FieldDescriptor where
   classNames g fd =
     FieldDescriptor
@@ -93,6 +92,8 @@ instance Inspectable MethodDescriptor where
     MethodDescriptor
       <$> traverse (classNames g) (methodDescriptorArguments md)
       <*> traverse (classNames g) (methodDescriptorReturnType md)
+
+instance Inspectable JValue where
 
 instance Inspectable JType where
   classNames g t =

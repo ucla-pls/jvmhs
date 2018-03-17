@@ -23,6 +23,7 @@ import qualified Data.Set                          as Set
 
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
+import           Jvmhs.Data.Type
 import           Jvmhs.Hierarchy
 import           Jvmhs.Inspection
 
@@ -107,7 +108,7 @@ testIt = do
     Right (gr, _) -> do
       -- prettyPrint gr
 
-      let dot = fglToDotString (bimap (Text.unpack . classNameAsText) show gr)
+      let dot = fglToDotString (bimap (Text.unpack . view fullyQualifiedName) show gr)
       writeFile "test.dot" (showDot dot)
 
     Left err -> do

@@ -3,15 +3,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Main where
 
-import           Control.Lens          hiding (argument)
-import           System.Console.Docopt
-import           System.Environment    (getArgs)
-import           Data.Foldable
+import           Control.Lens               hiding (argument)
+import           Data.Aeson
 import qualified Data.ByteString.Lazy.Char8 as BS
-import Data.Aeson
--- import System.FilePath
-
-import           Data.Text.IO as Text
+import           Data.Foldable
+import           System.Console.Docopt
+import           System.Environment         (getArgs)
+import           Data.Text.IO               as Text
 
 import           Jvmhs
 
@@ -71,7 +69,6 @@ parseConfig args = do
     , _cfgCmd = cmd
     }
 
-
 main :: IO ()
 main = do
   args <- parseArgsOrExit patterns =<< getArgs
@@ -89,7 +86,7 @@ listClasses cfg = do
   classReader <- preload =<< createClassLoader cfg
   classes <- classes classReader
   forM_ classes  $ \(cls, _) ->
-    Text.putStrLn $ classNameAsText cls
+    Text.putStrLn $ view fullyQualifiedName cls
 
 -- | Decompile and pring a classfile to stdout
 decompile :: ClassName -> Config -> IO ()
