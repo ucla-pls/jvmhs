@@ -23,6 +23,7 @@ module Jvmhs.Hierarchy
   , HierarchyState (..)
   , saveHierarchyState
   , savePartialHierarchyState
+  , emptyState
 
   -- * Helpers
   , load
@@ -88,14 +89,16 @@ savePartialHierarchyState fp fs s =
   where
     cl = s^.loadedClasses
 
-
 runHierarchy
   :: ClassReader r
   => r
   -> Hierarchy r a
-  -> IO (Either HierarchyError (a, HierarchyState r))
+  -> IO (Either HierarchyError a)
 runHierarchy r h =
-  runHierarchy' h (HierarchyState Map.empty r)
+  fmap fst <$> runHierarchy' h (emptyState r)
+
+emptyState :: r -> HierarchyState r
+emptyState r = (HierarchyState Map.empty r)
 
 runHierarchy'
   :: ClassReader r
@@ -112,7 +115,7 @@ runHierarchyInClassPath
 runHierarchyInClassPath cp hc = do
   ld <- fromClassPath cp
   p <- preload ld
-  runHierarchy' hc (HierarchyState (Map.empty) p)
+  runHierarchy' hc (emptyState p)
 
 instance ClassReader r => MonadHierarchy (Hierarchy r) where
   loadClass cn = do

@@ -67,7 +67,7 @@ instance Inspectable Field where
       <$> pure (_fieldAccessFlags f)
       <*> pure (_fieldName f)
       <*> classNames g (_fieldDescriptor f)
-      <*> traverse (classNames g) (_fieldConstantValue f)
+      <*> traverse (classNames g) (_fieldValue f)
 
 instance Inspectable Method where
   classNames g m =

@@ -33,7 +33,7 @@ module Jvmhs.Data.Class
   , fieldAccessFlags
   , fieldName
   , fieldDescriptor
-  , fieldConstantValue
+  , fieldValue
   , fieldType
 
   , Method (..)
@@ -116,8 +116,8 @@ data Field = Field
   -- ^ the name of the field
   , _fieldDescriptor    :: FieldDescriptor
   -- ^ the field type descriptor
-  , _fieldConstantValue :: Maybe JValue
-  -- ^ an optional constant value
+  , _fieldValue :: Maybe JValue
+  -- ^ an optional value
   } deriving (Eq, Show, Generic)
 
 -- This is the method
@@ -214,7 +214,7 @@ toClassFile (majorv, minorv) =
         <*> ( B.FieldAttributes
                 <$> maybe [] (:[])
                     . fmap (B.ConstantValue . B.DeepRef . B.RefV)
-                    . fmap (review valueFromConstant) . _fieldConstantValue
+                    . fmap (review valueFromConstant) . _fieldValue
                 <*> pure [])
 
     toBMethod =

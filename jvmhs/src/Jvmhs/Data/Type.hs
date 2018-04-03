@@ -47,6 +47,7 @@ module Jvmhs.Data.Type
 import           Control.Lens
 import           Data.Aeson
 import           Data.Int
+import           Data.Char
 import           Data.Aeson.TH
 import qualified Data.Text               as Text
 
@@ -147,8 +148,6 @@ valueFromConstant =
         CString i ->  VString <$> (sizedByteStringToText i ^? _Right)
         _ -> Nothing
 
-
-
 -- * Instances
 
 instance ToJSON ClassName where
@@ -164,4 +163,8 @@ $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''CAccessFla
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''FAccessFlag)
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''MAccessFlag)
 
-$(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''JValue)
+$(deriveToJSON (defaultOptions
+                 { sumEncoding             = ObjectWithSingleField
+                 , constructorTagModifier  = map toLower . drop 1
+                 }
+               ) ''JValue)
