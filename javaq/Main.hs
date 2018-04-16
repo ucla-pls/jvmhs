@@ -18,6 +18,7 @@ patterns = [docopt|
 javaq version 0.0.1
 
 Usage:
+  javaq [options] (-h | --help)
   javaq [options] [<classname>...]
 
 Options:

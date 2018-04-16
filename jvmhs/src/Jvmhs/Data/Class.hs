@@ -89,7 +89,6 @@ newtype Code = Code
   { unCode :: B.Code B.High
   } deriving (Show, Eq, Generic)
 
-
 -- This is the class
 data Class = Class
   { _className             :: ClassName

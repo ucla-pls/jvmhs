@@ -27,7 +27,7 @@ class Inspectable a where
   classNames _ = pure
 
 -- | Computes the class closure in the current space.
--- It will only include classes on known to the 'MonadHierarchy'.
+-- It will only include classes known to the 'MonadHierarchy'.
 computeClassClosure ::
   MonadHierarchy m
   => S.Set ClassName
@@ -37,13 +37,13 @@ computeClassClosure =
   where
     -- go :: S.Set ClassName -> S.Set ClassName -> m (S.Set ClassName)
     go known wave
-      | S.null wave =
-        return $ known
+      | S.null wave = do
+        return known
       | otherwise = do
         -- List of all the classes that exists
-        exists <- wave ^!! folded.load'._Right
+        exists <- wave ^!! folded . load' . _Right
         let
-          existsNames = S.fromList $ exists ^.. traverse . className
+          existsNames = S.fromList $ exists ^.. folded . className
           known' = known `S.union` existsNames
           front = S.fromList $ exists^..folded.classNames
           -- Create a set of all the classnames we can load from
