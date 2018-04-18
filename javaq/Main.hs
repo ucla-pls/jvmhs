@@ -28,7 +28,6 @@ patterns = [docopt|
 javaq version 0.0.1
 
 Usage:
-  javaq (-h | --help)
   javaq [options]
   javaq [options] -- <classname>...
 
@@ -37,6 +36,7 @@ Options:
   --stdlib                 Also analyse the stdlib.
   --jre=<jre>              The location of the stdlib.
   -f, --format=<format>    The Output format, see Output formats.
+  -h, --help               Display this help page.
 
 Output Formats:
   We support a list of output formats, the formats can be sepefied like this:
@@ -157,8 +157,12 @@ main = do
       print msg
       exitWithUsage patterns
     Right args -> do
-      cfg <- parseConfig args
-      decompile cfg
+      if isPresent args (longOption "help")
+        then do
+          exitWithUsage patterns
+        else do
+          cfg <- parseConfig args
+          decompile cfg
 
 -- | Decompile and print a classfile to stdout
 decompile :: Config -> IO ()
