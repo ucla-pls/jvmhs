@@ -3,6 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Main where
 
+import Data.List as List
 import           Control.Lens               hiding (argument)
 import           Data.Aeson
 import           Crypto.Hash.SHA256 (hashlazyAndLength)
@@ -54,9 +55,11 @@ Output Formats:
       returns only the name of the class, the fields, and the methods.
       It also provides information about sizes of the different classes.
 
-    json[s]-count:
+    json[s]-counted:
       like listed but instead of returning lists it mearly count the number
       of entries in the list.
+  csv:
+    Output a csv file correspondin to the content of json-counted
 |]
 
 data DTOType
@@ -68,6 +71,7 @@ data DTOType
 data OutputFormat
   = OutputJSON DTOType
   | OutputJSONs DTOType
+  | OutputCSV
   deriving (Show)
 
 -- | The config file dictates the execution of the program
@@ -83,16 +87,29 @@ makeLenses ''Config
 
 data ClassOverview = ClassOverview
   { _coName :: ClassName
-  , _coSize :: Int
   , _coSha256 :: Text.Text
+  , _coSize :: Int
   , _coSuper :: ClassName
   , _coInterfaces :: [ ClassName ]
   , _coFields :: [ FieldId ]
   , _coMethods :: [ MethodId ]
   } deriving (Show)
 
+data ClassCount = ClassCount
+  { _ccName :: ClassName
+  , _ccSha256 :: Text.Text
+  , _ccSize :: Int
+  , _ccSuper :: ClassName
+  , _ccInterfaces :: Int
+  , _ccFields :: Int
+  , _ccMethods :: Int
+  } deriving (Show)
+
 makeLenses ''ClassOverview
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ClassOverview)
+
+makeLenses ''ClassCount
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ClassCount)
 
 getArgOrExit :: Arguments -> Option -> IO String
 getArgOrExit = getArgOrExitWith patterns
@@ -106,8 +123,10 @@ parseOutputFormat str =
     "jsons-full"   -> Just $ OutputJSONs FullDTO
     "json-full"    -> Just $ OutputJSON FullDTO
 
-    "jsons-count"  -> Just $ OutputJSONs CountDTO
-    "json-count"   -> Just $ OutputJSON CountDTO
+    "jsons-counted"  -> Just $ OutputJSONs CountDTO
+    "json-counted"   -> Just $ OutputJSON CountDTO
+
+    "csv" -> Just $ OutputCSV
 
     _ -> Nothing
 
@@ -165,12 +184,24 @@ decompile cfg = do
           (hsh, lth) = hashlazyAndLength b
         return $ ClassOverview
           (cls^.className)
-          (fromIntegral lth)
           (Text.decodeUtf8 . B16.encode $ hsh)
+          (fromIntegral lth)
           (cls^.classSuper)
           (cls^.classInterfaces)
           (cls^..classFields.folded.toFieldID)
           (cls^..classMethods.folded.toMethodID)
+    readClassCount cn = do
+      co' <- readClassOverview cn
+      return $ do
+        co <- co'
+        return $ ClassCount
+          (co^.coName)
+          (Text.take 7 $ co^.coSha256)
+          (co^.coSize)
+          (co^.coSuper)
+          (length $ co^.coInterfaces)
+          (length $ co^.coFields)
+          (length $ co^.coMethods)
   case cfg ^. cfgFormat of
     OutputJSON dto ->
       case dto of
@@ -178,15 +209,34 @@ decompile cfg = do
           onEachClass (readClass classReader) $ BS.putStrLn . encode
         ListedDTO ->
           onEachClass readClassOverview $ BS.putStrLn . encode
-        CountDTO -> undefined
+        CountDTO ->
+          onEachClass readClassCount $ BS.putStrLn . encode
     OutputJSONs dto ->
       case dto of
         FullDTO ->
           onEachClass (readClass classReader >=> encode') (const $ return ())
         ListedDTO ->
           onEachClass (readClassOverview >=> encode') (const $ return ())
-        CountDTO -> undefined
-
+        CountDTO ->
+          onEachClass (readClassCount >=> encode') (const $ return ())
+    OutputCSV -> do
+      putStrLn "class,sha256,size,super,interfaces,fields,methods"
+      onEachClass
+        (\cn -> do
+          cc' <- readClassCount cn
+          case cc' of
+            Right cc ->
+              Right <$> (putStrLn . List.intercalate "," $
+                [ Text.unpack (cc^.ccName.fullyQualifiedName)
+                , Text.unpack (cc^.ccSha256)
+                , show (cc^.ccSize)
+                , Text.unpack (cc^.ccSuper.fullyQualifiedName)
+                , show (cc^.ccInterfaces)
+                , show (cc^.ccFields)
+                , show (cc^.ccMethods)
+                ])
+            Left msg -> return $ Left msg
+        ) (const $ return ())
    where
      encode' :: ToJSON e => Either a e -> IO (Either a ())
      encode' =
