@@ -35,6 +35,7 @@ module Jvmhs.Data.Class
   , fieldDescriptor
   , fieldValue
   , fieldType
+  , toFieldID
 
   , Method (..)
   , methodAccessFlags
@@ -44,6 +45,7 @@ module Jvmhs.Data.Class
   , methodExceptions
   , methodReturnType
   , methodArgumentTypes
+  , toMethodID
 
   -- * Helpers
   , classFieldsWhere
@@ -136,6 +138,12 @@ data Method = Method
 makeLenses ''Class
 makeLenses ''Field
 makeLenses ''Method
+
+toFieldID :: Getter Field FieldId
+toFieldID = to (\f -> fieldId (f^.fieldName) (f^.fieldDescriptor))
+
+toMethodID :: Getter Method MethodId
+toMethodID = to (\f -> methodId (f^.methodName) (f^.methodDescriptor))
 
 -- | A traversal of all Fields that uphold some getter.
 classFieldsWhere :: (Getter Field Bool) -> Traversal' Class Field

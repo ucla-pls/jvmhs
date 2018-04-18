@@ -32,8 +32,20 @@ module Jvmhs.Data.Type
   , methodDArguments
   , methodDReturnType
 
+  , MethodId
+  , methodIdName
+  , methodIdDescriptor
+  , methodIdToText
+  , methodId
+
   , FieldDescriptor (..)
   , fieldDType
+
+  , FieldId
+  , fieldIdName
+  , fieldIdDescriptor
+  , fieldIdToText
+  , fieldId
 
   , JType (..)
   , JValue (..)
@@ -52,7 +64,9 @@ import           Data.Aeson.TH
 import qualified Data.Text               as Text
 
 import           Language.JVM.AccessFlag
-import           Language.JVM.Constant
+import           Language.JVM.Constant hiding (FieldId, MethodId)
+import qualified Language.JVM.Constant as B
+import qualified Language.JVM.Stage as B
 import           Language.JVM.Utils
 import           Language.JVM.Type
 
@@ -148,10 +162,28 @@ valueFromConstant =
         CString i ->  VString <$> (sizedByteStringToText i ^? _Right)
         _ -> Nothing
 
+type FieldId = B.FieldId High
+type MethodId = B.MethodId High
+
+fieldId :: Text.Text -> FieldDescriptor -> FieldId
+fieldId name desc = B.FieldId (B.RefV name) (B.RefV desc)
+
+methodId :: Text.Text -> MethodDescriptor -> MethodId
+methodId name desc = B.MethodId (B.RefV name) (B.RefV desc)
+
+instance ToJSON FieldId where
+  toJSON = String . fieldIdToText
+
+instance ToJSON MethodId where
+  toJSON = String . methodIdToText
+
 -- * Instances
 
 instance ToJSON ClassName where
   toJSON = String . view fullyQualifiedName
+
+instance FromJSON ClassName where
+  parseJSON = withText "ClassName" (return . ClassName)
 
 instance ToJSON FieldDescriptor where
   toJSON = String . fieldDescriptorToText

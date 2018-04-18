@@ -22,6 +22,8 @@ dependencies:
   - filepath
   - bytestring
   - text
+  - cryptohash-sha256
+  - base16-bytestring
 
 executables:
   javaq:

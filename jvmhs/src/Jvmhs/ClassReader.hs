@@ -1,3 +1,4 @@
+
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE RankNTypes #-}
@@ -15,6 +16,9 @@ module Jvmhs.ClassReader
   , readClass
   , writeClass
   , writeClasses
+
+  , readClassFile'
+  , convertClass
 
   , CFolder
   , toFilePath
@@ -114,6 +118,10 @@ data ClassReadError
  -- ^ An error happened while reading the class.
  deriving (Show, Eq)
 
+readClassFile' :: BL.ByteString -> Either ClassReadError (B.ClassFile B.High)
+readClassFile' file =
+  B.readClassFile file & _Left %~ MalformedClass
+
 -- | A class reader can read a class using a class name.
 class ClassReader m where
   -- | Reads a class file from the reader
@@ -121,6 +129,14 @@ class ClassReader m where
     :: m
     -> ClassName
     -> IO (Either ClassReadError (B.ClassFile B.High))
+  readClassFile m cn = do
+    (readClassFile' =<<) <$> getClassBytes m cn
+
+  -- | Returns the bytes of the class
+  getClassBytes
+    :: m
+    -> ClassName
+    -> IO (Either ClassReadError BL.ByteString)
 
   -- | Returns a list of `ClassName` and the containers they are in.
   classes
@@ -169,7 +185,11 @@ readClass
   -> IO (Either ClassReadError Class)
 readClass m cn = do
   cls <- readClassFile m cn
-  return (cls & _Right %~ view isoBinary)
+  return (cls & _Right %~ convertClass)
+
+convertClass :: B.ClassFile B.High -> Class
+convertClass = view isoBinary
+
 
 -- | Classes can be in a folder
 newtype CFolder = CFolder
@@ -185,13 +205,11 @@ asFolder fp = do
     else Nothing
 
 instance ClassReader CFolder where
-  readClassFile (CFolder fp) cn = do
+  getClassBytes (CFolder fp) cn = do
     let cls = pathOfClass fp cn
     x <- doesFileExist cls
     if x
-      then do
-        file <- BL.readFile cls
-        return $ B.readClassFile file & _Left %~ MalformedClass
+      then Right <$> BL.readFile cls
       else return $ Left ClassNotFound
 
   classes this@(CFolder fp) = do
@@ -218,10 +236,10 @@ asJar fp
       return Nothing
 
 instance ClassReader CJar where
-  readClassFile (CJar _ arch) cn =
+  getClassBytes (CJar _ arch) cn =
     case findEntryByPath (pathOfClass "" cn) arch of
       Just f ->
-        return $ B.readClassFile (fromEntry f) & _Left %~ MalformedClass
+        return $ Right (fromEntry f)
       Nothing ->
         return $ Left ClassNotFound
 
@@ -241,11 +259,11 @@ container fp = do
       fmap CCFolder <$> asFolder fp
 
 instance ClassReader FilePath where
-  readClassFile fp cn = do
+  getClassBytes fp cn = do
     x <- container fp
     case x of
       Just s ->
-        readClassFile s cn
+        getClassBytes s cn
       Nothing ->
         return $ Left ClassNotFound
 
@@ -260,8 +278,8 @@ data ClassContainer
   deriving (Show)
 
 instance ClassReader (ClassContainer) where
-  readClassFile (CCFolder x) = readClassFile x
-  readClassFile (CCJar x) = readClassFile x
+  getClassBytes (CCFolder x) = getClassBytes x
+  getClassBytes (CCJar x) = getClassBytes x
 
   classes (CCFolder x) = classes x
   classes (CCJar x) = classes x
@@ -335,17 +353,15 @@ containers cl = do
   return $ catMaybes c
 
 instance ClassReader ClassLoader where
-  readClassFile cl cn =
+  getClassBytes cl cn =
     go =<< containers cl
     where
       go (p:ps) = do
-        rcf <- readClassFile p cn
+        rcf <- getClassBytes p cn
         case rcf of
           Right cls ->
             return $ Right cls
-          Left (MalformedClass _) ->
-            return rcf
-          Left ClassNotFound ->
+          Left _ ->
             go ps
       go [] =
         return $ Left ClassNotFound
@@ -383,11 +399,11 @@ preloadClassPath cp = do
 makeLenses ''ClassPreloader
 
 instance ClassReader ClassPreloader where
-  readClassFile (ClassPreloader cm) cn =
+  getClassBytes (ClassPreloader cm) cn =
     case Map.lookup cn cm of
       Just (con:_) ->
         -- ^ Needs to be at least one container, we choose the first.
-        readClassFile con cn
+        getClassBytes con cn
       _ ->
         return $ Left ClassNotFound
 
