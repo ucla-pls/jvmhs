@@ -1,24 +1,29 @@
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveGeneric   #-}
+{-# LANGUAGE DeriveAnyClass  #-}
 {-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Main where
 
-import Data.List as List
+import           Control.DeepSeq            (NFData, force)
 import           Control.Lens               hiding (argument)
+import           Crypto.Hash.SHA256         (hashlazyAndLength)
 import           Data.Aeson
-import           Crypto.Hash.SHA256 (hashlazyAndLength)
 import           Data.Aeson.TH
-import qualified Data.ByteString.Base16 as B16
-import qualified Data.Text.Encoding as Text
-import qualified Data.Text as Text
+import qualified Data.ByteString.Base16     as B16
 import qualified Data.ByteString.Lazy.Char8 as BS
+import           Data.List                  as List
+import qualified Data.Text                  as Text
+import qualified Data.Text.Encoding         as Text
+import           GHC.Generics               (Generic)
 -- import qualified Data.ByteString.Lazy as BL
 -- import           Data.Foldable
 -- import           Data.Text.IO               as Text
 import           System.Console.Docopt
 import           System.Environment         (getArgs)
 
-import Control.Monad
+import           Control.Monad
 -- import Control.Monad.IO.Class
 
 import           Jvmhs
@@ -86,24 +91,24 @@ data Config = Config
 makeLenses ''Config
 
 data ClassOverview = ClassOverview
-  { _coName :: ! ClassName
-  , _coSha256 :: ! Text.Text
-  , _coSize :: ! Int
-  , _coSuper :: ! ClassName
+  { _coName       :: ! ClassName
+  , _coSha256     :: ! Text.Text
+  , _coSize       :: ! Int
+  , _coSuper      :: ! ClassName
   , _coInterfaces :: ! ([ ClassName ])
-  , _coFields :: ! ([ FieldId ])
-  , _coMethods :: ! ([ MethodId ])
-  } deriving (Show)
+  , _coFields     :: ! ([ FieldId ])
+  , _coMethods    :: ! ([ MethodId ])
+  } deriving (Show, Generic, NFData)
 
 data ClassCount = ClassCount
-  { _ccName :: ! ClassName
-  , _ccSha256 :: ! Text.Text
-  , _ccSize :: ! Int
-  , _ccSuper :: ! ClassName
+  { _ccName       :: ! ClassName
+  , _ccSha256     :: ! Text.Text
+  , _ccSize       :: ! Int
+  , _ccSuper      :: ! ClassName
   , _ccInterfaces :: ! Int
-  , _ccFields :: ! Int
-  , _ccMethods :: ! Int
-  } deriving (Show)
+  , _ccFields     :: ! Int
+  , _ccMethods    :: ! Int
+  } deriving (Show, Generic, NFData)
 
 makeLenses ''ClassOverview
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ClassOverview)
@@ -117,18 +122,18 @@ getArgOrExit = getArgOrExitWith patterns
 parseOutputFormat :: String -> Maybe OutputFormat
 parseOutputFormat str =
   case str of
-    "jsons-listed" -> Just $ OutputJSONs ListedDTO
-    "json-listed"  -> Just $ OutputJSON ListedDTO
+    "jsons-listed"  -> Just $ OutputJSONs ListedDTO
+    "json-listed"   -> Just $ OutputJSON ListedDTO
 
-    "jsons-full"   -> Just $ OutputJSONs FullDTO
-    "json-full"    -> Just $ OutputJSON FullDTO
+    "jsons-full"    -> Just $ OutputJSONs FullDTO
+    "json-full"     -> Just $ OutputJSON FullDTO
 
-    "jsons-counted"  -> Just $ OutputJSONs CountDTO
-    "json-counted"   -> Just $ OutputJSON CountDTO
+    "jsons-counted" -> Just $ OutputJSONs CountDTO
+    "json-counted"  -> Just $ OutputJSON CountDTO
 
-    "csv" -> Just $ OutputCSV
+    "csv"           -> Just $ OutputCSV
 
-    _ -> Nothing
+    _               -> Nothing
 
 
 parseConfig :: Arguments -> IO Config
@@ -171,10 +176,17 @@ decompile cfg = do
   classnames <-
     case cfg ^. cfgClassNames of
       [] -> map fst <$> classes classReader
-      a -> return a
+      a  -> return a
   let
+    onEachClass ::
+      (NFData a, NFData x, Show x)
+      => (ClassName -> IO (Either x a))
+      -> ([a] -> IO ())
+      -> IO ()
     onEachClass doeach dofinal = do
-      e <- sequence <$> forM classnames doeach
+      e <- sequence <$> forM classnames (
+        \cn -> force (over _Left (cn,)) <$> doeach cn
+        )
       case e of
         Left msg -> error (show msg)
         Right ls -> dofinal ls

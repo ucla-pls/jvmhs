@@ -1,10 +1,11 @@
-
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections     #-}
 
 module Jvmhs.ClassReader
   ( ClassReadError (..)
@@ -38,25 +39,25 @@ module Jvmhs.ClassReader
   , preloadClassPath
   ) where
 
+import           Control.DeepSeq
+import           Control.Lens
+import           Data.Foldable
+import           Data.Maybe           (catMaybes)
+import           Data.Monoid
+import           GHC.Generics         (Generic)
 import           System.Directory
 import           System.FilePath
 import           System.Process
 
-import           Control.Lens
-import           Data.Monoid
-import           Data.Foldable
-
-import           Data.Maybe             (catMaybes)
-
-import qualified Data.ByteString.Lazy   as BL
-import qualified Data.Text as Text
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Text            as Text
 
 import           Codec.Archive.Zip
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Type
-import qualified Language.JVM as B
+import qualified Language.JVM         as B
 
-import qualified Data.Map as Map
+import qualified Data.Map             as Map
 
 -- % Utils
 
@@ -116,7 +117,7 @@ data ClassReadError
  -- ^ Class was not found
  | MalformedClass B.ClassFileError
  -- ^ An error happened while reading the class.
- deriving (Show, Eq)
+ deriving (Show, Eq, Generic, NFData)
 
 readClassFile' :: BL.ByteString -> Either ClassReadError (B.ClassFile B.High)
 readClassFile' file =
@@ -221,7 +222,7 @@ instance ClassReader CFolder where
 
 -- | Classes can also be in a Jar
 data CJar = CJar
-  { _jarPath :: FilePath
+  { _jarPath    :: FilePath
   , _jarArchive :: Archive
   } deriving (Show)
 
@@ -279,10 +280,10 @@ data ClassContainer
 
 instance ClassReader (ClassContainer) where
   getClassBytes (CCFolder x) = getClassBytes x
-  getClassBytes (CCJar x) = getClassBytes x
+  getClassBytes (CCJar x)    = getClassBytes x
 
   classes (CCFolder x) = classes x
-  classes (CCJar x) = classes x
+  classes (CCJar x)    = classes x
 
 
 makeLenses ''CFolder

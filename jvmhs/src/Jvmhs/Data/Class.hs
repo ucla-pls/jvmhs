@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
@@ -66,6 +67,7 @@ module Jvmhs.Data.Class
 
 import           Control.Lens
 import           Control.Monad
+import           Control.DeepSeq
 import           Data.Aeson
 import           Data.Aeson.TH
 import qualified Data.Set                                as Set
@@ -85,11 +87,11 @@ import           Jvmhs.LensHelpers
 
 newtype BootstrapMethod = BootstrapMethod
   { unBootstrapMethod :: B.BootstrapMethod B.High
-  } deriving (Show, Eq, Generic)
+  } deriving (Show, Eq, Generic, NFData)
 
 newtype Code = Code
   { unCode :: B.Code B.High
-  } deriving (Show, Eq, Generic)
+  } deriving (Show, Eq, Generic, NFData)
 
 -- This is the class
 data Class = Class
@@ -107,7 +109,7 @@ data Class = Class
   -- ^ a list of methods
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Show, Generic, NFData)
 
 -- This is the field
 data Field = Field
@@ -119,7 +121,7 @@ data Field = Field
   -- ^ the field type descriptor
   , _fieldValue :: Maybe JValue
   -- ^ an optional value
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Show, Generic, NFData)
 
 -- This is the method
 data Method = Method
@@ -133,7 +135,7 @@ data Method = Method
   -- ^ optionally the method can contain code
   , _methodExceptions  :: [ ClassName ]
   -- ^ the method can have one or more exceptions
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Show, Generic, NFData)
 
 makeLenses ''Class
 makeLenses ''Field

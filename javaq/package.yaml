@@ -24,6 +24,7 @@ dependencies:
   - text
   - cryptohash-sha256
   - base16-bytestring
+  - deepseq
 
 executables:
   javaq:

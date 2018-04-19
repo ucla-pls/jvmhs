@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -56,19 +57,21 @@ module Jvmhs.Data.Type
   , CAccessFlag (..)
   ) where
 
+import           Control.DeepSeq         (NFData)
 import           Control.Lens
 import           Data.Aeson
-import           Data.Int
-import           Data.Char
 import           Data.Aeson.TH
+import           Data.Char
+import           Data.Int
 import qualified Data.Text               as Text
+import           GHC.Generics            (Generic)
 
 import           Language.JVM.AccessFlag
-import           Language.JVM.Constant hiding (FieldId, MethodId)
-import qualified Language.JVM.Constant as B
-import qualified Language.JVM.Stage as B
-import           Language.JVM.Utils
+import           Language.JVM.Constant   hiding (FieldId, MethodId)
+import qualified Language.JVM.Constant   as B
+import qualified Language.JVM.Stage      as B
 import           Language.JVM.Type
+import           Language.JVM.Utils
 
 -- * ClassName
 
@@ -140,7 +143,7 @@ data JValue
   | VFloat Float
   | VDouble Double
   | VString Text.Text
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, NFData)
 
 valueFromConstant :: Prism' (Constant High) JValue
 valueFromConstant =
@@ -148,19 +151,19 @@ valueFromConstant =
   where
     fromValue v =
       case v of
-        VInt i -> CInteger i
-        VLong i -> CLong i
-        VFloat i -> CFloat i
+        VInt i    -> CInteger i
+        VLong i   -> CLong i
+        VFloat i  -> CFloat i
         VDouble i -> CDouble i
         VString i -> CString (sizedByteStringFromText i)
     toValue v =
       case v of
         CInteger i -> Just $ VInt i
-        CLong i ->    Just $ VLong i
-        CFloat i ->   Just $ VFloat i
-        CDouble i ->  Just $ VDouble i
-        CString i ->  VString <$> (sizedByteStringToText i ^? _Right)
-        _ -> Nothing
+        CLong i    ->    Just $ VLong i
+        CFloat i   ->   Just $ VFloat i
+        CDouble i  ->  Just $ VDouble i
+        CString i  ->  VString <$> (sizedByteStringToText i ^? _Right)
+        _          -> Nothing
 
 type FieldId = B.FieldId High
 type MethodId = B.MethodId High

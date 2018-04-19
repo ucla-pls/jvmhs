@@ -33,6 +33,7 @@ dependencies:
   - containers
   - text
   - mtl
+  - deepseq
   - fgl
   - fgl-visualize
 
