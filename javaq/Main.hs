@@ -1,9 +1,9 @@
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE DeriveAnyClass  #-}
+{-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections   #-}
 module Main where
 
 import           Control.DeepSeq            (NFData, force)
@@ -13,10 +13,12 @@ import           Data.Aeson
 import           Data.Aeson.TH
 import qualified Data.ByteString.Base16     as B16
 import qualified Data.ByteString.Lazy.Char8 as BS
+import           Data.Either
 import           Data.List                  as List
 import qualified Data.Text                  as Text
 import qualified Data.Text.Encoding         as Text
 import           GHC.Generics               (Generic)
+import           System.IO                  (stderr, hPrint)
 -- import qualified Data.ByteString.Lazy as BL
 -- import           Data.Foldable
 -- import           Data.Text.IO               as Text
@@ -184,12 +186,11 @@ decompile cfg = do
       -> ([a] -> IO ())
       -> IO ()
     onEachClass doeach dofinal = do
-      e <- sequence <$> forM classnames (
+      (fails,succs) <- partitionEithers <$> forM classnames (
         \cn -> force (over _Left (cn,)) <$> doeach cn
         )
-      case e of
-        Left msg -> error (show msg)
-        Right ls -> dofinal ls
+      forM_ fails (hPrint stderr)
+      dofinal succs
     readClassOverview cn = do
       bytes <- getClassBytes classReader cn
       return $ do
