@@ -86,23 +86,23 @@ data Config = Config
 makeLenses ''Config
 
 data ClassOverview = ClassOverview
-  { _coName :: ClassName
-  , _coSha256 :: Text.Text
-  , _coSize :: Int
-  , _coSuper :: ClassName
-  , _coInterfaces :: [ ClassName ]
-  , _coFields :: [ FieldId ]
-  , _coMethods :: [ MethodId ]
+  { _coName :: ! ClassName
+  , _coSha256 :: ! Text.Text
+  , _coSize :: ! Int
+  , _coSuper :: ! ClassName
+  , _coInterfaces :: ! ([ ClassName ])
+  , _coFields :: ! ([ FieldId ])
+  , _coMethods :: ! ([ MethodId ])
   } deriving (Show)
 
 data ClassCount = ClassCount
-  { _ccName :: ClassName
-  , _ccSha256 :: Text.Text
-  , _ccSize :: Int
-  , _ccSuper :: ClassName
-  , _ccInterfaces :: Int
-  , _ccFields :: Int
-  , _ccMethods :: Int
+  { _ccName :: ! ClassName
+  , _ccSha256 :: ! Text.Text
+  , _ccSize :: ! Int
+  , _ccSuper :: ! ClassName
+  , _ccInterfaces :: ! Int
+  , _ccFields :: ! Int
+  , _ccMethods :: ! Int
   } deriving (Show)
 
 makeLenses ''ClassOverview
@@ -186,7 +186,7 @@ decompile cfg = do
         let
           cls = convertClass clsf
           (hsh, lth) = hashlazyAndLength b
-        return $ ClassOverview
+        return $! ClassOverview
           (cls^.className)
           (Text.decodeUtf8 . B16.encode $ hsh)
           (fromIntegral lth)
@@ -198,7 +198,7 @@ decompile cfg = do
       co' <- readClassOverview cn
       return $ do
         co <- co'
-        return $ ClassCount
+        return $! ClassCount
           (co^.coName)
           (Text.take 7 $ co^.coSha256)
           (co^.coSize)
