@@ -12,7 +12,10 @@ every class loaded by the program.
 {-# LANGUAGE GeneralizedNewtypeDeriving  #-}
 module Jvmhs.Hierarchy
   ( MonadHierarchy (..)
+
   , HierarchyError (..)
+  , heClassName
+  , heClassReadError
 
    -- * Hierarchy implementation
   , Hierarchy
@@ -57,8 +60,12 @@ data HierarchyState r = HierarchyState
 makeLenses ''HierarchyState
 
 data HierarchyError
-  = ErrorWhileReadingClass ClassName ClassReadError
-  deriving (Show, Eq)
+  = ErrorWhileReadingClass
+  { _heClassName :: ClassName
+  , _heClassReadError :: ClassReadError
+  } deriving (Show, Eq)
+
+makeLenses ''HierarchyError
 
 newtype Hierarchy r a =
   Hierarchy (StateT (HierarchyState r) (ExceptT HierarchyError IO) a)
@@ -142,8 +149,8 @@ load = act loadClass
 
 -- | Loads a 'Class' but does not fail if the class was not loaded
 -- instead it returns a HierarchyError.
-load'
-  :: MonadHierarchy m
+load' ::
+     MonadHierarchy m
   => Action m ClassName (Either HierarchyError Class)
 load' = act (\cn -> catchError (Right <$> loadClass cn) (return . Left))
 

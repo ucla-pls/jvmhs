@@ -22,6 +22,7 @@ import           Data.Word
 import           GHC.Generics
 import qualified Language.JVM                as B
 import qualified Language.JVM.Attribute.Code as B
+import qualified Language.JVM.Attribute.StackMapTable as B
 
 import Jvmhs.Data.Type
 
@@ -74,19 +75,49 @@ traverseCode ::
 traverseCode tms tml tbc tet ta g =
   fmap Code . tC . _unCode
   where
-    tC s =
+    tC (B.Code ms ml bc et a) =
       B.Code
-      <$> (tms g . B.codeMaxStack $ s)
-      <*> (tml g . B.codeMaxLocals $ s)
-      <*> (fmap B.ByteCode . tbc g . B.unByteCode . B.codeByteCode $ s)
-      <*> (fmap B.SizedList . tet g . B.unSizedList . B.codeExceptionTable $ s)
-      <*> (ta g . B.codeAttributes $ s)
+      <$> tms g ms
+      <*> tml g ml
+      <*> (unByteCode . tbc) g bc
+      <*> (unSizedList . tet) g et
+      <*> ta g a
 
-type ByteCodeOpr = B.ByteCodeOpr B.High
-type ExceptionTable = B.ExceptionTable B.High
-type LineNumberTable = B.LineNumberTable B.High
+    unByteCode f = fmap B.ByteCode . f . B.unByteCode
+    unSizedList f = fmap B.SizedList . f . B.unSizedList
+
+{-# INLINE traverseCode #-}
+
 type CodeAttributes = B.CodeAttributes B.High
 
+traverseCodeAttributes ::
+      Traversal' [ StackMapTable ] a
+   -> Traversal' [ LineNumberTable ] a
+   -> Traversal' [ B.Attribute B.High ] a
+   -> Traversal' CodeAttributes a
+traverseCodeAttributes tsm tln tas f (B.CodeAttributes sm ln as) =
+  B.CodeAttributes <$> tsm f sm <*> tln f ln <*> tas f as
+{-# INLINE traverseCodeAttributes #-}
+
+type ByteCodeOpr = B.ByteCodeOpr B.High
+type LineNumberTable = B.LineNumberTable B.High
+
+type StackMapTable = B.StackMapTable B.High
+type VerificationTypeInfo = B.VerificationTypeInfo B.High
+
+verificationTypeInfo :: Traversal' StackMapTable VerificationTypeInfo
+verificationTypeInfo g (B.StackMapTable s) =
+  B.StackMapTable <$> (traverse . ver) g s
+  where
+    ver f (B.StackMapFrame fs ft) =
+      B.StackMapFrame fs <$>
+      case ft of
+        B.SameLocals1StackItemFrame v -> B.SameLocals1StackItemFrame <$> f v
+        B.AppendFrame v -> B.AppendFrame <$> traverse f v
+        B.FullFrame v1 v2 -> B.FullFrame <$> traverse f v1 <*> traverse f v2
+        _ -> pure ft
+
+type ExceptionTable = B.ExceptionTable B.High
 exceptionCatchType :: Lens' ExceptionTable (Maybe ClassName)
 exceptionCatchType =
   lens (B.value.B.catchType) (\s b -> s { B.catchType = B.RefV b})
