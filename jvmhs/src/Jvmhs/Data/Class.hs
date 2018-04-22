@@ -1,5 +1,5 @@
-{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
@@ -27,6 +27,7 @@ module Jvmhs.Data.Class
   , classFields
   , classMethods
   , classBootstrapMethods
+  , traverseClass
 
   , dependencies
 
@@ -37,6 +38,7 @@ module Jvmhs.Data.Class
   , fieldValue
   , fieldType
   , toFieldID
+  , traverseField
 
   , Method (..)
   , methodAccessFlags
@@ -47,6 +49,7 @@ module Jvmhs.Data.Class
   , methodReturnType
   , methodArgumentTypes
   , toMethodID
+  , traverseMethod
 
   -- * Helpers
   , classFieldsWhere
@@ -65,9 +68,9 @@ module Jvmhs.Data.Class
   , Code (..)
   ) where
 
+import           Control.DeepSeq
 import           Control.Lens
 import           Control.Monad
-import           Control.DeepSeq
 import           Data.Aeson
 import           Data.Aeson.TH
 import qualified Data.Set                                as Set
@@ -82,16 +85,10 @@ import qualified Language.JVM.Attribute.BootstrapMethods as B
 import qualified Language.JVM.Attribute.ConstantValue    as B
 import qualified Language.JVM.Attribute.Exceptions       as B
 
+import           Jvmhs.Data.BootstrapMethod
+import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
 import           Jvmhs.LensHelpers
-
-newtype BootstrapMethod = BootstrapMethod
-  { unBootstrapMethod :: B.BootstrapMethod B.High
-  } deriving (Show, Eq, Generic, NFData)
-
-newtype Code = Code
-  { unCode :: B.Code B.High
-  } deriving (Show, Eq, Generic, NFData)
 
 -- This is the class
 data Class = Class
@@ -113,13 +110,13 @@ data Class = Class
 
 -- This is the field
 data Field = Field
-  { _fieldAccessFlags   :: Set.Set FAccessFlag
+  { _fieldAccessFlags :: Set.Set FAccessFlag
   -- ^ the set of access flags
-  , _fieldName          :: Text.Text
+  , _fieldName        :: Text.Text
   -- ^ the name of the field
-  , _fieldDescriptor    :: FieldDescriptor
+  , _fieldDescriptor  :: FieldDescriptor
   -- ^ the field type descriptor
-  , _fieldValue :: Maybe JValue
+  , _fieldValue       :: Maybe JValue
   -- ^ an optional value
   } deriving (Eq, Show, Generic, NFData)
 
@@ -131,7 +128,7 @@ data Method = Method
   -- ^ the name of the method
   , _methodDescriptor  :: MethodDescriptor
   -- ^ the method type descriptor
-  , _methodCode        :: Maybe (Code)
+  , _methodCode        :: Maybe Code
   -- ^ optionally the method can contain code
   , _methodExceptions  :: [ ClassName ]
   -- ^ the method can have one or more exceptions
@@ -140,6 +137,56 @@ data Method = Method
 makeLenses ''Class
 makeLenses ''Field
 makeLenses ''Method
+
+traverseClass ::
+  (Traversal' ClassName a)
+  -> (Traversal' ClassName a)
+  -> (Traversal' (Set.Set CAccessFlag) a)
+  -> (Traversal' [ ClassName ] a)
+  -> (Traversal' [ Field ] a)
+  -> (Traversal' [ Method ] a)
+  -> (Traversal' [ BootstrapMethod ] a)
+  -> (Traversal' Class a)
+traverseClass tcn tsn taf tis tfs tms tbs g s =
+  Class
+  <$> (tcn g . _className $ s)
+  <*> (tsn g . _classSuper $ s)
+  <*> (taf g . _classAccessFlags $ s)
+  <*> (tis g . _classInterfaces $ s)
+  <*> (tfs g . _classFields $ s)
+  <*> (tms g . _classMethods $ s)
+  <*> (tbs g . _classBootstrapMethods $ s)
+{-# INLINE traverseClass #-}
+
+traverseField ::
+  (Traversal' (Set.Set FAccessFlag) a)
+  -> (Traversal' Text.Text a)
+  -> (Traversal' FieldDescriptor a)
+  -> (Traversal' (Maybe JValue) a)
+  -> Traversal' Field a
+traverseField taf tfn tfd tjv g s =
+  Field
+  <$> (taf g . _fieldAccessFlags $ s)
+  <*> (tfn g . _fieldName $ s)
+  <*> (tfd g . _fieldDescriptor $ s)
+  <*> (tjv g . _fieldValue $ s)
+{-# INLINE traverseField #-}
+
+traverseMethod ::
+  (Traversal' (Set.Set MAccessFlag) a)
+  -> (Traversal' Text.Text a)
+  -> (Traversal' MethodDescriptor a)
+  -> (Traversal' (Maybe Code) a)
+  -> (Traversal' [ClassName] a)
+  -> Traversal' Method a
+traverseMethod taf tfn tfd tc tex g s =
+  Method
+  <$> (taf g . _methodAccessFlags $ s)
+  <*> (tfn g . _methodName $ s)
+  <*> (tfd g . _methodDescriptor $ s)
+  <*> (tc  g . _methodCode $ s)
+  <*> (tex g . _methodExceptions $ s)
+{-# INLINE traverseMethod #-}
 
 toFieldID :: Getter Field FieldId
 toFieldID = to (\f -> fieldId (f^.fieldName) (f^.fieldDescriptor))
@@ -180,7 +227,7 @@ fromClassFile =
   <*> B.cInterfaces
   <*> map fromBField . B.cFields
   <*> map fromBMethod . B.cMethods
-  <*> fmap BootstrapMethod . B.cBootstrapMethods
+  <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
   where
     fromBField =
       Field
@@ -210,7 +257,7 @@ toClassFile (majorv, minorv) =
     <*> B.SizedList . map toBMethod . _classMethods
     <*> ( B.ClassAttributes
             <$> compress (B.BootstrapMethods . B.SizedList)
-                . map unBootstrapMethod
+                . map toBinaryBootstrapMethod
                 . _classBootstrapMethods
             <*> pure [])
 
@@ -232,7 +279,7 @@ toClassFile (majorv, minorv) =
         <*> B.RefV . _methodName
         <*> B.RefV . _methodDescriptor
         <*> ( B.MethodAttributes
-                <$> maybe [] (:[]) . fmap unCode . _methodCode
+                <$> maybe [] (:[]) . fmap _unCode . _methodCode
                 <*> compress (B.Exceptions . B.SizedList)
                     . fmap B.RefV . _methodExceptions
                 <*> pure [])
@@ -244,12 +291,6 @@ toClassFile (majorv, minorv) =
 -- | An Isomorphism between classfiles and checked classes.
 isoBinary :: Iso' (B.ClassFile B.High) Class
 isoBinary = iso fromClassFile (toClassFile (52,0))
-
-instance ToJSON BootstrapMethod where
-    toJSON _ = String $ "<bootstrapmethod>"
-
-instance ToJSON Code where
-    toJSON _ = String $ "<code>"
 
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
