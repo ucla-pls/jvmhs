@@ -27,6 +27,7 @@ module Jvmhs.Data.Class
   , classFields
   , classMethods
   , classBootstrapMethods
+  , classSignature
   , traverseClass
 
   , dependencies
@@ -37,6 +38,7 @@ module Jvmhs.Data.Class
   , fieldDescriptor
   , fieldValue
   , fieldType
+  , fieldSignature
   , toFieldID
   , traverseField
 
@@ -48,6 +50,7 @@ module Jvmhs.Data.Class
   , methodExceptions
   , methodReturnType
   , methodArgumentTypes
+  , methodSignature
   , toMethodID
   , traverseMethod
 
@@ -84,6 +87,7 @@ import qualified Language.JVM                            as B
 import qualified Language.JVM.Attribute.BootstrapMethods as B
 import qualified Language.JVM.Attribute.ConstantValue    as B
 import qualified Language.JVM.Attribute.Exceptions       as B
+import qualified Language.JVM.Attribute.Signature       as B
 
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
@@ -106,6 +110,7 @@ data Class = Class
   -- ^ a list of methods
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
+  , _classSignature        :: Maybe Text.Text
   } deriving (Eq, Show, Generic, NFData)
 
 -- This is the field
@@ -118,6 +123,7 @@ data Field = Field
   -- ^ the field type descriptor
   , _fieldValue       :: Maybe JValue
   -- ^ an optional value
+  , _fieldSignature   :: Maybe Text.Text
   } deriving (Eq, Show, Generic, NFData)
 
 -- This is the method
@@ -132,6 +138,7 @@ data Method = Method
   -- ^ optionally the method can contain code
   , _methodExceptions  :: [ ClassName ]
   -- ^ the method can have one or more exceptions
+  , _methodSignature   :: Maybe Text.Text
   } deriving (Eq, Show, Generic, NFData)
 
 makeLenses ''Class
@@ -146,8 +153,9 @@ traverseClass ::
   -> (Traversal' [ Field ] a)
   -> (Traversal' [ Method ] a)
   -> (Traversal' [ BootstrapMethod ] a)
+  -> (Traversal' (Maybe Text.Text) a)
   -> (Traversal' Class a)
-traverseClass tcn tsn taf tis tfs tms tbs g s =
+traverseClass tcn tsn taf tis tfs tms tbs tss g s =
   Class
   <$> (tcn g . _className $ s)
   <*> (tsn g . _classSuper $ s)
@@ -156,6 +164,7 @@ traverseClass tcn tsn taf tis tfs tms tbs g s =
   <*> (tfs g . _classFields $ s)
   <*> (tms g . _classMethods $ s)
   <*> (tbs g . _classBootstrapMethods $ s)
+  <*> (tss g . _classSignature $ s)
 {-# INLINE traverseClass #-}
 
 traverseField ::
@@ -163,13 +172,15 @@ traverseField ::
   -> (Traversal' Text.Text a)
   -> (Traversal' FieldDescriptor a)
   -> (Traversal' (Maybe JValue) a)
+  -> (Traversal' (Maybe Text.Text) a)
   -> Traversal' Field a
-traverseField taf tfn tfd tjv g s =
+traverseField taf tfn tfd tjv ts g s =
   Field
   <$> (taf g . _fieldAccessFlags $ s)
   <*> (tfn g . _fieldName $ s)
   <*> (tfd g . _fieldDescriptor $ s)
   <*> (tjv g . _fieldValue $ s)
+  <*> (ts g . _fieldSignature $ s)
 {-# INLINE traverseField #-}
 
 traverseMethod ::
@@ -178,14 +189,16 @@ traverseMethod ::
   -> (Traversal' MethodDescriptor a)
   -> (Traversal' (Maybe Code) a)
   -> (Traversal' [ClassName] a)
+  -> (Traversal' (Maybe Text.Text) a)
   -> Traversal' Method a
-traverseMethod taf tfn tfd tc tex g s =
+traverseMethod taf tfn tfd tc tex ts g s =
   Method
   <$> (taf g . _methodAccessFlags $ s)
   <*> (tfn g . _methodName $ s)
   <*> (tfd g . _methodDescriptor $ s)
   <*> (tc  g . _methodCode $ s)
   <*> (tex g . _methodExceptions $ s)
+  <*> (ts  g . _methodSignature $ s)
 {-# INLINE traverseMethod #-}
 
 toFieldID :: Getter Field FieldId
@@ -228,6 +241,7 @@ fromClassFile =
   <*> map fromBField . B.cFields
   <*> map fromBMethod . B.cMethods
   <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
+  <*> fmap B.signatureToText . B.cSignature
   where
     fromBField =
       Field
@@ -235,6 +249,7 @@ fromClassFile =
       <*> B.fName
       <*> B.fDescriptor
       <*> (preview valueFromConstant . B.constantValue <=< B.fConstantValue)
+      <*> fmap B.signatureToText . B.fSignature
 
     fromBMethod =
       Method
@@ -243,6 +258,7 @@ fromClassFile =
       <*> B.mDescriptor
       <*> fmap Code . B.mCode
       <*> B.mExceptions
+      <*> fmap B.signatureToText . B.mSignature
 
 toClassFile :: (Word16, Word16) -> Class -> B.ClassFile B.High
 toClassFile (majorv, minorv) =
@@ -259,6 +275,7 @@ toClassFile (majorv, minorv) =
             <$> compress (B.BootstrapMethods . B.SizedList)
                 . map toBinaryBootstrapMethod
                 . _classBootstrapMethods
+            <*> pure []
             <*> pure [])
 
   where
@@ -271,7 +288,8 @@ toClassFile (majorv, minorv) =
                 <$> maybe [] (:[])
                     . fmap (B.ConstantValue . B.DeepRef . B.RefV)
                     . fmap (review valueFromConstant) . _fieldValue
-                <*> pure [])
+                <*> pure []
+                <*> pure [] )
 
     toBMethod =
       B.Method
@@ -282,7 +300,8 @@ toClassFile (majorv, minorv) =
                 <$> maybe [] (:[]) . fmap _unCode . _methodCode
                 <*> compress (B.Exceptions . B.SizedList)
                     . fmap B.RefV . _methodExceptions
-                <*> pure [])
+                <*> pure []
+                <*> pure [] )
 
     compress :: ([a] -> b) -> [a] -> [b]
     compress _ [] = []

@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-|
@@ -43,6 +43,7 @@ instance Inspectable Class where
       (traverse.classNames)
       (traverse.classNames)
       (traverse.classNames)
+      nothing
 
 instance Inspectable Field where
   classNames =
@@ -51,6 +52,7 @@ instance Inspectable Field where
       nothing
       classNames
       (traverse.classNames)
+      nothing
 
 instance Inspectable Method where
   classNames =
@@ -60,6 +62,7 @@ instance Inspectable Method where
       classNames
       (traverse.classNames)
       traverse
+      nothing
 
 instance Inspectable BootstrapMethod where
 
