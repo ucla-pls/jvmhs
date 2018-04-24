@@ -73,7 +73,7 @@ instance Inspectable Code where
       nothing
       (traverse.classNames)
       (traverse.classNames)
-      classNames
+      (traverse.classNames)
 
 
 deref :: Lens' (B.Ref a B.High) a
@@ -109,12 +109,13 @@ instance Inspectable ByteCodeOpr where
       B.InstanceOf c      -> B.InstanceOf <$> invref g c
       _                   -> pure o
 
-instance Inspectable CodeAttributes where
+instance Inspectable ExceptionHandler where
   classNames =
-    traverseCodeAttributes
-      (traverse.classNames)
+    traverseExceptionHandler
       nothing
       nothing
+      nothing
+      (traverse.id)
 
 instance Inspectable StackMapTable where
   classNames =
@@ -191,10 +192,6 @@ instance Inspectable (B.InvokeDynamic B.High) where
 
 -- TODO: Implement method handle
 instance Inspectable (B.MethodHandle B.High) where
-
-instance Inspectable ExceptionTable where
-  classNames =
-    exceptionCatchType._Just
 
 instance Inspectable FieldDescriptor where
   classNames g fd =

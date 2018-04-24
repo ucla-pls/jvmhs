@@ -1,8 +1,10 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TemplateHaskell   #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-|
 Module      : Jvmhs.Data.Code
 Copyright   : (c) Christian Gram Kalhauge, 2018
@@ -13,97 +15,128 @@ This module works with the Code. This is a work in progress.
 -}
 
 module Jvmhs.Data.Code
+  ( Code (..)
+  , codeMaxStack
+  , codeMaxLocals
+  , codeByteCode
+  , codeExceptionTable
+  , codeStackMap
+
+  , traverseCode
+
+  , fromBinaryCode
+  , toBinaryCode
+
+  , ExceptionHandler (..)
+  , ehStart
+  , ehEnd
+  , ehHandler
+  , ehCatchType
+
+  , traverseExceptionHandler
+
+  , StackMapTable
+  , verificationTypeInfo
+  , VerificationTypeInfo
+
+  , ByteCodeOpr
+  )
   where
 
 import           Control.DeepSeq
 import           Control.Lens
 import           Data.Aeson
+import           Data.Aeson.TH
 import           Data.Word
-import           GHC.Generics
-import qualified Language.JVM                as B
-import qualified Language.JVM.Attribute.Code as B
+import           GHC.Generics (Generic)
+import qualified Language.JVM                         as B
+import qualified Language.JVM.Attribute.Code          as B
 import qualified Language.JVM.Attribute.StackMapTable as B
 
-import Jvmhs.Data.Type
+import           Jvmhs.Data.Type
 
-newtype Code = Code
-  { _unCode :: B.Code B.High
+type ByteCodeOpr = B.ByteCodeOpr B.High
+-- type LineNumberTable = B.LineNumberTable B.High
+type StackMapTable = B.StackMapTable B.High
+type VerificationTypeInfo = B.VerificationTypeInfo B.High
+
+data Code = Code
+  { _codeMaxStack       :: !Word16
+  , _codeMaxLocals      :: !Word16
+  , _codeByteCode       :: ![ByteCodeOpr]
+  , _codeExceptionTable :: ![ExceptionHandler]
+  , _codeStackMap       :: !(Maybe StackMapTable)
+  } deriving (Show, Eq, Generic, NFData)
+
+data ExceptionHandler = ExceptionHandler
+  { _ehStart     :: !Word16
+  , _ehEnd       :: !Word16
+  , _ehHandler   :: !Word16
+  , _ehCatchType :: !(Maybe ClassName)
   } deriving (Show, Eq, Generic, NFData)
 
 makeLenses ''Code
+makeLenses ''ExceptionHandler
 
-makeLens ::
-  (B.Code B.High -> a)
-  -> (B.Code B.High -> a -> B.Code B.High)
-  -> Lens' Code a
-makeLens sa sbt  = unCode . lens sa sbt
+fromBinaryCode :: B.Code B.High -> Code
+fromBinaryCode =
+  Code
+    <$> B.codeMaxStack
+    <*> B.codeMaxLocals
+    <*> B.codeByteCodeOprs
+    <*> fmap fromBinaryExceptionTable . B.unSizedList . B.codeExceptionTable
+    <*> B.codeStackMapTable
 
-codeMaxStack :: Lens' Code Word16
-codeMaxStack =
-  makeLens B.codeMaxStack (\s b -> s { B.codeMaxStack = b })
+toBinaryCode :: Code -> B.Code B.High
+toBinaryCode c =
+  B.Code
+   (c^.codeMaxStack)
+   (c^.codeMaxLocals)
+   (B.ByteCode $ c^.codeByteCode)
+   (B.SizedList $ c^..codeExceptionTable.folded.to toBinaryExceptionTable)
+   (B.CodeAttributes (maybe [] (:[]) $ c^.codeStackMap) [] [])
 
-codeMaxLocals :: Lens' Code Word16
-codeMaxLocals =
-  makeLens B.codeMaxLocals (\s b -> s { B.codeMaxLocals = b })
+fromBinaryExceptionTable :: B.ExceptionTable B.High -> ExceptionHandler
+fromBinaryExceptionTable =
+  ExceptionHandler
+  <$> B.start
+  <*> B.end
+  <*> B.handler
+  <*> B.value . B.catchType
 
-codeByteCode :: Lens' Code [ByteCodeOpr]
-codeByteCode =
-  makeLens
-    (B.unByteCode . B.codeByteCode)
-    (\s b -> s { B.codeByteCode = B.ByteCode b })
-
-codeExceptionTables :: Lens' Code [ExceptionTable]
-codeExceptionTables =
-  makeLens
-    (B.unSizedList . B.codeExceptionTable)
-    (\s b -> s { B.codeExceptionTable = B.SizedList b })
-
-codeAttributes :: Lens' Code CodeAttributes
-codeAttributes =
-  makeLens
-    (B.codeAttributes)
-    (\s b -> s { B.codeAttributes = b })
+toBinaryExceptionTable :: ExceptionHandler -> B.ExceptionTable B.High
+toBinaryExceptionTable =
+  B.ExceptionTable
+  <$> _ehStart
+  <*> _ehEnd
+  <*> _ehHandler
+  <*> B.RefV . _ehCatchType
 
 traverseCode ::
      (Traversal' Word16 a)
   -> (Traversal' Word16 a)
   -> (Traversal' [ByteCodeOpr] a)
-  -> (Traversal' [ExceptionTable] a)
-  -> (Traversal' CodeAttributes a)
+  -> (Traversal' [ExceptionHandler] a)
+  -> (Traversal' (Maybe StackMapTable) a)
   -> Traversal' Code a
-  -- Applicative f => (a -> f a) -> Code -> f Code
-traverseCode tms tml tbc tet ta g =
-  fmap Code . tC . _unCode
-  where
-    tC (B.Code ms ml bc et a) =
-      B.Code
-      <$> tms g ms
-      <*> tml g ml
-      <*> (unByteCode . tbc) g bc
-      <*> (unSizedList . tet) g et
-      <*> ta g a
-
-    unByteCode f = fmap B.ByteCode . f . B.unByteCode
-    unSizedList f = fmap B.SizedList . f . B.unSizedList
-
+traverseCode tms tml tbc tet tst g (Code ms ml bc et st) =
+    Code
+    <$> tms g ms
+    <*> tml g ml
+    <*> tbc g bc
+    <*> tet g et
+    <*> tst g st
 {-# INLINE traverseCode #-}
 
-type CodeAttributes = B.CodeAttributes B.High
-
-traverseCodeAttributes ::
-      Traversal' [ StackMapTable ] a
-   -> Traversal' [ LineNumberTable ] a
-   -> Traversal' [ B.Attribute B.High ] a
-   -> Traversal' CodeAttributes a
-traverseCodeAttributes tsm tln tas f (B.CodeAttributes sm ln as) =
-  B.CodeAttributes <$> tsm f sm <*> tln f ln <*> tas f as
-{-# INLINE traverseCodeAttributes #-}
-
-type ByteCodeOpr = B.ByteCodeOpr B.High
-type LineNumberTable = B.LineNumberTable B.High
-
-type StackMapTable = B.StackMapTable B.High
-type VerificationTypeInfo = B.VerificationTypeInfo B.High
+traverseExceptionHandler ::
+     Traversal' Word16 a
+  -> Traversal' Word16 a
+  -> Traversal' Word16 a
+  -> Traversal' (Maybe ClassName) a
+  -> Traversal' ExceptionHandler a
+traverseExceptionHandler ts te th tc g (ExceptionHandler s e h c) =
+  ExceptionHandler <$> ts g s <*> te g e <*> th g h <*> tc g c
+{-# INLINE traverseExceptionHandler #-}
 
 verificationTypeInfo :: Traversal' StackMapTable VerificationTypeInfo
 verificationTypeInfo g (B.StackMapTable s) =
@@ -117,10 +150,12 @@ verificationTypeInfo g (B.StackMapTable s) =
         B.FullFrame v1 v2 -> B.FullFrame <$> traverse f v1 <*> traverse f v2
         _ -> pure ft
 
-type ExceptionTable = B.ExceptionTable B.High
-exceptionCatchType :: Lens' ExceptionTable (Maybe ClassName)
-exceptionCatchType =
-  lens (B.value.B.catchType) (\s b -> s { B.catchType = B.RefV b})
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code)
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
 
-instance ToJSON Code where
-    toJSON _ = String $ "<code>"
+instance ToJSON (B.ByteCodeOpr B.High) where
+  toJSON _ = String "<code>"
+
+instance ToJSON (B.StackMapTable B.High) where
+  toJSON _ = String "<stack-map-table>"
+-- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)

@@ -35,8 +35,7 @@ patterns = [docopt|
 javaq version 0.0.1
 
 Usage:
-  javaq [options]
-  javaq [options] -- <classname>...
+  javaq [options] <classname>...
 
 Options:
   --cp=<classpath>         The classpath to search for classes.
@@ -161,7 +160,7 @@ main = do
   args' <- parseArgs patterns <$> getArgs
   case args' of
     Left msg -> do
-      print msg
+      hPrint stderr msg
       exitWithUsage patterns
     Right args -> do
       if isPresent args (longOption "help")

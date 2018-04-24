@@ -256,7 +256,7 @@ fromClassFile =
       <$> B.mAccessFlags
       <*> B.mName
       <*> B.mDescriptor
-      <*> fmap Code . B.mCode
+      <*> fmap fromBinaryCode . B.mCode
       <*> B.mExceptions
       <*> fmap B.signatureToText . B.mSignature
 
@@ -297,7 +297,7 @@ toClassFile (majorv, minorv) =
         <*> B.RefV . _methodName
         <*> B.RefV . _methodDescriptor
         <*> ( B.MethodAttributes
-                <$> maybe [] (:[]) . fmap _unCode . _methodCode
+                <$> maybe [] (:[]) . fmap toBinaryCode . _methodCode
                 <*> compress (B.Exceptions . B.SizedList)
                     . fmap B.RefV . _methodExceptions
                 <*> maybe [] (:[]) . fmap B.signatureFromText. _methodSignature
