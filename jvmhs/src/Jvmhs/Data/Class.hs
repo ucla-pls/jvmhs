@@ -275,7 +275,7 @@ toClassFile (majorv, minorv) =
             <$> compress (B.BootstrapMethods . B.SizedList)
                 . map toBinaryBootstrapMethod
                 . _classBootstrapMethods
-            <*> pure []
+            <*> maybe [] (:[]) . fmap B.signatureFromText . _classSignature
             <*> pure [])
 
   where
@@ -288,7 +288,7 @@ toClassFile (majorv, minorv) =
                 <$> maybe [] (:[])
                     . fmap (B.ConstantValue . B.DeepRef . B.RefV)
                     . fmap (review valueFromConstant) . _fieldValue
-                <*> pure []
+                <*> maybe [] (:[]) . fmap B.signatureFromText . _fieldSignature
                 <*> pure [] )
 
     toBMethod =
@@ -300,7 +300,7 @@ toClassFile (majorv, minorv) =
                 <$> maybe [] (:[]) . fmap _unCode . _methodCode
                 <*> compress (B.Exceptions . B.SizedList)
                     . fmap B.RefV . _methodExceptions
-                <*> pure []
+                <*> maybe [] (:[]) . fmap B.signatureFromText. _methodSignature
                 <*> pure [] )
 
     compress :: ([a] -> b) -> [a] -> [b]
