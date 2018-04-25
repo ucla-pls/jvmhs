@@ -35,7 +35,7 @@ patterns = [docopt|
 javaq version 0.0.1
 
 Usage:
-  javaq [options] <classname>...
+  javaq [options] [-] [<classname>...]
 
 Options:
   --cp=<classpath>         The classpath to search for classes.
@@ -144,6 +144,8 @@ parseConfig args = do
     Nothing -> error ("Could not recognize output-format: '" ++ format ++ "'")
     Just fs -> return fs
 
+  classnames <- readClassNames
+
   return $ Config
     { _cfgClassPath =
         case concatMap splitClassPath $ getAllArgs args (longOption "cp") of
@@ -151,9 +153,18 @@ parseConfig args = do
           as -> as
     , _cfgUseStdlib = isPresent args (longOption "stdlib")
     , _cfgJre = getArg args (longOption "jre")
-    , _cfgClassNames = strCls <$> getAllArgs args (argument "classname")
+    , _cfgClassNames = classnames
     , _cfgFormat = oformat
     }
+
+  where
+    classnames' = getAllArgs args $ argument "classname"
+    readClassNames = do
+      names <-
+        if isPresent args (command "-")
+        then do (classnames' ++) . lines <$> getContents
+        else return classnames'
+      return . map dotCls $ names
 
 main :: IO ()
 main = do
