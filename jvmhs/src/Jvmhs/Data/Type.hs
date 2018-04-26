@@ -64,6 +64,8 @@ import           Data.Aeson.TH
 import           Data.Char
 import           Data.Int
 import qualified Data.Text               as Text
+import qualified Data.ByteString         as BS
+import qualified Data.ByteString.Char8   as C
 import           GHC.Generics            (Generic)
 
 import           Language.JVM.AccessFlag
@@ -142,7 +144,7 @@ data JValue
   | VLong Int64
   | VFloat Float
   | VDouble Double
-  | VString Text.Text
+  | VString BS.ByteString
   deriving (Show, Eq, Generic, NFData)
 
 valueFromConstant :: Prism' (Constant High) JValue
@@ -155,14 +157,14 @@ valueFromConstant =
         VLong i   -> CLong i
         VFloat i  -> CFloat i
         VDouble i -> CDouble i
-        VString i -> CString (sizedByteStringFromText i)
+        VString i -> CString (SizedByteString i)
     toValue v =
       case v of
         CInteger i -> Just $ VInt i
-        CLong i    ->    Just $ VLong i
-        CFloat i   ->   Just $ VFloat i
-        CDouble i  ->  Just $ VDouble i
-        CString i  ->  VString <$> (sizedByteStringToText i ^? _Right)
+        CLong i    -> Just $ VLong i
+        CFloat i   -> Just $ VFloat i
+        CDouble i  -> Just $ VDouble i
+        CString i  -> Just $ VString (unSizedByteString i)
         _          -> Nothing
 
 type FieldId = B.FieldId High
@@ -194,10 +196,12 @@ instance ToJSON FieldDescriptor where
 instance ToJSON MethodDescriptor where
   toJSON = String . methodDescriptorToText
 
+instance ToJSON BS.ByteString where
+  toJSON = String . Text.pack . C.unpack
+
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''CAccessFlag)
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''FAccessFlag)
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''MAccessFlag)
-
 $(deriveToJSON (defaultOptions
                  { sumEncoding             = ObjectWithSingleField
                  , constructorTagModifier  = map toLower . drop 1
