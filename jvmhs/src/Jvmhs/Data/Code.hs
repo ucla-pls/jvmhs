@@ -48,7 +48,10 @@ import           Control.Lens
 import           Data.Aeson
 import           Data.Aeson.TH
 import           Data.Word
+import qualified Data.Vector as V
+
 import           GHC.Generics (Generic)
+
 import qualified Language.JVM                         as B
 import qualified Language.JVM.Attribute.Code          as B
 import qualified Language.JVM.Attribute.StackMapTable as B
@@ -63,15 +66,15 @@ type VerificationTypeInfo = B.VerificationTypeInfo B.High
 data Code = Code
   { _codeMaxStack       :: !Word16
   , _codeMaxLocals      :: !Word16
-  , _codeByteCode       :: ![ByteCodeOpr]
+  , _codeByteCode       :: !(V.Vector ByteCodeOpr)
   , _codeExceptionTable :: ![ExceptionHandler]
   , _codeStackMap       :: !(Maybe StackMapTable)
   } deriving (Show, Eq, Generic, NFData)
 
 data ExceptionHandler = ExceptionHandler
-  { _ehStart     :: !Word16
-  , _ehEnd       :: !Word16
-  , _ehHandler   :: !Word16
+  { _ehStart     :: !Int
+  , _ehEnd       :: !Int
+  , _ehHandler   :: !Int
   , _ehCatchType :: !(Maybe ClassName)
   } deriving (Show, Eq, Generic, NFData)
 
@@ -102,7 +105,7 @@ fromBinaryExceptionTable =
   <$> B.start
   <*> B.end
   <*> B.handler
-  <*> B.value . B.catchType
+  <*> B.catchType
 
 toBinaryExceptionTable :: ExceptionHandler -> B.ExceptionTable B.High
 toBinaryExceptionTable =
@@ -110,12 +113,12 @@ toBinaryExceptionTable =
   <$> _ehStart
   <*> _ehEnd
   <*> _ehHandler
-  <*> B.RefV . _ehCatchType
+  <*> _ehCatchType
 
 traverseCode ::
      (Traversal' Word16 a)
   -> (Traversal' Word16 a)
-  -> (Traversal' [ByteCodeOpr] a)
+  -> (Traversal' (V.Vector ByteCodeOpr) a)
   -> (Traversal' [ExceptionHandler] a)
   -> (Traversal' (Maybe StackMapTable) a)
   -> Traversal' Code a
@@ -129,9 +132,9 @@ traverseCode tms tml tbc tet tst g (Code ms ml bc et st) =
 {-# INLINE traverseCode #-}
 
 traverseExceptionHandler ::
-     Traversal' Word16 a
-  -> Traversal' Word16 a
-  -> Traversal' Word16 a
+     Traversal' Int a
+  -> Traversal' Int a
+  -> Traversal' Int a
   -> Traversal' (Maybe ClassName) a
   -> Traversal' ExceptionHandler a
 traverseExceptionHandler ts te th tc g (ExceptionHandler s e h c) =

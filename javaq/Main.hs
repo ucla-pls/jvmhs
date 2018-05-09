@@ -215,8 +215,8 @@ decompile cfg = do
           (fromIntegral lth)
           (cls^.classSuper)
           (cls^.classInterfaces)
-          (cls^..classFields.folded.toFieldID)
-          (cls^..classMethods.folded.toMethodID)
+          (cls^..classFields.folded.toFieldId)
+          (cls^..classMethods.folded.toMethodId)
     readClassCount cn = do
       co' <- readClassOverview cn
       return $ do

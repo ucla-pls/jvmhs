@@ -34,46 +34,41 @@ module Jvmhs.Data.Type
   , methodDReturnType
 
   , MethodId
+  , methodId
   , methodIdName
   , methodIdDescriptor
   , methodIdToText
-  , methodId
 
   , FieldDescriptor (..)
   , fieldDType
 
   , FieldId
+  , fieldId
   , fieldIdName
   , fieldIdDescriptor
   , fieldIdToText
-  , fieldId
 
   , JType (..)
   , JValue (..)
-  , valueFromConstant
 
   , MAccessFlag (..)
   , FAccessFlag (..)
   , CAccessFlag (..)
   ) where
 
-import           Control.DeepSeq         (NFData)
 import           Control.Lens
 import           Data.Aeson
 import           Data.Aeson.TH
 import           Data.Char
-import           Data.Int
 import qualified Data.Text               as Text
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Char8   as C
-import           GHC.Generics            (Generic)
 
 import           Language.JVM.AccessFlag
-import           Language.JVM.Constant   hiding (FieldId, MethodId)
+import           Language.JVM.Constant   hiding (FieldId, MethodId, MethodHandle)
 import qualified Language.JVM.Constant   as B
-import qualified Language.JVM.Stage      as B
 import           Language.JVM.Type
-import           Language.JVM.Utils
+-- import           Language.JVM.Utils
 
 -- * ClassName
 
@@ -138,43 +133,15 @@ fieldDType =
 
 -- * Value
 
--- | A simple value in java
-data JValue
-  = VInt Int32
-  | VLong Int64
-  | VFloat Float
-  | VDouble Double
-  | VString BS.ByteString
-  deriving (Show, Eq, Generic, NFData)
-
-valueFromConstant :: Prism' (Constant High) JValue
-valueFromConstant =
-  prism' fromValue toValue
-  where
-    fromValue v =
-      case v of
-        VInt i    -> CInteger i
-        VLong i   -> CLong i
-        VFloat i  -> CFloat i
-        VDouble i -> CDouble i
-        VString i -> CString (SizedByteString i)
-    toValue v =
-      case v of
-        CInteger i -> Just $ VInt i
-        CLong i    -> Just $ VLong i
-        CFloat i   -> Just $ VFloat i
-        CDouble i  -> Just $ VDouble i
-        CString i  -> Just $ VString (unSizedByteString i)
-        _          -> Nothing
-
 type FieldId = B.FieldId High
 type MethodId = B.MethodId High
-
-fieldId :: Text.Text -> FieldDescriptor -> FieldId
-fieldId name desc = B.FieldId (B.RefV name) (B.RefV desc)
+type MethodHandle = B.MethodHandle High
 
 methodId :: Text.Text -> MethodDescriptor -> MethodId
-methodId name desc = B.MethodId (B.RefV name) (B.RefV desc)
+methodId = B.MethodId
+
+fieldId :: Text.Text -> FieldDescriptor -> FieldId
+fieldId = B.FieldId
 
 instance ToJSON FieldId where
   toJSON = String . fieldIdToText
@@ -198,6 +165,10 @@ instance ToJSON MethodDescriptor where
 
 instance ToJSON BS.ByteString where
   toJSON = String . Text.pack . C.unpack
+
+instance ToJSON MethodHandle where
+  toJSON _ = String "MethodHandle"
+
 
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''CAccessFlag)
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''FAccessFlag)

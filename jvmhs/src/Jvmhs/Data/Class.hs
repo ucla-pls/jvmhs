@@ -39,7 +39,7 @@ module Jvmhs.Data.Class
   , fieldValue
   , fieldType
   , fieldSignature
-  , toFieldID
+  , toFieldId
   , traverseField
 
   , Method (..)
@@ -51,7 +51,7 @@ module Jvmhs.Data.Class
   , methodReturnType
   , methodArgumentTypes
   , methodSignature
-  , toMethodID
+  , toMethodId
   , traverseMethod
 
   -- * Helpers
@@ -201,11 +201,11 @@ traverseMethod taf tfn tfd tc tex ts g s =
   <*> (ts  g . _methodSignature $ s)
 {-# INLINE traverseMethod #-}
 
-toFieldID :: Getter Field FieldId
-toFieldID = to (\f -> fieldId (f^.fieldName) (f^.fieldDescriptor))
+toFieldId :: Getter Field FieldId
+toFieldId = to (\f -> B.FieldId (f^.fieldName) (f^.fieldDescriptor))
 
-toMethodID :: Getter Method MethodId
-toMethodID = to (\f -> methodId (f^.methodName) (f^.methodDescriptor))
+toMethodId :: Getter Method MethodId
+toMethodId = to (\f -> B.MethodId (f^.methodName) (f^.methodDescriptor))
 
 -- | A traversal of all Fields that uphold some getter.
 classFieldsWhere :: (Getter Field Bool) -> Traversal' Class Field
@@ -237,7 +237,7 @@ fromClassFile =
   <$> B.cThisClass
   <*> B.cSuperClass
   <*> B.cAccessFlags
-  <*> B.cInterfaces
+  <*> B.unSizedList . B.cInterfaces
   <*> map fromBField . B.cFields
   <*> map fromBMethod . B.cMethods
   <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
@@ -248,7 +248,7 @@ fromClassFile =
       <$> B.fAccessFlags
       <*> B.fName
       <*> B.fDescriptor
-      <*> (preview valueFromConstant . B.constantValue <=< B.fConstantValue)
+      <*> (Just . B.constantValue <=< B.fConstantValue)
       <*> fmap B.signatureToText . B.fSignature
 
     fromBMethod =
@@ -265,10 +265,10 @@ toClassFile (majorv, minorv) =
   B.ClassFile 0xCAFEBABE minorv majorv ()
     <$> B.BitSet . _classAccessFlags
 
-    <*> B.RefV . _className
-    <*> B.RefV . _classSuper
+    <*> _className
+    <*> _classSuper
 
-    <*> B.SizedList . map B.RefV . _classInterfaces
+    <*> B.SizedList . _classInterfaces
     <*> B.SizedList . map toBField . _classFields
     <*> B.SizedList . map toBMethod . _classMethods
     <*> ( B.ClassAttributes
@@ -282,24 +282,23 @@ toClassFile (majorv, minorv) =
     toBField =
       B.Field
         <$> B.BitSet . _fieldAccessFlags
-        <*> B.RefV . _fieldName
-        <*> B.RefV . _fieldDescriptor
+        <*> _fieldName
+        <*> _fieldDescriptor
         <*> ( B.FieldAttributes
                 <$> maybe [] (:[])
-                    . fmap (B.ConstantValue . B.DeepRef . B.RefV)
-                    . fmap (review valueFromConstant) . _fieldValue
+                    . fmap B.ConstantValue . _fieldValue
                 <*> maybe [] (:[]) . fmap B.signatureFromText . _fieldSignature
                 <*> pure [] )
 
     toBMethod =
       B.Method
         <$> unsafeCoerce . _methodAccessFlags
-        <*> B.RefV . _methodName
-        <*> B.RefV . _methodDescriptor
+        <*> _methodName
+        <*> _methodDescriptor
         <*> ( B.MethodAttributes
                 <$> maybe [] (:[]) . fmap toBinaryCode . _methodCode
                 <*> compress (B.Exceptions . B.SizedList)
-                    . fmap B.RefV . _methodExceptions
+                    . _methodExceptions
                 <*> maybe [] (:[]) . fmap B.signatureFromText. _methodSignature
                 <*> pure [] )
 
