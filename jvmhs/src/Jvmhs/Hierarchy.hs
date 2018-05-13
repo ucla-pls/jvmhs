@@ -80,6 +80,9 @@ newtype Hierarchy r a =
 
 class (MonadError HierarchyError m, Monad m) => MonadHierarchy m where
   loadClass :: ClassName -> m Class
+  saveClass :: Class -> m ()
+  -- | Behavior for changing classname in class is undefined.
+  modifyClass :: ClassName -> (Class -> Class) -> m ()
 
 saveHierarchyState :: FilePath -> HierarchyState r -> IO ()
 saveHierarchyState fp s =
@@ -140,6 +143,13 @@ instance ClassReader r => MonadHierarchy (Hierarchy r) where
             loadedClasses . at cn .= Just cls
             return cls
 
+  saveClass cls = do
+    loadedClasses . at (cls^.className) .= Just cls
+
+  modifyClass cn f = do
+    cls <- loadClass cn
+    saveClass (f cls)
+
 -- | An load action can be used as part of a lens to load a
 -- class.
 load
@@ -153,24 +163,3 @@ load' ::
      MonadHierarchy m
   => Action m ClassName (Either HierarchyError Class)
 load' = act (\cn -> catchError (Right <$> loadClass cn) (return . Left))
-
-
--- -- | Load a class and all it's dependencies into the hierarchy.
--- deepLoadClass
---   :: ClassReader r
---   => ClassName
---   -> Hierarchy r (Class, Set.Set ClassName)
--- deepLoadClass =
---   go Set.empty
---   where
---     go loaded cn
---       | cn `Set.member` loaded = do
---         cls <- loadClass cn
---         return (cls, loaded)
---       | otherwise = do
---         cls <- loadClass cn
---         l' <- foldM
---               (\l cn' -> snd <$> go l cn')
---               (Set.insert cn loaded)
---               (dependencies cls)
---         return (cls, l')
