@@ -76,11 +76,6 @@ type Package = [ Text.Text ]
 
 makeWrapped ''ClassName
 
--- | Create a class from a list of dots "java.lang.Object" returns
--- (ClassName "java/lang/Object")
-dotCls :: String -> ClassName
-dotCls s = (Text.splitOn "." $ Text.pack s)^.from splitClassName
-
 fullyQualifiedName :: Iso' ClassName Text.Text
 fullyQualifiedName = _Wrapped
 

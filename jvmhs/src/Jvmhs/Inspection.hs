@@ -77,7 +77,7 @@ instance Inspectable Code where
 instance Inspectable ByteCodeOpr where
   classNames g o =
     case o of
-      B.Push c            -> B.Push <$> classNames g c
+      B.Push c            -> B.Push <$> (traverse . classNames) g c
       B.Get fa c          -> B.Get fa <$> classNames g c
       B.Put fa c          -> B.Put fa <$> classNames g c
       B.Invoke r          -> B.Invoke <$> classNames g r
@@ -112,7 +112,7 @@ instance Inspectable (B.CConstant B.High) where
       B.CRef a x -> B.CRef a <$> classNames g x
       _          -> pure o
 
-instance Inspectable (B.Invokation B.High) where
+instance Inspectable (B.Invocation B.High) where
   classNames g o =
     case o of
       B.InvkSpecial r     -> B.InvkSpecial <$> classNames g r

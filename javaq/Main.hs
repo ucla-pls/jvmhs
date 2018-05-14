@@ -164,7 +164,7 @@ parseConfig args = do
         if isPresent args (command "-")
         then do (classnames' ++) . lines <$> getContents
         else return classnames'
-      return . map dotCls $ names
+      return . map strCls $ names
 
 main :: IO ()
 main = do
