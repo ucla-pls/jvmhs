@@ -21,7 +21,7 @@ import qualified Data.Set                             as S
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
-import           Jvmhs.Hierarchy
+import           Jvmhs.ClassPool
 
 import qualified Language.JVM                         as B
 import qualified Language.JVM.Attribute.StackMapTable as B
@@ -193,9 +193,9 @@ instance Inspectable JType where
       a          -> pure a
 
 -- | Computes the class closure in the current space.
--- It will only include classes known to the 'MonadHierarchy'.
+-- It will only include classes known to the 'MonadClassPool'.
 computeClassClosure ::
-  MonadHierarchy m
+  MonadClassPool m
   => S.Set ClassName
   -> m (S.Set ClassName, S.Set ClassName)
 computeClassClosure =

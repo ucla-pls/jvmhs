@@ -24,7 +24,7 @@ import qualified Data.Set                          as Set
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Type
-import           Jvmhs.Hierarchy
+import           Jvmhs.ClassPool
 import           Jvmhs.Inspection
 
 data Dependency
@@ -38,7 +38,7 @@ dependencyGraph
   :: forall r
    . ClassReader r
   => ClassName
-  -> Hierarchy r (Gr ClassName Dependency)
+  -> ClassPool r (Gr ClassName Dependency)
 dependencyGraph classname = do
   (ns, es) <- depthFirst depends classname
   let m = Map.fromList $ zip ns [1..]
@@ -100,7 +100,7 @@ depthFirst f =
 testIt :: IO ()
 testIt = do
   x <-
-    runHierarchyInClassPath
+    runClassPoolInClassPath
       [ "../../jvm-binary/test/data/project"]
       (dependencyGraph (strCls "Main"))
 

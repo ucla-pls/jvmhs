@@ -43,7 +43,7 @@ findRegressionTests filePath = do
 testRegressionClass :: FilePath -> ClassName -> TestTree
 testRegressionClass fp cn = do
   testCase (Text.unpack $ cn^.fullyQualifiedName) $ do
-    Right x <- runHierarchyInClassPathOnly [ fp ] $ loadClass cn
+    Right x <- runClassPoolInClassPathOnly [ fp ] $ loadClass cn
     writeClass "test/output" x
 
     let cp = (shell $ "java -cp test/output " ++ (Text.unpack $ cn^.fullyQualifiedName))
@@ -61,14 +61,14 @@ classpath = [ "test/data/classes" ]
 class_not_found :: TestTree
 class_not_found =
   testCase "Class Not Found Error" $ do
-    x <- runHierarchyInClassPathOnly classpath $ do
+    x <- runClassPoolInClassPathOnly classpath $ do
       loadClass (strCls "DoesNotExist")
     x @?= Left (ErrorWhileReadingClass (strCls "DoesNotExist") ClassNotFound)
 
 simple_test :: TestTree
 simple_test =
   testCaseSteps "Reading class file" $ \step -> do
-    eu <- runHierarchyInClassPathOnly classpath $ do
+    eu <- runClassPoolInClassPathOnly classpath $ do
       c <- loadClass (strCls "Simple")
       liftIO $ do
         step "Test that the class name is 'Simple'"
@@ -96,7 +96,7 @@ simple_test =
     case eu of
       Right c -> do
         step "Test if we can reread it"
-        e <- runHierarchyInClassPath ["test/output"] $ do
+        e <- runClassPoolInClassPath ["test/output"] $ do
           c' <- loadClass (strCls "Simple")
           liftIO $ c @?= c'
         e @?= Right ()
@@ -106,7 +106,7 @@ simple_test =
 writing_test :: TestTree
 writing_test =
   testCase "Altering a class file" $ do
-    eu <- runHierarchyInClassPathOnly classpath $ do
+    eu <- runClassPoolInClassPathOnly classpath $ do
       c <- loadClass (strCls "Simple")
       liftIO $ do
         -- Rename class in all contents of the class
@@ -124,7 +124,7 @@ writing_test =
 
     case eu of
       Right u -> do
-        e <- runHierarchyInClassPath ["test/output"] $ do
+        e <- runClassPoolInClassPath ["test/output"] $ do
           u' <- loadClass (strCls "test/Updated")
           liftIO $ u @?= u'
         e @?= Right ()
