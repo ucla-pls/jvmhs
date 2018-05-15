@@ -28,6 +28,7 @@ module Jvmhs.Data.Class
   , classMethods
   , classBootstrapMethods
   , classSignature
+  , classVersion
   , traverseClass
 
   , dependencies
@@ -75,6 +76,7 @@ import           Control.DeepSeq
 import           Control.Lens
 import           Control.Monad
 import           Data.Aeson
+import           Data.Maybe
 import           Data.Aeson.TH
 import qualified Data.Set                                as Set
 import qualified Data.Text                               as Text
@@ -94,6 +96,7 @@ import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
 import           Jvmhs.LensHelpers
 
+
 -- This is the class
 data Class = Class
   { _className             :: ClassName
@@ -111,6 +114,8 @@ data Class = Class
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
   , _classSignature        :: Maybe Text.Text
+  , _classVersion          :: Maybe (Word16, Word16)
+  -- ^ the version of the class file
   } deriving (Eq, Show, Generic, NFData)
 
 -- This is the field
@@ -165,6 +170,7 @@ traverseClass tcn tsn taf tis tfs tms tbs tss g s =
   <*> (tms g . _classMethods $ s)
   <*> (tbs g . _classBootstrapMethods $ s)
   <*> (tss g . _classSignature $ s)
+  <*> (pure $ _classVersion s)
 {-# INLINE traverseClass #-}
 
 traverseField ::
@@ -230,7 +236,6 @@ dependencies :: Class -> [ ClassName ]
 dependencies cls =
   cls ^. classSuper : cls ^. classInterfaces
 
-
 fromClassFile :: B.ClassFile B.High -> Class
 fromClassFile =
   Class
@@ -242,6 +247,7 @@ fromClassFile =
   <*> map fromBMethod . B.cMethods
   <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
   <*> fmap B.signatureToText . B.cSignature
+  <*> (Just <$> ((,) <$> B.cMajorVersion <*> B.cMinorVersion))
   where
     fromBField =
       Field
@@ -260,10 +266,13 @@ fromClassFile =
       <*> B.mExceptions
       <*> fmap B.signatureToText . B.mSignature
 
-toClassFile :: (Word16, Word16) -> Class -> B.ClassFile B.High
-toClassFile (majorv, minorv) =
-  B.ClassFile 0xCAFEBABE minorv majorv ()
-    <$> B.BitSet . _classAccessFlags
+toClassFile :: Class -> B.ClassFile B.High
+toClassFile =
+  B.ClassFile 0xCAFEBABE
+    <$> fromMaybe 0 . fmap snd . _classVersion
+    <*> fromMaybe 52 . fmap fst . _classVersion
+    <*> (pure ())
+    <*> B.BitSet . _classAccessFlags
 
     <*> _className
     <*> _classSuper
@@ -308,7 +317,7 @@ toClassFile (majorv, minorv) =
 
 -- | An Isomorphism between classfiles and checked classes.
 isoBinary :: Iso' (B.ClassFile B.High) Class
-isoBinary = iso fromClassFile (toClassFile (52,0))
+isoBinary = iso fromClassFile toClassFile
 
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)

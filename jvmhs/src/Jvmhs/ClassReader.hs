@@ -30,6 +30,7 @@ module Jvmhs.ClassReader
 
   , ClassLoader (..)
   , fromClassPath
+  , fromClassPathOnly
   , fromJreFolder
   , paths
 
@@ -152,7 +153,7 @@ writeClass ::
 writeClass fp c = do
   let path = pathOfClass fp $ c^.className
   createDirectoryIfMissing True (takeDirectory path)
-  let clf = (toClassFile (52,0) c)
+  let clf = (toClassFile c)
   BL.writeFile path $ B.writeClassFile clf
 
 -- | Writes some classes to the filepath. If the filepath
@@ -176,7 +177,7 @@ addClassToArchive c =
   addEntryToArchive $ toEntry
     (Text.unpack (c^.className.fullyQualifiedName) ++ ".class")
     0
-    (B.writeClassFile $ toClassFile (52,0) c)
+    (B.writeClassFile $ toClassFile c)
 
 -- | Read a checked class from a class reader.
 readClass
@@ -324,6 +325,11 @@ splitClassPath = split ':'
 fromClassPath :: [ FilePath ] -> IO ClassLoader
 fromClassPath fps = do
   fromJreFolder fps =<< guessJre
+
+-- | Creates a 'ClassLoader' from a class path.
+fromClassPathOnly :: [ FilePath ] -> ClassLoader
+fromClassPathOnly fps =
+  ClassLoader [] [] fps
 
 guessJre :: IO FilePath
 guessJre = do

@@ -105,9 +105,7 @@ testIt = do
       (dependencyGraph (strCls "Main"))
 
   case x of
-    Right (gr, _) -> do
-      -- prettyPrint gr
-
+    Right gr -> do
       let dot = fglToDotString (bimap (Text.unpack . view fullyQualifiedName) show gr)
       writeFile "test.dot" (showDot dot)
 

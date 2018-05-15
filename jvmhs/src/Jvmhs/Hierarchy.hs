@@ -22,6 +22,7 @@ module Jvmhs.Hierarchy
   , runHierarchy
   , runHierarchy'
   , runHierarchyInClassPath
+  , runHierarchyInClassPathOnly
 
   , HierarchyState (..)
   , saveHierarchyState
@@ -118,14 +119,22 @@ runHierarchy'
 runHierarchy' (Hierarchy h) =
   runExceptT . runStateT h
 
+runHierarchyInClassPathOnly
+  :: [ FilePath ]
+  -> Hierarchy ClassPreloader a
+  -> IO (Either HierarchyError a)
+runHierarchyInClassPathOnly cp hc = do
+  p <- preload $ fromClassPathOnly cp
+  fmap fst <$> runHierarchy' hc (emptyState p)
+
 runHierarchyInClassPath
   :: [ FilePath ]
   -> Hierarchy ClassPreloader a
-  -> IO (Either HierarchyError (a, HierarchyState ClassPreloader))
+  -> IO (Either HierarchyError a)
 runHierarchyInClassPath cp hc = do
   ld <- fromClassPath cp
   p <- preload ld
-  runHierarchy' hc (emptyState p)
+  fmap fst <$> runHierarchy' hc (emptyState p)
 
 instance ClassReader r => MonadHierarchy (Hierarchy r) where
   loadClass cn = do
