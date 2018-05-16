@@ -2,16 +2,19 @@
 module Jvmhs.Analysis.HierarchyTest where
 
 import SpecHelper
-
 import Data.Graph.Inductive.Graph
-
 import Jvmhs
 
-unit_Calculate_simple_hierarchy :: IO ()
-unit_Calculate_simple_hierarchy = do
-  e <- runTestClassPool $ do
-    x <- calculateHierarchy ["Extended", "Simple"]
+spec_hierachy_functions :: SpecWith ()
+spec_hierachy_functions = before rtcp $ do
+  it "can find the subclasses of 'java.lang.Object'" $ \ hry -> do
+    subclasses hry "java.lang.Object" `shouldBe` ["Simple", "Extended"]
 
-    liftIO $ prettyPrint (x^.hryExtends)
+  it "can find the superclasses of 'Extended'" $ \ hry -> do
+    superclasses hry "Extended" `shouldBe` ["Simple", "java.lang.Object"]
 
-  e `shouldBe` Right ()
+  where
+    rtcp = do
+      Right hry <- runTestClassPool $
+        calculateHierarchy ["Extended", "Simple"]
+      return hry

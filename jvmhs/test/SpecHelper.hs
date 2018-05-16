@@ -6,12 +6,16 @@ module SpecHelper
   , module Control.Lens
 
   , liftIO
+  , it
+  , SpecWith
+  , before
 
   , classpath
   , runTestClassPool
   ) where
 
 import Test.Tasty
+import Test.Tasty.Hspec
 import Test.Hspec.Expectations.Pretty
 import Test.Tasty.QuickCheck
 import Control.Monad.IO.Class
