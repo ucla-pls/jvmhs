@@ -5,10 +5,12 @@ module Jvmhs
   , module Jvmhs.ClassPool
   , module Jvmhs.ClassReader
   , module Jvmhs.Inspection
+  , module Jvmhs.Analysis.Hierarchy
   ) where
 
-import Jvmhs.Data.Class
-import Jvmhs.Data.Type
-import Jvmhs.ClassPool
-import Jvmhs.ClassReader
-import Jvmhs.Inspection
+import           Jvmhs.Analysis.Hierarchy
+import           Jvmhs.ClassPool
+import           Jvmhs.ClassReader
+import           Jvmhs.Data.Class
+import           Jvmhs.Data.Type
+import           Jvmhs.Inspection

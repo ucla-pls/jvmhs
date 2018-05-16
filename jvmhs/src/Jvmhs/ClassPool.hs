@@ -4,7 +4,7 @@ Copyright   : (c) Christian Gram Kalhauge, 2017
 License     : MIT
 Maintainer  : kalhuage@cs.ucla.edu
 
-This module defines a class ClassPool. The class hierarchy, contains
+This module defines a class ClassPool. The class 'MonadClassPool', contains
 every class loaded by the program.
 -}
 {-# LANGUAGE FlexibleContexts #-}

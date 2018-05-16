@@ -48,4 +48,14 @@ tests:
     dependencies:
       - jvmhs
       - tasty
+      - tasty-hspec
       - tasty-hunit
+      - tasty-discover
+      - tasty-quickcheck
+      - QuickCheck
+      - filepath
+      - directory
+      - text
+      - generic-random
+      - hspec-expectations-pretty-diff
+
