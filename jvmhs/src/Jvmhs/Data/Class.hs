@@ -56,7 +56,10 @@ module Jvmhs.Data.Class
   , traverseMethod
 
   -- * Helpers
+  , classField
   , classFieldsWhere
+  , classMethod
+  , classMethodsWhere
 
   -- * Converters
   , fromClassFile
@@ -96,8 +99,7 @@ import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
 import           Jvmhs.LensHelpers
 
-
--- This is the class
+-- | This is the class
 data Class = Class
   { _className             :: ClassName
   -- ^ the name of the class
@@ -118,7 +120,7 @@ data Class = Class
   -- ^ the version of the class file
   } deriving (Eq, Show, Generic, NFData)
 
--- This is the field
+-- | This is the field
 data Field = Field
   { _fieldAccessFlags :: Set.Set FAccessFlag
   -- ^ the set of access flags
@@ -131,7 +133,7 @@ data Field = Field
   , _fieldSignature   :: Maybe Text.Text
   } deriving (Eq, Show, Generic, NFData)
 
--- This is the method
+-- | This is the method
 data Method = Method
   { _methodAccessFlags :: Set.Set MAccessFlag
   -- ^ the set of access flags
@@ -207,15 +209,29 @@ traverseMethod taf tfn tfd tc tex ts g s =
   <*> (ts  g . _methodSignature $ s)
 {-# INLINE traverseMethod #-}
 
+-- | get the 'FieldId' from a 'Field'.
 toFieldId :: Getter Field FieldId
-toFieldId = to (\f -> B.FieldId (f^.fieldName) (f^.fieldDescriptor))
-
-toMethodId :: Getter Method MethodId
-toMethodId = to (\f -> B.MethodId (f^.methodName) (f^.methodDescriptor))
+toFieldId = to (\f -> B.FieldId $ B.NameAndType (f^.fieldName) (f^.fieldDescriptor))
 
 -- | A traversal of all Fields that uphold some getter.
 classFieldsWhere :: (Getter Field Bool) -> Traversal' Class Field
 classFieldsWhere f = classFields.traverse.which f
+
+-- | Get a Field where
+classField :: FieldId -> Traversal' Class Field
+classField fd = classFieldsWhere (toFieldId . to (==fd))
+
+-- | get the 'MethodId' from a 'Method'.
+toMethodId :: Getter Method MethodId
+toMethodId = to (\f -> B.MethodId $ B.NameAndType (f^.methodName) (f^.methodDescriptor))
+
+-- | A traversal of all Methods that uphold some getter.
+classMethodsWhere :: (Getter Method Bool) -> Traversal' Class Method
+classMethodsWhere f = classMethods.traverse.which f
+
+-- | Get a Method where
+classMethod :: MethodId -> Traversal' Class Method
+classMethod fd = classMethodsWhere (toMethodId . to (==fd))
 
 -- | Get the type of field
 fieldType :: Lens' Field JType
@@ -227,6 +243,7 @@ methodArgumentTypes :: Lens' Method [JType]
 methodArgumentTypes =
   methodDescriptor . methodDArguments
 
+-- | Get the return type
 methodReturnType :: Lens' Method (Maybe JType)
 methodReturnType =
   methodDescriptor . methodDReturnType

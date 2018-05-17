@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-
 Module      : Jvmhs.Analysis.Hierarchy
 Copyright   : (c) Christian Gram Kalhauge, 2017
@@ -13,15 +14,18 @@ module Jvmhs.Analysis.Hierarchy
   -- * Hierachy
 
   -- ** Creation
-    Hierarchy(..)
-  , hryNodes
-  , hryImplements
-  , hryExtends
+    Hierarchy -- (..)
+  -- , hryNodes
+  -- , hryImplements
+  -- , hryExtends
   , calculateHierarchy
 
   -- ** Accesses
-  , subclasses
   , superclasses
+  , implementations
+
+  -- ** Helpers
+  , fieldFromId
   ) where
 
 
@@ -38,15 +42,19 @@ import           Jvmhs.ClassPool
 import           Jvmhs.Data.Type
 import           Jvmhs.Data.Class
 
+data HEdge
+  = Implement
+  | Extend
+  deriving (Show, Ord, Eq)
+
 -- | The class hierarchy analysis results in two graphs, a implements graph and
 -- an extends graph.
 data Hierarchy = Hierarchy
   { _hryNodes      :: NodeMap ClassName
-  , _hryExtends    :: Gr ClassName ()
-  , _hryImplements :: Gr ClassName ()
+  , _hryGraph      :: Gr ClassName HEdge
   } deriving (Show, Eq)
 
-makeLenses ''Hierarchy
+-- makeLenses ''Hierarchy
 
 -- | Given a foldable structure over 'ClassName's compute a Hierarchy.
 calculateHierarchy ::
@@ -54,33 +62,28 @@ calculateHierarchy ::
   => t ClassName
   -> m Hierarchy
 calculateHierarchy clss = do
-  (classNames, supers, interfaces) <- clss ^! folded . load . to collection
+  (classNames, hierachy) <- clss ^! folded . load . to collection
   let
     (nodes_, nodeMap) = mkNodes new classNames
-    Just superEdges = mkEdges nodeMap supers
-    Just interfaceEdges = mkEdges nodeMap interfaces
-  return $
-    Hierarchy
-      nodeMap
-      (mkGraph nodes_ superEdges)
-      (mkGraph nodes_ interfaceEdges)
+    Just edges_ = mkEdges nodeMap hierachy
+  return $ Hierarchy nodeMap (mkGraph nodes_ edges_)
   where
     collection cls =
+      let toedge x = to (cls^.className,,x) in
       ( toListOf (className <> classSuper <> classInterfaces.folded) cls
-      , cls^..classSuper.to (cls^.className,,())
-      , cls^..classInterfaces.folded.to (cls^.className,,())
+      , toListOf (classSuper.toedge Extend <> classInterfaces.folded.toedge Implement) cls
       )
 
--- | Given a Hierarchy, determine the subclasses of a class.
-subclasses ::
-     Hierarchy
-  -> ClassName
-  -> [ClassName]
-subclasses hry cln =
-  tail $ rdfs [nodeOf cln] graph ^.. folded . to (lab graph) . _Just
-  where
-    graph = (hry^.hryExtends)
-    nodeOf = fst . mkNode_ (hry^.hryNodes)
+nodeOf :: Hierarchy -> ClassName -> Node
+nodeOf hry = fst . mkNode_ (_hryNodes hry)
+
+-- -- | Given a Hierarchy, determine the subclasses of a class.
+-- subclasses ::
+--      Hierarchy
+--   -> ClassName
+--   -> [ClassName]
+-- subclasses hry@(Hierarchy _ graph) cln =
+--   tail $ rdfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
 
 -- | Given a Hierarchy, determine the superclasses of a class.
 -- The returned list is in order as they appear in the class hierarchy.
@@ -88,8 +91,54 @@ superclasses ::
      Hierarchy
   -> ClassName
   -> [ClassName]
-superclasses hry cln =
-  tail $ dfs [nodeOf cln] graph ^.. folded . to (lab graph) . _Just
-  where
-    graph = (hry^.hryExtends)
-    nodeOf = fst . mkNode_ (hry^.hryNodes)
+superclasses hry@(Hierarchy _ graph) cln =
+  tail $ dfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
+
+-- | Returns a list of all classes that implement some interface, or extends
+-- a class.
+implementations ::
+  Hierarchy
+  -> ClassName
+  -> [ClassName]
+implementations hry@(Hierarchy _ graph) cln =
+  tail $ rdfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
+
+-- -- | Returns a list of all interfaces that a class implements.
+-- superinterfaces ::
+--   Hierarchy
+--   -> ClassName
+--   -> [ClassName]
+-- superinterfaces hry@(Hierarchy _ graph) cln =
+--   tail $ dfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
+
+
+-- | Get the class in which the field resides. The function
+-- searches from the class
+fieldFromId ::
+  MonadClassPool m
+  => FieldId
+  -> ClassName
+  -> m (Maybe (ClassName, Field))
+fieldFromId fid cn =
+  flip catchError (const $ return Nothing) $ do
+    if cn == "java.lang.Object"
+      then return Nothing
+      else do
+        cls <- loadClass cn
+        case cls ^? classField fid of
+          Just f ->
+            return $ Just (cn, f)
+          Nothing
+            -> fieldFromId fid (cls^.classSuper)
+
+-- -- | Get the class in which the method resides.
+-- classOfField ::
+--   MonadClassPool m
+--   => ClassName
+--   -> FieldId
+--   -> m ClassName
+-- classOfField cn fid = do
+--   cls <- loadClass cn
+--   if has (classField fid) cls
+--     then return $ cn
+--     else classOfField (cls^.superClass) fid

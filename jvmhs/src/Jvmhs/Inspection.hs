@@ -143,13 +143,15 @@ instance Inspectable (B.AbsFieldId B.High) where
   classNames g (B.InClass cn ci) =
     B.InClass <$> g cn <*> classNames g ci
 
-instance Inspectable (B.FieldId B.High) where
-  classNames g (B.FieldId n d) =
-    B.FieldId n <$> classNames g d
+instance Inspectable (B.FieldId) where
+  classNames g (B.FieldId d) = B.FieldId <$> classNames g d
 
-instance Inspectable (B.MethodId B.High) where
-  classNames g (B.MethodId n d) =
-    B.MethodId n <$> classNames g d
+instance Inspectable (B.MethodId) where
+  classNames g (B.MethodId d) = B.MethodId <$> classNames g d
+
+instance Inspectable a => Inspectable (B.NameAndType a) where
+  classNames g (B.NameAndType n d) =
+    B.NameAndType n <$> classNames g d
 
 instance Inspectable (B.AbsInterfaceMethodId B.High) where
   classNames g (B.AbsInterfaceMethodId (B.InClass cn ci)) =

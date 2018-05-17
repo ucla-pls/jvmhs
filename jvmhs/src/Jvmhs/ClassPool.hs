@@ -12,6 +12,7 @@ every class loaded by the program.
 {-# LANGUAGE GeneralizedNewtypeDeriving  #-}
 module Jvmhs.ClassPool
   ( MonadClassPool (..)
+  , loadClass'
 
   , ClassPoolError (..)
   , heClassName
@@ -34,6 +35,7 @@ module Jvmhs.ClassPool
   , load'
   , (^!!)
   , (^!)
+  , module Control.Monad.Except
   ) where
 
 -- import           Control.Monad          (foldM)
@@ -158,6 +160,18 @@ instance ClassReader r => MonadClassPool (ClassPool r) where
   modifyClass cn f = do
     cls <- loadClass cn
     saveClass (f cls)
+
+-- | LoadClass'
+loadClass' ::
+  MonadClassPool m
+  =>
+  ClassName
+  -> m (Maybe Class)
+loadClass' cn =
+  catchError
+    (Just <$> loadClass cn)
+    (pure . const Nothing)
+
 
 -- | An load action can be used as part of a lens to load a
 -- class.

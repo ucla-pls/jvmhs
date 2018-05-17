@@ -35,18 +35,18 @@ module Jvmhs.Data.Type
 
   , MethodId
   , methodId
-  , methodIdName
-  , methodIdDescriptor
-  , methodIdToText
+  -- , methodIdName
+  -- , methodIdDescriptor
+  -- , methodIdToText
 
   , FieldDescriptor (..)
   , fieldDType
 
   , FieldId
   , fieldId
-  , fieldIdName
-  , fieldIdDescriptor
-  , fieldIdToText
+  -- , fieldIdName
+  -- , fieldIdDescriptor
+  -- , fieldIdToText
 
   , JType (..)
   , JValue (..)
@@ -59,14 +59,14 @@ module Jvmhs.Data.Type
 import           Control.Lens
 import           Data.Aeson
 import           Data.Aeson.TH
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as C
 import           Data.Char
-import qualified Data.Text               as Text
-import qualified Data.ByteString         as BS
-import qualified Data.ByteString.Char8   as C
+import qualified Data.Text as Text
 
 import           Language.JVM.AccessFlag
-import           Language.JVM.Constant   hiding (FieldId, MethodId, MethodHandle)
-import qualified Language.JVM.Constant   as B
+import           Language.JVM.Constant hiding (FieldId, MethodId, MethodHandle)
+import qualified Language.JVM.Constant as B
 import           Language.JVM.Type
 -- import           Language.JVM.Utils
 
@@ -128,21 +128,22 @@ fieldDType =
 
 -- * Value
 
-type FieldId = B.FieldId High
-type MethodId = B.MethodId High
+type FieldId = B.FieldId
+type MethodId = B.MethodId
+
 type MethodHandle = B.MethodHandle High
 
 methodId :: Text.Text -> MethodDescriptor -> MethodId
-methodId = B.MethodId
+methodId t d = B.MethodId $ B.NameAndType t d
 
 fieldId :: Text.Text -> FieldDescriptor -> FieldId
-fieldId = B.FieldId
+fieldId t d = B.FieldId $ B.NameAndType t d
 
 instance ToJSON FieldId where
-  toJSON = String . fieldIdToText
+  toJSON (B.FieldId f) = String . toText $ f
 
 instance ToJSON MethodId where
-  toJSON = String . methodIdToText
+  toJSON (B.MethodId m) = String . toText $ m
 
 -- * Instances
 
@@ -153,10 +154,10 @@ instance FromJSON ClassName where
   parseJSON = withText "ClassName" (return . ClassName)
 
 instance ToJSON FieldDescriptor where
-  toJSON = String . fieldDescriptorToText
+  toJSON = String . toText
 
 instance ToJSON MethodDescriptor where
-  toJSON = String . methodDescriptorToText
+  toJSON = String . toText
 
 instance ToJSON BS.ByteString where
   toJSON = String . Text.pack . C.unpack
