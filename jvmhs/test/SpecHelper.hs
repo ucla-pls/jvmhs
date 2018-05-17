@@ -14,6 +14,7 @@ module SpecHelper
   , classpath
   , runTestClassPool
   , runTestClassPool'
+  , runTestClassPoolFromPath
   , beforeClassPool
   ) where
 
@@ -32,6 +33,7 @@ classpath :: [ FilePath ]
 classpath =
   [ "test/data/classes" ]
 
+
 runTestClassPool ::
   ClassPool ClassPreloader a
   -> IO (Either ClassPoolError a)
@@ -44,6 +46,15 @@ runTestClassPool' ::
 runTestClassPool' scpt = do
   Right x <- runTestClassPool scpt
   return x
+
+
+runTestClassPoolFromPath ::
+  [ FilePath ]
+  -> ClassPool ClassPreloader a
+  -> IO a
+runTestClassPoolFromPath path scpt = do
+   Right x <- (runClassPoolInClassPathOnly path) scpt
+   return x
 
 beforeClassPool ::
   ClassPool ClassPreloader a

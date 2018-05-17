@@ -4,11 +4,26 @@ module Jvmhs.Analysis.ReduceTest where
 import SpecHelper
 import Data.Graph.Inductive.Graph
 import Jvmhs
+import Jvmhs.Analysis.Reduce
 
-spec_reduce :: SpecWith ()
-spec_reduce = do
-  it "should show up as a test" $ do
-    1 `shouldBe` (1 :: Int)
+outputPath :: FilePath
+outputPath = "test/output/interface"
+
+
+afterReduceInterface :: SpecWith () -> Spec
+afterReduceInterface = before $ reduceInterface classpath outputPath "SimpleI"
+
+spec_reduce :: Spec
+spec_reduce = afterReduceInterface $ do
+  let getInterfaces className = runTestClassPoolFromPath [outputPath] $ do
+        cls <- loadClass className
+        return (cls ^. classInterfaces)
+
+  it "after removing interfaces, Itfc2 should replaced by ItfcParent" $ do
+      x <- getInterfaces "SimpleI"
+      x `shouldBe` ["ItfcParent", "Itfc"]
+
+
   -- before rtcp $ do
   -- it "can find the subclasses of 'java.lang.Object'" $ \ hry -> do
   --   subclasses hry "java.lang.Object" `shouldBe` ["Simple", "Extended"]
@@ -21,3 +36,6 @@ spec_reduce = do
   --     Right hry <- runTestClassPool $
   --       calculateHierarchy ["Extended", "Simple"]
   --     return hry
+
+
+
