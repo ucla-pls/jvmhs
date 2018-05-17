@@ -25,7 +25,10 @@ module Jvmhs.Analysis.Hierarchy
   , implementations
 
   -- ** Helpers
+  , classNameOfFieldId
   , fieldFromId
+  , classNameOfMethodId
+  , methodFromId
   ) where
 
 
@@ -111,6 +114,15 @@ implementations hry@(Hierarchy _ graph) cln =
 -- superinterfaces hry@(Hierarchy _ graph) cln =
 --   tail $ dfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
 
+-- | Get the class name of the containing class of a field id.
+-- This is delegates to 'fieldFromId'.
+classNameOfFieldId ::
+  MonadClassPool m
+  => FieldId
+  -> ClassName
+  -> m (Maybe ClassName)
+classNameOfFieldId fid cn =
+  fmap (view (_1.className)) <$> fieldFromId fid cn
 
 -- | Get the class in which the field resides. The function
 -- searches from the class
@@ -118,18 +130,47 @@ fieldFromId ::
   MonadClassPool m
   => FieldId
   -> ClassName
-  -> m (Maybe (ClassName, Field))
+  -> m (Maybe (Class, Field))
 fieldFromId fid cn =
   flip catchError (const $ return Nothing) $ do
-    if cn == "java.lang.Object"
-      then return Nothing
-      else do
-        cls <- loadClass cn
-        case cls ^? classField fid of
-          Just f ->
-            return $ Just (cn, f)
-          Nothing
-            -> fieldFromId fid (cls^.classSuper)
+    cls <- loadClass cn
+    case cls ^? classField fid of
+      Just f ->
+        return $ Just (cls, f)
+      Nothing
+        | cn /= "java.lang.Object"
+          -> fieldFromId fid (cls^.classSuper)
+        | otherwise
+          -> return $ Nothing
+
+-- | Get the class name of the containing class of a method id.
+-- This is delegates to 'methodFromId'.
+classNameOfMethodId ::
+  MonadClassPool m
+  => MethodId
+  -> ClassName
+  -> m (Maybe ClassName)
+classNameOfMethodId fid cn =
+  fmap (view (_1.className)) <$> methodFromId fid cn
+
+-- | Get the class name and the method of the method id. Starting
+-- the search from a class, and proceeds through.
+methodFromId ::
+  MonadClassPool m
+  => MethodId
+  -> ClassName
+  -> m (Maybe (Class, Method))
+methodFromId fid cn =
+  flip catchError (const $ return Nothing) $ do
+    cls <- loadClass cn
+    case cls ^? classMethod fid of
+      Just f ->
+        return $ Just (cls, f)
+      Nothing
+        | cn /= "java.lang.Object"
+          -> methodFromId fid (cls^.classSuper)
+        | otherwise
+          -> return Nothing
 
 -- -- | Get the class in which the method resides.
 -- classOfField ::

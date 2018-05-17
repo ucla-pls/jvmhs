@@ -8,4 +8,11 @@ public class Simple {
           System.out.println(y);
       }
   }
+
+  public void method2() {
+  }
+
+  public int method3 (int x) {
+    return 0;
+  }
 }
