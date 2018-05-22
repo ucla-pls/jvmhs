@@ -7,7 +7,8 @@ Copyright   : (c) Christian Gram Kalhauge, 2017
 License     : MIT
 Maintainer  : kalhuage@cs.ucla.edu
 
-This module defines the a class hierarchy analysis.
+This module defines the a class hierarchy analysis. Most of the functions in
+this module expects a type checking hierarchy.
 -}
 module Jvmhs.Analysis.Hierarchy
   (
@@ -20,15 +21,20 @@ module Jvmhs.Analysis.Hierarchy
   -- , hryExtends
   , calculateHierarchy
 
-  -- ** Accesses
+  -- ** Classes
   , superclasses
   , implementations
 
-  -- ** Helpers
+  -- ** Fields
   , classNameOfFieldId
   , fieldFromId
+
+  -- ** Methods
   , classNameOfMethodId
   , methodFromId
+  , methodImpls'
+  , methodImpls
+
   ) where
 
 
@@ -36,6 +42,7 @@ import           Control.Lens
 
 import           Data.Monoid
 -- import           Data.Set
+import           Data.Graph.Inductive.Basic
 import           Data.Graph.Inductive.Graph
 import           Data.Graph.Inductive.PatriciaTree
 import           Data.Graph.Inductive.NodeMap
@@ -80,14 +87,6 @@ calculateHierarchy clss = do
 nodeOf :: Hierarchy -> ClassName -> Node
 nodeOf hry = fst . mkNode_ (_hryNodes hry)
 
--- -- | Given a Hierarchy, determine the subclasses of a class.
--- subclasses ::
---      Hierarchy
---   -> ClassName
---   -> [ClassName]
--- subclasses hry@(Hierarchy _ graph) cln =
---   tail $ rdfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
-
 -- | Given a Hierarchy, determine the superclasses of a class.
 -- The returned list is in order as they appear in the class hierarchy.
 superclasses ::
@@ -95,24 +94,16 @@ superclasses ::
   -> ClassName
   -> [ClassName]
 superclasses hry@(Hierarchy _ graph) cln =
-  tail $ dfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
+  tail $ dfs [nodeOf hry cln] (elfilter (==Extend) graph) ^.. folded . to (lab graph) . _Just
 
 -- | Returns a list of all classes that implement some interface, or extends
--- a class.
+-- a class, including the class itself.
 implementations ::
   Hierarchy
   -> ClassName
   -> [ClassName]
 implementations hry@(Hierarchy _ graph) cln =
-  tail $ rdfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
-
--- -- | Returns a list of all interfaces that a class implements.
--- superinterfaces ::
---   Hierarchy
---   -> ClassName
---   -> [ClassName]
--- superinterfaces hry@(Hierarchy _ graph) cln =
---   tail $ dfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
+  rdfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
 
 -- | Get the class name of the containing class of a field id.
 -- This is delegates to 'fieldFromId'.
@@ -172,14 +163,26 @@ methodFromId fid cn =
         | otherwise
           -> return Nothing
 
--- -- | Get the class in which the method resides.
--- classOfField ::
---   MonadClassPool m
---   => ClassName
---   -> FieldId
---   -> m ClassName
--- classOfField cn fid = do
---   cls <- loadClass cn
---   if has (classField fid) cls
---     then return $ cn
---     else classOfField (cls^.superClass) fid
+-- | Returns all list of pairs of classes and methods that has
+-- the same id as the method id.
+-- Note: To check if the method actually has an implementation then use 'methodImpl'
+methodImpls' ::
+  MonadClassPool m
+  => Hierarchy
+  -> MethodId
+  -> ClassName
+  -> m [(Class, Method)]
+methodImpls' hry mid cn = do
+  implementations hry cn ^!! traverse.load.to mpair._Just
+  where mpair cls = (cls,) <$> (cls ^? classMethod mid)
+
+-- | Like 'methodImpls'' with the extra check that all the methods has code
+-- executable.
+methodImpls ::
+  MonadClassPool m
+  => Hierarchy
+  -> MethodId
+  -> ClassName
+  -> m [(Class, Method)]
+methodImpls hry mid cn =
+  toListOf (folded.filtered(has $ _2.methodCode._Just)) <$> methodImpls' hry mid cn

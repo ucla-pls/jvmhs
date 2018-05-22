@@ -409,7 +409,7 @@ instance ClassReader ClassPreloader where
   getClassBytes (ClassPreloader cm) cn =
     case Map.lookup cn cm of
       Just (con:_) ->
-        -- ^ Needs to be at least one container, we choose the first.
+        -- Needs to be at least one container, we choose the first.
         getClassBytes con cn
       _ ->
         return $ Left ClassNotFound

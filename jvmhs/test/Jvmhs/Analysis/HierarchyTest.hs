@@ -11,10 +11,10 @@ withHierarchy = beforeClassPool $
 spec_implementations :: Spec
 spec_implementations = withHierarchy $ do
   it "can find the subclasses of 'java.lang.Object'" $ \hry -> do
-    implementations hry "java.lang.Object" `shouldBe` ["Simple", "Extended"]
+    implementations hry "java.lang.Object" `shouldBe` ["java.lang.Object", "Simple", "Extended"]
 
   it "can find that 'Extended' has no subclasses" $ \hry -> do
-    implementations hry "Extended" `shouldBe` []
+    implementations hry "Extended" `shouldBe` ["Extended"]
 
 spec_superclasses :: Spec
 spec_superclasses = withHierarchy $ do
@@ -60,3 +60,14 @@ spec_methodFromId = do
   it "will not find unknown methods" $ do
     x <- runClassNameOf "undefined:()V" "Extended"
     x `shouldBe` Nothing
+
+spec_methodImpls :: Spec
+spec_methodImpls = withHierarchy $ do
+  let runMethodImpls hry mid cl = runTestClassPool' $ methodImpls hry mid cl
+  it "finds two implementations of method3:(I)I" $ \hry -> do
+    x <- runMethodImpls hry "method3:(I)I" "Simple"
+    x `shouldSatisfy` (== 2) . length
+
+  it "finds two implementations from interface" $ \hry -> do
+    x <- runMethodImpls hry "method4:()V" "Interface"
+    x `shouldSatisfy` (== 1) . length

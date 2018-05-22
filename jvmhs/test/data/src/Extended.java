@@ -1,4 +1,4 @@
-public class Extended extends Simple {
+public class Extended extends Simple implements Interface {
   public int extField = 0;
 
   public void method1 () {
@@ -8,5 +8,9 @@ public class Extended extends Simple {
   @Override
   public int method3 (int x) {
     return x;
+  }
+
+  @Override
+  public void method4 () {
   }
 }
