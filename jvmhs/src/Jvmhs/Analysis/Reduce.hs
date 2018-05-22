@@ -12,71 +12,62 @@ This module defines the a class hierarchy analysis.
 module Jvmhs.Analysis.Reduce
   where
 
-import            Control.Monad.IO.Class
 import            Control.Lens
 import            Jvmhs
-import            Jvmhs.Data.Code
 import            Data.Foldable
-import            Data.Traversable
-import            Data.Int
-import            Data.Word
-import            Data.Text.Internal
-import            Data.List
 
 import qualified Data.Set                             as S
-
-import qualified Language.JVM                         as B
-import qualified Language.JVM.Attribute.Code          as B
-import qualified Language.JVM.Attribute.StackMapTable as B
-import qualified Language.JVM.Constant                as B
-import qualified Language.JVM.Stage                   as B
+import qualified Data.Map                             as M
 
 
-findMethod :: Class -> MethodId -> Maybe Method
-findMethod cls mid =
-  preview (classMethods.folded.filtered(view $ toMethodId.to(== mid))) cls
+findUnusedInterfaces ::
+    (Foldable t, MonadClassPool m)
+  => t ClassName
+  -- ^ A world to search for interfaces
+  -> m (M.Map ClassName (S.Set ClassName))
+  -- ^ A map from interfaces to the "correct" replacement of those interfaces.
+findUnusedInterfaces clsNames = do
+  clsLst <- traverse loadClass (toList clsNames)
+  let unusedInterfaces = S.difference
+        (findInterfaces clsLst)
+        (findUsedClasses clsLst)
+  unusedICls <- traverse loadClass (toList unusedInterfaces)
+  return $ inlineReplaceMap $
+    M.fromList
+      (map (\i -> (i^.className, S.fromList $ i^.classInterfaces)) unusedICls)
 
 
-javaLangObject::B.ClassName
-javaLangObject = B.ClassName {B.classNameAsText = "java/lang/Object"}
+inlineInterfaces ::
+  M.Map ClassName (S.Set ClassName)
+  -- ^ Collection of interfaces to inline
+  -> Class
+  -> Class
+  -- ^ If class has interface, replace it with the replacement of that interface
+inlineInterfaces replaceMap cls =
+  let oldInterface = cls^.classInterfaces
+  in cls & classInterfaces .~
+    foldMap (\i -> maybe [i] toList (replaceMap M.!? i)) oldInterface
 
-reduceInterface :: [FilePath] -> FilePath -> ClassName -> IO ()
-reduceInterface classPath outputPath mainClass = do
-  let cl = ClassLoader [] [] classPath
-  pl <- preload cl
-  Right (x,hs) <- flip runClassPool' (emptyState pl) $ do
-    (found, missing) <- computeClassClosure (S.singleton  mainClass)
-    clsLst <- traverse loadClass (S.toList found)
-    let itfLst = findInterfaces clsLst
-    let usedClsLst = findUsedClasses clsLst
-    let iftsToRemove = S.difference itfLst usedClsLst
-    let foundClsNames =
-          map
-          (^.className)
-          (filter (\c ->  B.CInterface `notElem` (c^.classAccessFlags) ) clsLst)
+inlineReplaceMap ::
+     Ord a
+  => M.Map a (S.Set a)
+  -> M.Map a (S.Set a)
+inlineReplaceMap m =
+  if S.unions (M.elems m) `S.intersection` M.keysSet m == S.empty
+  then m
+  else inlineReplaceMap $
+         M.map inlineKey m
+    where inlineKey = S.fromList.foldMap
+                (\val ->
+                   maybe [val] S.toList  (m M.!? val))
 
-    _ <- traverse (\itf ->
-      do
-        removedInterface <- loadClass itf
-        let superItfcToAdd = toList (S.difference (S.fromList $ removedInterface ^. classInterfaces) iftsToRemove)
-        traverse (\clsName ->
-          do
-            cls <- loadClass clsName
-            let newInterfaces = superItfcToAdd ++ filter (/= itf) (cls ^. classInterfaces)
-            when ( itf `elem` (cls ^. classInterfaces)) $
-              modifyClass (cls ^. className) $ classInterfaces .~ newInterfaces
-          ) foundClsNames
-
-      ) (S.toList iftsToRemove)
-
---    newCls1 <- loadClass "Simple"
---    liftIO $ print newCls1
-
-    loadClass mainClass
---    (found2, missing2) <- computeClassClosure (S.singleton "Simple")
---    liftIO $ print found2
-  savePartialClassPoolState outputPath (S.singleton mainClass) hs
---  saveHierarchyState "test/output" hs
+reduceInterfaces ::
+    (Foldable t, MonadClassPool m)
+  => t ClassName
+  -> m ()
+reduceInterfaces world = do
+   interfaces <- findUnusedInterfaces world
+   forM_ world $ \cn -> modifyClass cn (inlineInterfaces interfaces)
 
 findInterfaces ::
   Foldable t
