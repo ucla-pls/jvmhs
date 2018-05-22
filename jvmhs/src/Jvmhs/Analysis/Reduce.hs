@@ -20,11 +20,13 @@ import qualified Data.Set                             as S
 import qualified Data.Map                             as M
 
 
+type IFMapping = M.Map ClassName (S.Set ClassName)
+
 findUnusedInterfaces ::
     (Foldable t, MonadClassPool m)
   => t ClassName
   -- ^ A world to search for interfaces
-  -> m (M.Map ClassName (S.Set ClassName))
+  -> m IFMapping
   -- ^ A map from interfaces to the "correct" replacement of those interfaces.
 findUnusedInterfaces clsNames = do
   clsLst <- traverse loadClass (toList clsNames)
@@ -32,13 +34,21 @@ findUnusedInterfaces clsNames = do
         (findInterfaces clsLst)
         (findUsedClasses clsLst)
   unusedICls <- traverse loadClass (toList unusedInterfaces)
-  return $ inlineReplaceMap $
-    M.fromList
-      (map (\i -> (i^.className, S.fromList $ i^.classInterfaces)) unusedICls)
+  return $ M.fromList
+    (map (\i -> (i^.className, S.fromList $ i^.classInterfaces)) unusedICls)
+
+
+inlineKey ::
+     (Ord a, Foldable t)
+  => M.Map a (S.Set a)
+  -> t a
+  -> S.Set a
+inlineKey m =
+  foldMap (\i -> M.findWithDefault (S.singleton i) i m)
 
 
 inlineInterfaces ::
-  M.Map ClassName (S.Set ClassName)
+     IFMapping
   -- ^ Collection of interfaces to inline
   -> Class
   -> Class
@@ -46,27 +56,25 @@ inlineInterfaces ::
 inlineInterfaces replaceMap cls =
   let oldInterface = cls^.classInterfaces
   in cls & classInterfaces .~
-    foldMap (\i -> maybe [i] toList (replaceMap M.!? i)) oldInterface
+    S.toList (inlineKey replaceMap oldInterface)
 
-inlineReplaceMap ::
+toCannoicalIFMapping ::
      Ord a
   => M.Map a (S.Set a)
   -> M.Map a (S.Set a)
-inlineReplaceMap m =
+toCannoicalIFMapping m =
   if S.unions (M.elems m) `S.intersection` M.keysSet m == S.empty
   then m
-  else inlineReplaceMap $
-         M.map inlineKey m
-    where inlineKey = S.fromList.foldMap
-                (\val ->
-                   maybe [val] S.toList  (m M.!? val))
+  else toCannoicalIFMapping $
+         M.map (inlineKey m) m
+
 
 reduceInterfaces ::
     (Foldable t, MonadClassPool m)
   => t ClassName
   -> m ()
 reduceInterfaces world = do
-   interfaces <- findUnusedInterfaces world
+   interfaces <- toCannoicalIFMapping <$> findUnusedInterfaces world
    forM_ world $ \cn -> modifyClass cn (inlineInterfaces interfaces)
 
 findInterfaces ::

@@ -52,7 +52,7 @@ spec_inlineReplaceMap = do
         , ("ItfcParent3", S.fromList  ["ItfcParent4"])
         ]) :: M.Map ClassName (S.Set ClassName)
   it "should resursively replace val if vals are contain in the keySet" $ do
-    (M.toList $ inlineReplaceMap unusedMap)
+    (M.toList $ toCannoicalIFMapping unusedMap)
       `shouldMatchList` (M.toList mapAfterReplacement)
 
 spec_inlineInterfaces :: Spec
