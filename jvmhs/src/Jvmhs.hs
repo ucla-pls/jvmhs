@@ -6,9 +6,11 @@ module Jvmhs
   , module Jvmhs.ClassReader
   , module Jvmhs.Inspection
   , module Jvmhs.Analysis.Hierarchy
+  , module Jvmhs.Analysis.Closure
   ) where
 
 import           Jvmhs.Analysis.Hierarchy
+import           Jvmhs.Analysis.Closure
 import           Jvmhs.ClassPool
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
