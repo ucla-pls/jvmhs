@@ -23,16 +23,24 @@ spec_unusedInterfaces =
     x `shouldMatchList` [("Itfc2", S.fromList ["ItfcParent"])]
 
 
---prop_makeConsistent :: M.Map ClassName [ClassName] -> Property
---prop_makeConsistent m =
---  let x = inlineReplaceMap (S.fromList <$> m) in
---  S.unions (M.elems x) `S.intersection` M.keysSet x === S.empty
---
---
---instance Arbitrary ClassName where
---  arbitrary = elements
---    [ "A", "B", "C", "D", "E", "F", "G"]
+prop_makeConsistent :: Property
+prop_makeConsistent =
+  forAll genIFMappings $ \ m ->
+    let x = toCannoicalIFMapping m in
+    S.unions (M.elems x) `S.intersection` M.keysSet x === S.empty
 
+
+genIFMappings :: Gen IFMapping
+genIFMappings =
+  M.fromList <$> listOf genIFPair
+  where
+    genIFPair = do
+     cn <- elements testClassNames
+     parrents <- S.fromList <$> sublistOf (filter (> cn) testClassNames)
+     return (cn, parrents)
+
+    testClassNames =
+      ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","U","V","W","X","Y","Z"]
 
 spec_inlineReplaceMap :: Spec
 spec_inlineReplaceMap = do
