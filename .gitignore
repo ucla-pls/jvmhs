@@ -5,3 +5,6 @@ jvmhs/test/data/classes
 *.prof
 jvmhs/test/output
 jvmhs/test/regression
+.idea/
+cabal.config
+.DS_Store

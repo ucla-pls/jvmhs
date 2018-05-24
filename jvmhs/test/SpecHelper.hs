@@ -32,6 +32,7 @@ classpath :: [ FilePath ]
 classpath =
   [ "test/data/classes" ]
 
+
 runTestClassPool ::
   ClassPool ClassPreloader a
   -> IO (Either ClassPoolError a)
