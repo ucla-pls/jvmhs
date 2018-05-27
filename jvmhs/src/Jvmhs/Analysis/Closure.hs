@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-|
@@ -7,13 +8,14 @@ Copyright   : (c) Christian Gram Kalhauge, 2018
 License     : MIT
 Maintainer  : kalhuage@cs.ucla.edu
 
-The purpose of this module is to compute closures over some
-items. Closures should be seen as contrast to reductions, that
-where reductions remove items, closures adds items until
+The purpose of this module is to compute closures over some items. Closures
+should be seen as contrast to reductions, that where reductions remove items,
+closures adds items until everything that needs to be added have been added.
 -}
 
 module Jvmhs.Analysis.Closure
   ( computeClassClosure
+  , mkClassGraph
   ) where
 
 import Data.Either (partitionEithers)
@@ -24,9 +26,23 @@ import qualified Data.Set as S
 
 import Jvmhs.Inspection
 import Jvmhs.Data.Class
+import Jvmhs.Data.Graph
 import Jvmhs.Data.Type
 import Jvmhs.ClassPool
 
+type ClassGraph = Graph ClassName ()
+
+-- | Given a foldable structure over 'ClassName's compute a ClassGraph.
+mkClassGraph ::
+  (Foldable t, MonadClassPool m)
+  => t ClassName
+  -> m ClassGraph
+mkClassGraph clss = do
+  mkGraphFromEdges <$> clss ^! folded.load.to outEdges
+  where
+    outEdges cls =
+      let cn = cls^.className
+      in cls^.classNames.to (S.singleton.(cn,,()))
 
 -- | Computes the class closure in the current space.
 -- It will only include classes known to the 'MonadClassPool'.
