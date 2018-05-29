@@ -25,6 +25,8 @@ module Jvmhs.ClassPool
   , runClassPoolInClassPath
   , runClassPoolInClassPathOnly
 
+  , dumpClassPool
+
   , ClassPoolState (..)
   , saveClassPoolState
   , savePartialClassPoolState
@@ -90,6 +92,15 @@ class (MonadError ClassPoolError m, Monad m) => MonadClassPool m where
 saveClassPoolState :: FilePath -> ClassPoolState r -> IO ()
 saveClassPoolState fp s =
   writeClasses fp (s^.loadedClasses)
+
+dumpClassPool ::
+  (MonadClassPool m, MonadIO m, Foldable t)
+  => FilePath
+  -> t ClassName
+  -> m ()
+dumpClassPool fp clss = do
+  clss' <- clss ^!! folded.load
+  liftIO $ writeClasses fp clss'
 
 savePartialClassPoolState ::
      Foldable f
