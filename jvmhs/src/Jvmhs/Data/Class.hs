@@ -31,6 +31,8 @@ module Jvmhs.Data.Class
   , classVersion
   , traverseClass
 
+  , isInterface
+
   , dependencies
 
   , Field (..)
@@ -252,6 +254,11 @@ methodReturnType =
 dependencies :: Class -> [ ClassName ]
 dependencies cls =
   cls ^. classSuper : cls ^. classInterfaces
+
+-- | Check if a class is an interface
+isInterface :: Class -> Bool
+isInterface cls =
+  B.CInterface `Set.member` (cls^.classAccessFlags)
 
 fromClassFile :: B.ClassFile B.High -> Class
 fromClassFile =
