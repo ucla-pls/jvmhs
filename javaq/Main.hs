@@ -6,27 +6,22 @@
 {-# LANGUAGE TupleSections   #-}
 module Main where
 
-import           Control.DeepSeq            (NFData, force)
-import           Control.Lens               hiding (argument)
-import           Crypto.Hash.SHA256         (hashlazyAndLength)
+import           Control.DeepSeq (NFData, force)
+import           Control.Lens hiding (argument)
+import           Control.Monad
+import           Crypto.Hash.SHA256 (hashlazyAndLength)
 import           Data.Aeson
 import           Data.Aeson.TH
-import qualified Data.ByteString.Base16     as B16
+import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy.Char8 as BS
 import           Data.Either
-import           Data.List                  as List
-import qualified Data.Text                  as Text
-import qualified Data.Text.Encoding         as Text
-import           GHC.Generics               (Generic)
-import           System.IO                  (stderr, hPrint)
--- import qualified Data.ByteString.Lazy as BL
--- import           Data.Foldable
--- import           Data.Text.IO               as Text
+import           Data.List as List
+import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Text
+import           GHC.Generics (Generic)
 import           System.Console.Docopt
-import           System.Environment         (getArgs)
-
-import           Control.Monad
--- import Control.Monad.IO.Class
+import           System.Environment (getArgs)
+import           System.IO (hPrint, stderr)
 
 import           Jvmhs
 
@@ -64,9 +59,18 @@ Output Formats:
     json[s]-counted:
       like listed but instead of returning lists it mearly count the number
       of entries in the list.
+
   csv:
     Output a csv file correspondin to the content of json-counted
+
+  dot:
+    Output a dot graph.
 |]
+
+data GraphType
+  = GTSCC
+  | GTFull
+  deriving (Show, Eq)
 
 data DTOType
   = FullDTO
@@ -78,6 +82,7 @@ data OutputFormat
   = OutputJSON DTOType
   | OutputJSONs DTOType
   | OutputCSV
+  | OutputDot GraphType
   deriving (Show)
 
 -- | The config file dictates the execution of the program
@@ -133,6 +138,9 @@ parseOutputFormat str =
     "json-counted"  -> Just $ OutputJSON CountDTO
 
     "csv"           -> Just $ OutputCSV
+
+    "dot"           -> Just $ OutputDot GTFull
+    "dot-scc"       -> Just $ OutputDot GTSCC
 
     _               -> Nothing
 
@@ -190,67 +198,34 @@ decompile cfg = do
       [] -> map fst <$> classes classReader
       a  -> return a
   let
-    onEachClass ::
-      (NFData a, NFData x, Show x)
-      => (ClassName -> IO (Either x a))
-      -> ([a] -> IO ())
-      -> IO ()
     onEachClass doeach dofinal = do
       (fails,succs) <- partitionEithers <$> forM classnames (
         \cn -> force (over _Left (cn,)) <$> doeach cn
         )
       forM_ fails (hPrint stderr)
       dofinal succs
-    readClassOverview cn = do
-      bytes <- getClassBytes classReader cn
-      return $ do
-        b <- bytes
-        clsf <- readClassFile' b
-        let
-          cls = convertClass clsf
-          (hsh, lth) = hashlazyAndLength b
-        return $! ClassOverview
-          (cls^.className)
-          (Text.decodeUtf8 . B16.encode $ hsh)
-          (fromIntegral lth)
-          (cls^.classSuper)
-          (cls^.classInterfaces)
-          (cls^..classFields.folded.toFieldId)
-          (cls^..classMethods.folded.toMethodId)
-    readClassCount cn = do
-      co' <- readClassOverview cn
-      return $ do
-        co <- co'
-        return $! ClassCount
-          (co^.coName)
-          (Text.take 7 $ co^.coSha256)
-          (co^.coSize)
-          (co^.coSuper)
-          (length $ co^.coInterfaces)
-          (length $ co^.coFields)
-          (length $ co^.coMethods)
   case cfg ^. cfgFormat of
     OutputJSON dto ->
       case dto of
         FullDTO ->
           onEachClass (flip readClass classReader) $ BS.putStrLn . encode
         ListedDTO ->
-          onEachClass readClassOverview $ BS.putStrLn . encode
+          onEachClass (readClassOverview classReader) $ BS.putStrLn . encode
         CountDTO ->
-          onEachClass readClassCount $ BS.putStrLn . encode
+          onEachClass (readClassCount classReader) $ BS.putStrLn . encode
     OutputJSONs dto ->
       case dto of
         FullDTO ->
           onEachClass (flip readClass classReader >=> encode') (const $ return ())
         ListedDTO ->
-          onEachClass (readClassOverview >=> encode') (const $ return ())
+          onEachClass (readClassOverview classReader >=> encode') (const $ return ())
         CountDTO ->
-          onEachClass (readClassCount >=> encode') (const $ return ())
+          onEachClass (readClassCount classReader >=> encode') (const $ return ())
     OutputCSV -> do
       putStrLn "class,sha256,size,super,interfaces,fields,methods"
       onEachClass
         (\cn -> do
-          cc' <- readClassCount cn
+          cc' <- readClassCount classReader cn
           case cc' of
             Right cc ->
               Right <$> (putStrLn . List.intercalate "," $
@@ -264,10 +239,62 @@ decompile cfg = do
                 ])
             Left msg -> return $ Left msg
         ) (const $ return ())
+    OutputDot GTSCC -> do
+      graph' <- runClassPool classReader $ do
+        snd . sccGraph <$> mkClassGraph classnames
+      case graph' of
+        Left msg -> print msg
+        Right graph -> putStrLn $ graphToDot graph
+    OutputDot GTFull -> do
+      graph' <- runClassPool classReader $ do
+        mkClassGraph classnames
+      case graph' of
+        Left msg -> print msg
+        Right graph -> putStrLn $ graphToDot graph
    where
      encode' :: ToJSON e => Either a e -> IO (Either a ())
      encode' =
        either (return . Left) (fmap Right . BS.putStrLn . encode)
+
+readClassOverview ::
+  ClassReader m
+  => m
+  -> ClassName
+  -> IO (Either ClassReadError ClassOverview)
+readClassOverview classReader cn = do
+  bytes <- getClassBytes classReader cn
+  return $ do
+    b <- bytes
+    clsf <- readClassFile' b
+    let
+      cls = convertClass clsf
+      (hsh, lth) = hashlazyAndLength b
+    return $! ClassOverview
+      (cls^.className)
+      (Text.decodeUtf8 . B16.encode $ hsh)
+      (fromIntegral lth)
+      (cls^.classSuper)
+      (cls^.classInterfaces)
+      (cls^..classFields.folded.toFieldId)
+      (cls^..classMethods.folded.toMethodId)
+
+readClassCount ::
+  ClassReader m
+  => m
+  -> ClassName
+  -> IO (Either ClassReadError ClassCount)
+readClassCount classReader cn = do
+  co' <- readClassOverview classReader cn
+  return $ do
+    co <- co'
+    return $! ClassCount
+      (co^.coName)
+      (Text.take 7 $ co^.coSha256)
+      (co^.coSize)
+      (co^.coSuper)
+      (length $ co^.coInterfaces)
+      (length $ co^.coFields)
+      (length $ co^.coMethods)
 
 -- | Create a class loader from the config
 createClassLoader :: Config -> IO ClassLoader

@@ -38,7 +38,7 @@ mkClassGraph ::
   => t ClassName
   -> m ClassGraph
 mkClassGraph clss = do
-  mkGraphFromEdges <$> clss ^! folded.load.to outEdges
+  mkGraph clss <$> clss ^! folded.load.to outEdges
   where
     outEdges cls =
       let cn = cls^.className
