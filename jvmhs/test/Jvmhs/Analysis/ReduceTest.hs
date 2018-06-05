@@ -5,9 +5,9 @@ import SpecHelper
 import Jvmhs
 import Jvmhs.Analysis.Reduce
 
-import qualified Data.Set as S
-import qualified Data.Map as M
-
+import qualified Data.Set     as S
+import qualified Data.Map     as M
+import qualified Data.Vector  as V
 --outputPath :: FilePath
 --outputPath = "test/output/interface"
 --
@@ -85,3 +85,14 @@ spec_reduceInterfaces = do
       reduceInterfaces -- ["ItfcParent", "Itfc", "Itfc2", "SimpleI"]
       getClass "SimpleI"
     (x^.classInterfaces) `shouldMatchList` ["ItfcParent", "Itfc"]
+
+
+
+spec_ddmin :: Spec
+spec_ddmin = do
+  it "should delta bug and find [1,7,8]" $ do
+     let numVec = V.fromList [1..8]
+     rslt <- ddmin numVec is178
+     V.toList rslt `shouldBe` [1,7,8]
+     where is178 v =
+            return $ and [(V.elem 1 v), (V.elem 7 v), (V.elem 8 v)]
