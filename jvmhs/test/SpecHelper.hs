@@ -34,20 +34,22 @@ classpath =
 
 
 runTestClassPool ::
-  ClassPool ClassPreloader a
-  -> IO (Either ClassPoolError a)
-runTestClassPool =
-  runClassPoolInClassPathOnly classpath
+  ClassPool a
+  -> IO ([ClassPoolReadError], a)
+runTestClassPool a = do
+  r <- preload $ fromClassPathOnly classpath
+  (errs, st) <- loadClassPoolState r
+  return $ (errs, fst $ runClassPool a st)
 
 runTestClassPool' ::
-  ClassPool ClassPreloader a
+  ClassPool a
   -> IO a
 runTestClassPool' scpt = do
-  Right x <- runTestClassPool scpt
-  return x
+  ([], a) <- runTestClassPool scpt
+  return a
 
 beforeClassPool ::
-  ClassPool ClassPreloader a
+  ClassPool a
   -> SpecWith a
   -> Spec
 beforeClassPool scpt =

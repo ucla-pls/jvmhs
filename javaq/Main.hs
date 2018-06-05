@@ -233,7 +233,7 @@ decompile cfg = do
     OutputJSON dto ->
       case dto of
         FullDTO ->
-          onEachClass (readClass classReader) $ BS.putStrLn . encode
+          onEachClass (flip readClass classReader) $ BS.putStrLn . encode
         ListedDTO ->
           onEachClass readClassOverview $ BS.putStrLn . encode
         CountDTO ->
@@ -241,7 +241,7 @@ decompile cfg = do
     OutputJSONs dto ->
       case dto of
         FullDTO ->
-          onEachClass (readClass classReader >=> encode') (const $ return ())
+          onEachClass (flip readClass classReader >=> encode') (const $ return ())
         ListedDTO ->
           onEachClass (readClassOverview >=> encode') (const $ return ())
         CountDTO ->

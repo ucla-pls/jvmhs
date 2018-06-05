@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleInstances    #-}
@@ -6,6 +7,7 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module Jvmhs.ClassReader
   ( ClassReadError (..)
@@ -14,7 +16,15 @@ module Jvmhs.ClassReader
   , splitClassPath
 
   , ClassReader (..)
+
+  , MonadClassReader
   , readClass
+  , readClassM
+  , readClassesM
+
+  , ClassReaderT
+  , runClassReaderT
+
   , writeClass
   , writeClasses
 
@@ -41,10 +51,12 @@ module Jvmhs.ClassReader
   ) where
 
 import           Control.DeepSeq
+import           Control.Monad.Reader.Class
+import           Control.Monad.Reader
 import           Control.Lens
-import           Data.Foldable
 import           Data.Maybe           (catMaybes)
 import           Data.Monoid
+import           Data.Bifunctor
 import           GHC.Generics         (Generic)
 import           System.Directory
 import           System.FilePath
@@ -120,30 +132,30 @@ data ClassReadError
  -- ^ An error happened while reading the class.
  deriving (Show, Eq, Generic, NFData)
 
-readClassFile' :: BL.ByteString -> Either ClassReadError (B.ClassFile B.High)
+readClassFile' ::
+     BL.ByteString
+  -> Either ClassReadError (B.ClassFile B.High)
 readClassFile' file =
   B.readClassFile file & _Left %~ MalformedClass
 
 -- | A class reader can read a class using a class name.
 class ClassReader m where
   -- | Reads a class file from the reader
-  readClassFile
-    :: m
+  readClassFile ::
+    m
     -> ClassName
     -> IO (Either ClassReadError (B.ClassFile B.High))
   readClassFile m cn = do
     (readClassFile' =<<) <$> getClassBytes m cn
 
   -- | Returns the bytes of the class
-  getClassBytes
-    :: m
+  getClassBytes ::
+    m
     -> ClassName
     -> IO (Either ClassReadError BL.ByteString)
 
   -- | Returns a list of `ClassName` and the containers they are in.
-  classes
-    :: m
-    -> IO [ (ClassName, ClassContainer) ]
+  classes :: m -> IO [ (ClassName, ClassContainer) ]
 
 -- | Write a class to a folder
 writeClass ::
@@ -179,15 +191,40 @@ addClassToArchive c =
     0
     (B.writeClassFile $ toClassFile c)
 
--- | Read a checked class from a class reader.
-readClass
-  :: (ClassReader m)
-  => m
-  -> ClassName
+type MonadClassReader r m = (MonadReader r m, MonadIO m, ClassReader r)
+
+type ClassReaderT r m = ReaderT r m
+
+runClassReaderT :: (MonadIO m, ClassReader r) => ReaderT r m a -> r -> m a
+runClassReaderT = runReaderT
+
+readClass ::
+    (ClassReader r)
+  => ClassName
+  -> r
   -> IO (Either ClassReadError Class)
-readClass m cn = do
-  cls <- readClassFile m cn
+readClass cn r = do
+  cls <- readClassFile r cn
   return (cls & _Right %~ convertClass)
+
+-- | Read a checked class from a class reader.
+readClassM ::
+    (MonadClassReader r m)
+  => ClassName
+  -> m (Either ClassReadError Class)
+readClassM cn = do
+  r <- ask
+  cls <- liftIO $ readClassFile r cn
+  return (cls & _Right %~ convertClass)
+
+-- | Read
+readClassesM ::
+     (MonadClassReader r m)
+  => m [Either (ClassName, ClassReadError) Class]
+readClassesM = do
+  r <- ask
+  classnames <- liftIO $ classes r
+  liftIO $ forM classnames (\c -> first (fst c,) <$> uncurry readClass c)
 
 convertClass :: B.ClassFile B.High -> Class
 convertClass = view isoBinary

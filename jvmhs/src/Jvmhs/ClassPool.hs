@@ -1,199 +1,311 @@
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-
 Module      : Jvmhs.ClassPool
-Copyright   : (c) Christian Gram Kalhauge, 2017
+Copyright   : (c) Christian Gram Kalhauge, 2018
 License     : MIT
 Maintainer  : kalhuage@cs.ucla.edu
 
-This module defines a class ClassPool. The class 'MonadClassPool', contains
-every class loaded by the program.
+This module defines the 'MonadClassPool' type class, and multiple
+implementations.
+
 -}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TemplateHaskell  #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell            #-}
 module Jvmhs.ClassPool
-  ( MonadClassPool (..)
-  , loadClass'
+  (
+  -- * MonadClassPool
+    MonadClassPool (..)
+  -- ** Basic operations
+  , getClass
+  , setClass
+  , putClass
+  , deleteClass
 
-  , ClassPoolError (..)
-  , heClassName
-  , heClassReadError
+  , hasClass
+  , allClasses
 
-   -- * ClassPool implementation
-  , ClassPool
-  , runClassPool
-  , runClassPool'
-  , runClassPoolInClassPath
-  , runClassPoolInClassPathOnly
+  , modifyClass
+  , modifyClasses
 
-  , dumpClassPool
-
-  , ClassPoolState (..)
-  , saveClassPoolState
-  , savePartialClassPoolState
-  , emptyState
-
-  -- * Helpers
-  , load
-  , load'
+  -- ** Lens helpers
+  , pool
+  , pool'
   , (^!!)
   , (^!)
-  , module Control.Monad.Except
+
+  -- ** Loading classes into the `ClassPool`
+  , loadClass
+  , loadClasses
+  , loadClassesFromReader
+  , ClassPoolReadError
+
+  -- ** Saving the class to disk
+  , saveClass
+  , saveClasses
+  , saveAllClasses
+
+  -- * Implementations
+
+  -- ** ClassPoolT
+  -- A pure implementation of the `MonadClassPool` which saves all the classes
+  -- in a map. The structure is called `ClassPoolState`.
+  , ClassPoolState
+  , loadClassPoolState
+  , saveClassPoolState
+
+  , ClassPoolT (..)
+  , ClassPool
+  , runClassPool
+  , runClassPoolT
+  , runClassPoolTWithReader
+
+
+  -- ** ClassPoolIO
+  -- An unpure implementation of the `MonadClassPool`
   ) where
 
 -- import           Control.Monad          (foldM)
 import           Control.Monad.Except
-import           Control.Monad.IO.Class (liftIO)
+import           Control.Monad.Reader
 import           Control.Monad.State.Class
-import           Control.Monad.State    (StateT, runStateT)
+import           Control.Monad.State.Strict (StateT, mapStateT, runStateT)
 
 import           Control.Lens
 import           Control.Lens.Action
 
-import           Data.Map               as Map
--- import           Data.Set               as Set
+import           Data.Either                (partitionEithers)
+import qualified Data.Map                   as M
+import           Data.Maybe
+import           Data.Monoid
 
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Type
 
-data ClassPoolState r = ClassPoolState
-  { _loadedClasses :: Map.Map ClassName Class
-  , _classReader   :: r
-  }
-  deriving (Show, Eq)
+-- | A Monad ClassPool is a modifiable pool of classes. It defines actions
+-- over the class pool. The monad class pool it keeps track of
 
-makeLenses ''ClassPoolState
+  -- a set of classes and it has the ability to change the class pool.
+class Monad m => MonadClassPool m where
+  -- | The `alterClass` function is the most general access into the class pool
+  alterClass ::
+    (Functor f) =>
+    (Maybe Class -> f (Maybe Class))
+    -> ClassName
+    -> m (f (m ()))
 
-data ClassPoolError
-  = ErrorWhileReadingClass
-  { _heClassName :: ClassName
-  , _heClassReadError :: ClassReadError
-  } deriving (Show, Eq)
+  -- | Perform an action over all the classes in the ClassPool
+  traverseClasses ::
+    (Applicative f) =>
+    (Class -> f (Maybe Class))
+    -> m (f (m ()))
 
-makeLenses ''ClassPoolError
+  -- | Returns a list of class names, each class name is guaranteed to only
+  -- appear once in the
+  allClassNames ::
+    m [ClassName]
 
-newtype ClassPool r a =
-  ClassPool (StateT (ClassPoolState r) (ExceptT ClassPoolError IO) a)
-  deriving
-    ( Functor
-    , Applicative
-    , Monad
-    , MonadError ClassPoolError
-    , MonadState (ClassPoolState r)
-    , MonadIO
-    )
+-- | Get a class from a class pool.
+getClass :: MonadClassPool m => ClassName -> m (Maybe Class)
+getClass cn =
+  getConst <$> alterClass (Const) cn
 
-class (MonadError ClassPoolError m, Monad m) => MonadClassPool m where
-  loadClass :: ClassName -> m Class
-  saveClass :: Class -> m ()
-  -- | Behavior for changing classname in class is undefined.
-  modifyClass :: ClassName -> (Class -> Class) -> m ()
+-- | Set a class on the class pool.
+setClass :: MonadClassPool m => ClassName -> Maybe Class -> m ()
+setClass cn mc =
+  join $ runIdentity <$> alterClass (\_ -> Identity mc) cn
 
-saveClassPoolState :: FilePath -> ClassPoolState r -> IO ()
-saveClassPoolState fp s =
-  writeClasses fp (s^.loadedClasses)
+-- | Modify a class on the class pool.
+modifyClass :: MonadClassPool m => ClassName -> (Maybe Class -> Maybe Class) -> m ()
+modifyClass cn fn =
+  join $ runIdentity <$> alterClass (Identity . fn) cn
 
-dumpClassPool ::
-  (MonadClassPool m, MonadIO m, Foldable t)
+-- | Map classes, map over the classes in the class pool
+modifyClasses :: MonadClassPool m => (Class -> Maybe Class) -> m ()
+modifyClasses fn =
+  join $ runIdentity <$> traverseClasses (Identity . fn)
+
+-- | Check if class exist in class pool.
+hasClass :: MonadClassPool m => ClassName -> m Bool
+hasClass = fmap isJust . getClass
+
+-- | Put a class in the class pool.
+putClass :: MonadClassPool m => Class -> m ()
+putClass cls =
+  setClass (cls^.className) (Just cls)
+
+-- | Deletes a class in the class pool.
+deleteClass :: MonadClassPool m => ClassName -> m ()
+deleteClass cn =
+  setClass cn Nothing
+
+-- | Get all the classes from the class pool
+allClasses :: MonadClassPool m => m [Class]
+allClasses =
+  flip appEndo [] . getConst <$> traverseClasses (Const . Endo . (:))
+
+-- | A pool action can be used as part of a lens to access a class.
+-- >>> "java.lang.Object" ^! pool.className
+-- "java.lang.Object"
+pool ::
+     MonadClassPool m
+  => Action m ClassName (Maybe Class)
+pool = act getClass
+
+-- | A specialized pool action that returns the name of the class if
+-- it does not exist in the ClassPool
+pool' ::
+     MonadClassPool m
+  => Action m ClassName (Either ClassName Class)
+pool' = act (\cn -> maybe (Left cn) (Right) <$> getClass cn)
+
+
+-- | Given a ClassReader load a class into the ClassPool
+loadClass ::
+  (MonadClassPool m, MonadClassReader r m)
+  => ClassName
+  -> m (Either ClassReadError Class)
+loadClass cn = do
+  e <- readClassM cn
+  case e of
+    Left err -> return $ Left err
+    Right cls -> do
+      putClass cls
+      return $ Right cls
+
+type ClassPoolReadError = (ClassName, ClassReadError)
+
+-- | Load all the classes into a the class pool
+loadClasses ::
+  (MonadClassPool m, MonadClassReader r m)
+  => m [ClassPoolReadError]
+loadClasses = do
+  (errs, clss) <- partitionEithers <$> readClassesM
+  mapM_ putClass clss
+  return errs
+
+-- | Load all the classes from a class reader into the class reader
+loadClassesFromReader ::
+  (ClassReader r, MonadIO m, MonadClassPool m)
+  => r -> m [ClassPoolReadError]
+loadClassesFromReader =
+  runClassReaderT loadClasses
+
+-- | Saves all the classes in the pool to the filepath.
+saveAllClasses ::
+    (MonadClassPool m, MonadIO m)
   => FilePath
-  -> t ClassName
   -> m ()
-dumpClassPool fp clss = do
-  clss' <- clss ^!! folded.load
-  liftIO $ writeClasses fp clss'
+saveAllClasses fp = do
+  allClasses >>= liftIO . writeClasses fp
 
-savePartialClassPoolState ::
-     Foldable f
+-- | Saves only the classes provided in the foldable list of classnames.
+-- Names not found in the ClassPool are ignored.
+-- @
+-- saveClasses "out" ["java.util.ArrayList", "java.util.LinkedList"]
+-- @
+saveClasses ::
+    (MonadClassPool m, MonadIO m, Foldable f)
   => FilePath
   -> f ClassName
-  -> ClassPoolState r
-  -> IO ()
-savePartialClassPoolState fp fs s =
-  writeClasses fp (fs^..folded.to (flip Map.lookup cl)._Just)
-  where
-    cl = s^.loadedClasses
+  -> m ()
+saveClasses fp cns = do
+  clss <- cns ^!! folded . pool . _Just
+  liftIO . writeClasses fp $ clss
 
-runClassPool
-  :: ClassReader r
+-- | Saves a single class to the given class path.
+-- @
+-- saveClass "out" "java.util.ArrayList"
+-- @
+saveClass ::
+    (MonadClassPool m, MonadIO m)
+  => FilePath
+  -> ClassName
+  -> m (Maybe ())
+saveClass fp cn = do
+  m <- getClass cn
+  case m of
+    Just c  -> Just <$> (liftIO $ writeClass fp c)
+    Nothing -> return $ Nothing
+
+
+instance MonadClassPool m => MonadClassPool (ReaderT r m) where
+  alterClass f cn = lift $ fmap (fmap lift) $ alterClass f cn
+  allClassNames = lift allClassNames
+  traverseClasses f =
+    lift $ fmap (fmap lift) $ traverseClasses f
+
+
+-- | The class pool state is just a map from class to class names
+type ClassPoolState = M.Map ClassName Class
+
+-- | Load the class pool state upfront
+loadClassPoolState ::
+  (ClassReader r, MonadIO m)
   => r
-  -> ClassPool r a
-  -> IO (Either ClassPoolError a)
-runClassPool r h =
-  fmap fst <$> runClassPool' h (emptyState r)
+  -> m ([ClassPoolReadError], ClassPoolState)
+loadClassPoolState =
+  runClassPoolTWithReader return
 
-emptyState :: r -> ClassPoolState r
-emptyState r = (ClassPoolState Map.empty r)
+-- | Save class pool state to a file-path
+saveClassPoolState ::
+  FilePath
+  -> ClassPoolState
+  -> IO ()
+saveClassPoolState fp =
+  fmap fst . runClassPoolT (saveAllClasses fp)
 
-runClassPool'
-  :: ClassReader r
-  => ClassPool r a
-  -> ClassPoolState r
-  -> IO (Either ClassPoolError (a, ClassPoolState r))
-runClassPool' (ClassPool h) =
-  runExceptT . runStateT h
+-- | `ClassPoolT` is a simple wrapper around `StateT`
+newtype ClassPoolT m a = ClassPoolT
+  { runClassPoolT' :: StateT ClassPoolState m a }
+  deriving (Functor, Applicative, Monad, MonadState ClassPoolState, MonadTrans, MonadIO)
 
-runClassPoolInClassPathOnly
-  :: [ FilePath ]
-  -> ClassPool ClassPreloader a
-  -> IO (Either ClassPoolError a)
-runClassPoolInClassPathOnly cp hc = do
-  p <- preload $ fromClassPathOnly cp
-  fmap fst <$> runClassPool' hc (emptyState p)
+instance MonadReader r m => MonadReader r (ClassPoolT m) where
+  ask = lift ask
+  reader = lift . reader
+  local f = ClassPoolT . (mapStateT $ local f) . runClassPoolT'
 
-runClassPoolInClassPath
-  :: [ FilePath ]
-  -> ClassPool ClassPreloader a
-  -> IO (Either ClassPoolError a)
-runClassPoolInClassPath cp hc = do
-  ld <- fromClassPath cp
-  p <- preload ld
-  fmap fst <$> runClassPool' hc (emptyState p)
+instance Monad m => MonadClassPool (ClassPoolT m) where
+  alterClass f n = do
+    fmap put . M.alterF f n <$> get
 
-instance ClassReader r => MonadClassPool (ClassPool r) where
-  loadClass cn = do
-    x <- use $ loadedClasses . at cn
-    case x of
-      Just l ->
-        return l
-      Nothing -> do
-        r <- use classReader
-        l <- liftIO $ readClass r cn
-        case l of
-          Left err ->
-            throwError $ ErrorWhileReadingClass cn err
-          Right cls -> do
-            loadedClasses . at cn .= Just cls
-            return cls
+  -- | Perform an action over all the classes in the ClassPool
+  -- traverseClasses ::
+  --   (Applicative f) =>
+  --   (Class -> f (Maybe Class))
+  --   -> m (f (m ()))
+  traverseClasses f = do
+    fmap put . M.traverseMaybeWithKey (\_ cls -> f cls) <$> get
 
-  saveClass cls = do
-    loadedClasses . at (cls^.className) .= Just cls
+  allClassNames =
+     M.keys <$> get
 
-  modifyClass cn f = do
-    cls <- loadClass cn
-    saveClass (f cls)
+type ClassPool = ClassPoolT Identity
 
--- | LoadClass'
-loadClass' ::
-  MonadClassPool m
-  =>
-  ClassName
-  -> m (Maybe Class)
-loadClass' cn =
-  catchError
-    (Just <$> loadClass cn)
-    (pure . const Nothing)
+-- | Run a `ClassPoolT` given a class pool
+runClassPoolT ::
+  ClassPoolT m a
+  -> ClassPoolState
+  -> m (a, ClassPoolState)
+runClassPoolT = runStateT . runClassPoolT'
 
+-- | Run a `ClassPoolT` given a class pool
+runClassPool ::
+  ClassPool a
+  -> ClassPoolState
+  -> (a, ClassPoolState)
+runClassPool m = runIdentity . runClassPoolT m
 
--- | An load action can be used as part of a lens to load a
--- class.
-load
-  :: MonadClassPool m
-  => Action m ClassName Class
-load = act loadClass
-
--- | Loads a 'Class' but does not fail if the class was not loaded
--- instead it returns a ClassPoolError.
-load' ::
-     MonadClassPool m
-  => Action m ClassName (Either ClassPoolError Class)
-load' = act (\cn -> catchError (Right <$> loadClass cn) (return . Left))
+-- | Run a `MonadClassPool` but load all values from a class loader
+runClassPoolTWithReader ::
+     (ClassReader r, MonadIO m)
+  => ([ClassPoolReadError] -> ClassPoolT m a)
+  -> r
+  -> m (a, ClassPoolState)
+runClassPoolTWithReader fm r =
+  runClassPoolT (loadClassesFromReader r >>= fm) mempty

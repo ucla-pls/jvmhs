@@ -72,7 +72,7 @@ calculateHierarchy ::
   => t ClassName
   -> m Hierarchy
 calculateHierarchy clss = do
-  (classNames, hierachy) <- clss ^! folded . load . to collection
+  (classNames, hierachy) <- clss ^! folded . pool ._Just . to collection
   let
     (nodes_, nodeMap) = mkNodes new classNames
     Just edges_ = mkEdges nodeMap hierachy
@@ -94,7 +94,8 @@ superclasses ::
   -> ClassName
   -> [ClassName]
 superclasses hry@(Hierarchy _ graph) cln =
-  tail $ dfs [nodeOf hry cln] (elfilter (==Extend) graph) ^.. folded . to (lab graph) . _Just
+  let search = dfs [nodeOf hry cln] (elfilter (==Extend) graph)
+  in tail $ search ^.. folded . to (lab graph) . _Just
 
 -- | Returns a list of all classes that implement some interface, or extends
 -- a class, including the class itself.
@@ -115,24 +116,26 @@ classNameOfFieldId ::
 classNameOfFieldId fid cn =
   fmap (view (_1.className)) <$> fieldFromId fid cn
 
--- | Get the class in which the field resides. The function
--- searches from the class
+-- | Get the class in which the field resides. The function searches from an
+-- initial class.
 fieldFromId ::
   MonadClassPool m
   => FieldId
   -> ClassName
   -> m (Maybe (Class, Field))
-fieldFromId fid cn =
-  flip catchError (const $ return Nothing) $ do
-    cls <- loadClass cn
-    case cls ^? classField fid of
-      Just f ->
-        return $ Just (cls, f)
-      Nothing
-        | cn /= "java.lang.Object"
-          -> fieldFromId fid (cls^.classSuper)
-        | otherwise
-          -> return $ Nothing
+fieldFromId fid = go
+  where
+    go "java.lang.Object" =
+      return Nothing
+    go cn = do
+      mc <- getClass cn
+      case mc of
+        Nothing -> return Nothing
+        Just cls -> do
+          case cls ^? classField fid . to (cls,) of
+            Nothing -> go (cls^.classSuper)
+            a -> return $ a
+
 
 -- | Get the class name of the containing class of a method id.
 -- This is delegates to 'methodFromId'.
@@ -151,17 +154,18 @@ methodFromId ::
   => MethodId
   -> ClassName
   -> m (Maybe (Class, Method))
-methodFromId fid cn =
-  flip catchError (const $ return Nothing) $ do
-    cls <- loadClass cn
-    case cls ^? classMethod fid of
-      Just f ->
-        return $ Just (cls, f)
-      Nothing
-        | cn /= "java.lang.Object"
-          -> methodFromId fid (cls^.classSuper)
-        | otherwise
-          -> return Nothing
+methodFromId fid cn = do
+  mc <- getClass cn
+  case mc of
+    Nothing -> return Nothing
+    Just cls ->
+      case cls ^? classMethod fid . to (cls,) of
+        Nothing
+          | cn /= "java.lang.Object"
+            -> methodFromId fid (cls^.classSuper)
+          | otherwise
+            -> return Nothing
+        a -> return a
 
 -- | Returns all list of pairs of classes and methods that has
 -- the same id as the method id.
@@ -173,7 +177,7 @@ methodImpls' ::
   -> ClassName
   -> m [(Class, Method)]
 methodImpls' hry mid cn = do
-  implementations hry cn ^!! traverse.load.to mpair._Just
+  implementations hry cn ^!! traverse.pool._Just.to mpair._Just
   where mpair cls = (cls,) <$> (cls ^? classMethod mid)
 
 -- | Like 'methodImpls'' with the extra check that all the methods has code

@@ -15,12 +15,11 @@ import qualified Data.Map as M
 spec_unusedInterfaces :: Spec
 spec_unusedInterfaces =
   it "should find (unused interfaces, their parents) pairs" $ do
-    Right x <- runTestClassPool $ do
-      (found, _) <- computeClassClosure (S.singleton  ("SimpleI"))
-
-      iMap  <- findUnusedInterfaces found
+    x <- runTestClassPool' $ do
+      -- (found, _) <- computeClassClosure (S.singleton  ("SimpleI"))
+      iMap  <- findUnusedInterfaces
       return $ M.toList iMap
-    x `shouldMatchList` [("Itfc2", S.fromList ["ItfcParent"])]
+    x `shouldContain` [("Itfc2", S.fromList ["ItfcParent"])]
 
 
 prop_makeConsistent :: Property
@@ -66,11 +65,11 @@ spec_inlineReplaceMap = do
 spec_inlineInterfaces :: Spec
 spec_inlineInterfaces =
   it "should replace unused interfaces with its parents recursively" $ do
-    Right x <- runTestClassPool $ do
-      (found, _) <- computeClassClosure (S.singleton  ("SimpleI"))
+    x <- runTestClassPool' $ do
+      -- (found, _) <- computeClassClosure (S.singleton  ("SimpleI"))
 
-      iMap  <- findUnusedInterfaces found
-      cls <- loadClass "SimpleI"
+      iMap  <- findUnusedInterfaces
+      Just cls <- getClass "SimpleI"
       let newCls = inlineInterfaces iMap cls
       return $ newCls ^. classInterfaces
     x `shouldMatchList` ["Itfc", "ItfcParent"]
@@ -78,11 +77,11 @@ spec_inlineInterfaces =
 spec_reduceInterfaces :: Spec
 spec_reduceInterfaces = do
   it "should not change the interfaces when not run" $ do
-    (Right x) <- runTestClassPool $ do
-      loadClass "SimpleI"
+    Just x <- runTestClassPool' $ do
+      getClass "SimpleI"
     (x^.classInterfaces) `shouldMatchList` ["Itfc2", "Itfc"]
   it "should remove an interface" $ do
-    (Right x) <- runTestClassPool $ do
-      reduceInterfaces ["ItfcParent", "Itfc", "Itfc2", "SimpleI"]
-      loadClass "SimpleI"
+    Just x <- runTestClassPool' $ do
+      reduceInterfaces -- ["ItfcParent", "Itfc", "Itfc2", "SimpleI"]
+      getClass "SimpleI"
     (x^.classInterfaces) `shouldMatchList` ["ItfcParent", "Itfc"]

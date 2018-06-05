@@ -14,7 +14,6 @@ module Jvmhs.Analysis.Reduce
 
 import            Control.Lens
 import            Jvmhs
-import            Data.Foldable
 
 import qualified Data.Set                             as S
 import qualified Data.Map                             as M
@@ -23,20 +22,14 @@ import qualified Data.Map                             as M
 type IFMapping = M.Map ClassName (S.Set ClassName)
 
 findUnusedInterfaces ::
-    (Foldable t, MonadClassPool m)
-  => t ClassName
-  -- ^ A world to search for interfaces
-  -> m IFMapping
+    (MonadClassPool m)
+  => m IFMapping
   -- ^ A map from interfaces to the "correct" replacement of those interfaces.
-findUnusedInterfaces clsNames = do
-  clsLst <- traverse loadClass (toList clsNames)
-  let unusedInterfaces = S.difference
-        (findInterfaces clsLst)
-        (findUsedClasses clsLst)
-  unusedICls <- traverse loadClass (toList unusedInterfaces)
+findUnusedInterfaces = do
+  unusedInterfaces <- S.difference <$> findInterfaces <*> findUsedClasses
+  unusedICls <- unusedInterfaces ^!! folded . pool . _Just
   return $ M.fromList
     (map (\i -> (i^.className, S.fromList $ i^.classInterfaces)) unusedICls)
-
 
 inlineKey ::
      (Ord a, Foldable t)
@@ -68,20 +61,18 @@ toCannoicalIFMapping m =
   else toCannoicalIFMapping $
          M.map (inlineKey m) m
 
-
 reduceInterfaces ::
-    (Foldable t, MonadClassPool m)
-  => t ClassName
-  -> m ()
-reduceInterfaces world = do
-   interfaces <- toCannoicalIFMapping <$> findUnusedInterfaces world
-   forM_ world $ \cn -> modifyClass cn (inlineInterfaces interfaces)
+    (MonadClassPool m)
+  => m ()
+reduceInterfaces = do
+   interfaces <- toCannoicalIFMapping <$> findUnusedInterfaces
+   modifyClasses (Just . inlineInterfaces interfaces)
 
 findInterfaces ::
-  Foldable t
-  => t Class
-  -> S.Set ClassName
-findInterfaces = foldMap toSetOfInterface
+  (MonadClassPool m)
+  => m (S.Set ClassName)
+findInterfaces =
+  foldMap toSetOfInterface <$> allClasses
   where
     toSetOfInterface cls =
       if CInterface `S.member` (cls ^. classAccessFlags)
@@ -89,11 +80,10 @@ findInterfaces = foldMap toSetOfInterface
       else S.empty
 
 findUsedClasses ::
-  Foldable t
-  => t Class
-  -> S.Set ClassName
+  (MonadClassPool m)
+  => m (S.Set ClassName)
 findUsedClasses  =
-  foldMap findUsedClassesInClass
+  foldMap findUsedClassesInClass <$> allClasses
   where
     findUsedClassesInClass cls =
       S.fromList $
