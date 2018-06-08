@@ -38,7 +38,7 @@ mkClassGraph ::
   => t ClassName
   -> m ClassGraph
 mkClassGraph clss = do
-  mkGraph clss <$> clss ^! folded.load.to outEdges
+  mkGraph clss <$> clss ^! folded.pool._Just.to outEdges
   where
     outEdges cls =
       let cn = cls^.className
@@ -58,10 +58,10 @@ computeClassClosure =
         return (known, unknown)
       | otherwise = do
         -- List of all the classes that exists
-        (notexists, exists) <- partitionEithers <$> wave ^!! folded . load'
+        (notexists, exists) <- partitionEithers <$> wave ^!! folded . pool'
         let
           found = S.fromList $ exists^..folded.className
-          missed = S.fromList $ notexists^..folded.heClassName
+          missed = S.fromList $ notexists^..folded
           known' = known `S.union` found
           unknown' = unknown `S.union` missed
           front = S.fromList $ exists^..folded.classNames
