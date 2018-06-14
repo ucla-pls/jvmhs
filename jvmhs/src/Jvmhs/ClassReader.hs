@@ -146,7 +146,10 @@ class ClassReader m where
     -> ClassName
     -> IO (Either ClassReadError (B.ClassFile B.High))
   readClassFile m cn = do
-    (readClassFile' =<<) <$> getClassBytes m cn
+    bts <- getClassBytes m cn
+    let cf = readClassFile' =<< bts
+    return $! deepseq (BL.length <$> bts) cf
+--    (readClassFile' =<<) <$> getClassBytes m cn
 
   -- | Returns the bytes of the class
   getClassBytes ::

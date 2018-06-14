@@ -156,28 +156,29 @@ ddmin' ::
   -> (V.Vector x -> m Bool)
   -- ^ a function can test delta
   -> m(V.Vector x)
-ddmin' world n testFunc = do
-  deltaTrueVec <- V.filterM testFunc deltaVec
-  deltaComplTrueVec <- V.filterM testFunc deltaComplVec
-  if V.length world == 1
-  then return world
-  else if not $ null deltaTrueVec
-       then
-         ddmin' (V.head deltaTrueVec) 2 testFunc
-       else if not $ null deltaComplTrueVec
-         then
-           ddmin' (V.head deltaComplTrueVec) (max (n-1) 2) testFunc
-         else if n < V.length world
+ddmin' world n testFunc
+  | length world == 1 = return world
+  | otherwise = do
+      deltaTrueVec <- V.filterM testFunc deltaVec
+      deltaComplTrueVec <- V.filterM testFunc deltaComplVec
+      if V.length world == 1
+      then return world
+      else if not $ null deltaTrueVec
            then
-              ddmin' world (min (V.length world) (2*n)) testFunc
-           else
-              return world
+             ddmin' (V.head deltaTrueVec) 2 testFunc
+           else if not $ null deltaComplTrueVec
+             then
+               ddmin' (V.head deltaComplTrueVec) (max (n-1) 2) testFunc
+             else if n < V.length world
+               then
+                  ddmin' world (min (V.length world) (2*n)) testFunc
+               else
+                  return world
 
-
-  where enumVec       = V.fromList [0..(n-1)]
-        vecs          = chopVector n world
-        deltaVec      = V.map (deltaI vecs) enumVec
-        deltaComplVec = V.map (deltaComplementI vecs) enumVec
+      where enumVec       = V.fromList [0..(n-1)]
+            vecs          = chopVector n world
+            deltaVec      = V.map (deltaI vecs) enumVec
+            deltaComplVec = V.map (deltaComplementI vecs) enumVec
 
 
 
