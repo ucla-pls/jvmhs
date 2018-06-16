@@ -14,6 +14,7 @@ module Jvmhs.Analysis.Reduce
 
 --import            Control.Monad.IO.Class
 import            Control.Lens
+import            Control.Monad
 import            Jvmhs
 
 import qualified Data.Set                             as S
@@ -94,103 +95,90 @@ findUsedClasses  =
           (traverse.classNames)
           nothing) cls
 
-
-chopVector :: Int -> V.Vector x -> V.Vector (V.Vector x)
-chopVector n vec
-  | divisible = chopVector' blockSize n vec V.empty
-  | otherwise = chopVector' blockSize (vectorLength `mod` n) vec V.empty
+chopSet :: Ord x => Int -> S.Set x -> S.Set (S.Set x)
+chopSet n s
+  | divisible = chopSet' blockSize n s S.empty
+  | otherwise = chopSet' blockSize (vectorLength `mod` n) s S.empty
   where blockSize = vectorLength `roundUpQuot` n
-        vectorLength = length vec
-        divisible =  length vec `mod` n == 0
+        vectorLength = length s
+        divisible =  length s `mod` n == 0
 
-chopVector' ::
-     Int
-  -- ^ size of each Vec (delta)
+chopSet' ::
+     Ord x
+  => Int
+  -- ^ size of each Set (delta)
   -> Int
-  -- ^ num of vec remaining should be larger
-  -> V.Vector x
-  -> V.Vector (V.Vector x)
-  -> V.Vector (V.Vector x)
+  -- ^ num of Set remaining should be larger
+  -> S.Set x
+  -> S.Set (S.Set x)
+  -> S.Set (S.Set x)
 
-chopVector' i n vec rslt
-  | V.null vec        = rslt
-  | otherwise         = let (block, rest) = V.splitAt newBlockSize vec
-                          in chopVector'
-                            newBlockSize newN rest (snoc rslt block)
-  where newN         = if n > -1 then n - 1 else n
+chopSet' i n s rslt
+  | S.null s       = rslt
+  | otherwise         = let (block, rest) = S.splitAt newBlockSize s
+                          in chopSet'
+                            newBlockSize newN rest (S.insert block rslt )
+  where newN         = if n > -1 then n-1 else n
         newBlockSize = if n == 0 then i-1 else i
+
+
 
 roundUpQuot :: Int -> Int -> Int
 roundUpQuot i j = ceiling ((fromIntegral i / fromIntegral j)::Float)
 
-deltaI ::
-     V.Vector (V.Vector x)
-  -> Int
-  -> V.Vector x
-deltaI vecs i =
-  vecs V.! i
-
-deltaComplementI ::
-    V.Vector (V.Vector x)
-  -> Int
-  -> V.Vector x
-deltaComplementI vecs i =
-  V.foldl1 (V.++) $ V.ifilter (\j _ -> i /= j) vecs
-
-
 ddmin ::
-     Monad m
+     (Monad m, Ord x)
 --     (Monad m, MonadIO m, Show x)
-  => V.Vector x
-  -> (V.Vector x -> m Bool)
+  => S.Set x
+  -> (S.Set x -> m Bool)
   -- ^ a function can test delta
-  -> m(V.Vector x)
+  -> m(S.Set x)
 
 ddmin world = ddmin' world 2
 
 ddmin' ::
-     Monad m
+     (Monad m, Ord x)
 --     (Monad m, MonadIO m, Show x)
-  => V.Vector x
+  => S.Set x
   -> Int
-  -> (V.Vector x -> m Bool)
+  -> (S.Set x -> m Bool)
   -- ^ a function can test delta
-  -> m(V.Vector x)
+  -> m(S.Set x)
 ddmin' world n testFunc
-  | length world == 1 = return world
+  | S.size world == 1 = return world
   | otherwise = do
-      deltaTrueVec <- V.filterM testFunc deltaVec
-      deltaComplTrueVec <- V.filterM testFunc deltaComplVec
-      if V.length world == 1
-      then return world
-      else if not $ null deltaTrueVec
-           then
-             ddmin' (V.head deltaTrueVec) 2 testFunc
-           else if not $ null deltaComplTrueVec
-             then
-               ddmin' (V.head deltaComplTrueVec) (max (n-1) 2) testFunc
-             else if n < V.length world
-               then
-                  ddmin' world (min (V.length world) (2*n)) testFunc
-               else
-                  return world
-
-      where enumVec       = V.fromList [0..(n-1)]
-            vecs          = chopVector n world
-            deltaVec      = V.map (deltaI vecs) enumVec
-            deltaComplVec = V.map (deltaComplementI vecs) enumVec
+      firstDelta <- getFirst testFunc deltaSet
+      firstDeltaCompl <- getFirst testFunc deltaComplSet
+      case (firstDelta, firstDeltaCompl) of
+        (Just a, _)        ->
+          ddmin' a 2 testFunc
+        (Nothing, Just a)  ->
+          ddmin' a (max (n-1) 2) testFunc
+        (Nothing, Nothing)
+          | n < S.size world ->
+              ddmin' world (min (S.size world) (2*n)) testFunc
+          | otherwise ->
+              return world
+      where deltaSet      = chopSet n world
+            deltaComplSet = S.map (S.difference world) deltaSet
+            sHead         = S.elemAt 0
 
 
+getFirst ::
+    (Foldable t, Monad m)
+ => (S.Set x -> m Bool)
+ -> t (S.Set x)
+ -> m (Maybe (S.Set x))
 
---is178 :: (Monad m, Num x, Eq x) => V.Vector x -> m Bool
---is178 v =
--- return $ and [(V.elem 1 v), (V.elem 7 v), (V.elem 8 v)]
---
---
-----deltaTest :: (Monad m, MonadIO m) => m ()
---deltaTest :: IO()
---deltaTest = do
---  let numVec = V.fromList [1..8]
---  rslt <- ddmin numVec is178
---  print rslt
---  return ()
+getFirst testFun =
+  foldM fun Nothing
+  where
+    fun b a = case (b, a) of
+                (Nothing, _) -> do
+                    rsl <- testFun a
+                    if rsl
+                    then
+                      return $ Just a
+                    else
+                      return Nothing
+                (Just a', _) -> return (Just a')

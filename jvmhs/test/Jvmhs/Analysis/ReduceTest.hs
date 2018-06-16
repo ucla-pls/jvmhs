@@ -90,11 +90,16 @@ spec_reduceInterfaces = do
 
 spec_ddmin :: Spec
 spec_ddmin = do
-  it "should delta bug and find [1,7,8]" $ do
-     let numVec = V.fromList [1..8]
-     rslt <- ddmin numVec is178
---     V.toList rslt `shouldBe` [1,7,8]
-     V.toList rslt `shouldBe` [1]
-     where is178 v =
---            return $ and [(V.elem 1 v), (V.elem 7 v), (V.elem 8 v)]
-            return $ and [(V.elem 1 v)]
+  it "ddmin should be able to find elem with size 1" $
+    do
+      let numSet = S.fromList [1..8]
+      rslt <- ddmin numSet is7
+      S.toList rslt `shouldBe` [7]
+  it "ddmin should be able to find [1,7,8]" $
+      do
+        let numSet = S.fromList [1..8]
+        rslt <- ddmin numSet is178
+        S.toList rslt `shouldBe` [1,7,8]
+  where is7 v = return $ and [(S.member 7 v)]
+        is178 v =
+          return $ and [(S.member 1 v), (S.member 7 v), (S.member 8 v)]
