@@ -35,10 +35,14 @@ spec_partition = do
 
 spec_gdd :: Spec
 spec_gdd = do
+  it "can find a minimal closure for k = 0" $ do
+    gdd graph (\_ -> tell (Sum 1) >> return True)
+      `shouldBe`
+      (Sum (3 :: Int), [] :: [Int])
   it "can find a minimal closure for k = 1" $ do
     gdd graph (\s -> tell (Sum 1) >> return (any (== 2) s))
       `shouldBe`
-      (Sum (2 :: Int), [2, 3, 4] :: [Int])
+      (Sum (3 :: Int), [2, 3, 4] :: [Int])
   it "can find a minimal closure for k = 2" $ do
     gdd graph (\s -> tell (Sum 1) >> return (any (== 3) s && any (== 4) s))
       `shouldBe`
