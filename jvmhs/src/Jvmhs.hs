@@ -2,6 +2,7 @@
 module Jvmhs
   ( module Jvmhs.Analysis.Closure
   , module Jvmhs.Analysis.Hierarchy
+  , module Jvmhs.Analysis.DeltaDebug
   , module Jvmhs.ClassPool
   , module Jvmhs.ClassReader
 
@@ -14,6 +15,7 @@ module Jvmhs
 
 import           Jvmhs.Analysis.Closure
 import           Jvmhs.Analysis.Hierarchy
+import           Jvmhs.Analysis.DeltaDebug
 import           Jvmhs.ClassPool
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
