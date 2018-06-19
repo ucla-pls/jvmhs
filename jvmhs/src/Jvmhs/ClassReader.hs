@@ -148,8 +148,7 @@ class ClassReader m where
   readClassFile m cn = do
     bts <- getClassBytes m cn
     let cf = readClassFile' =<< bts
-    return $! deepseq (BL.length <$> bts) cf
---    (readClassFile' =<<) <$> getClassBytes m cn
+    return $! force cf
 
   -- | Returns the bytes of the class
   getClassBytes ::
