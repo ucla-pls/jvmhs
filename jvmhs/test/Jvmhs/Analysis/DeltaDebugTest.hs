@@ -10,16 +10,15 @@ import Control.Monad.Writer.Class
 
 import qualified Data.Vector as V
 import qualified Data.IntSet as IS
-import qualified Data.Set as S
 
 
 spec_binarySearch :: Spec
 spec_binarySearch = do
   it "can do a binary search on a list" $ do
-    binarySearch (V.fromList [0..100])
+    binarySearch (V.fromList ([0..100] :: [Int]))
       (\s -> tell [s] >> return (s >= 23))
       `shouldBe`
-      ([50, 25, 12, 19, 22, 24, 23], (23 :: Int))
+      ([50, 25, 12, 19, 22, 24, 23], 23)
 
 
 graph :: Graph Int ()
@@ -75,15 +74,14 @@ spec_sdd = do
 spec_ddmin :: Spec
 spec_ddmin = do
   it "ddmin should be able to find elem with size 1" $
-    do
-      let numSet = S.fromList [1..8]
-      rslt <- ddmin numSet is7
-      S.toList rslt `shouldBe` [7]
+    ddmin (\a -> tell (Sum 1) >> is7 a) l8
+      `shouldBe` (Sum (9:: Int), [7])
   it "ddmin should be able to find [1,7,8]" $
-      do
-        let numSet = S.fromList [1..8]
-        rslt <- ddmin numSet is178
-        S.toList rslt `shouldBe` [1,7,8]
-  where is7 v = return $ and [(S.member 7 v)]
-        is178 v =
-          return $ and [(S.member 1 v), (S.member 7 v), (S.member 8 v)]
+    ddmin (\a -> tell (Sum 1) >> is178 a) l8
+      `shouldBe` (Sum (31:: Int), [1,7,8])
+  where
+    l8 :: [Int]
+    l8 = [1..8]
+    is7 v = return $ elem (7 :: Int) v
+    is178 v =
+      return $ and [(elem 1 v), (elem 7 v), (elem (8 :: Int) v)]

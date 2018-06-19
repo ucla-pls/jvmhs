@@ -19,14 +19,13 @@ module Jvmhs.Analysis.DeltaDebug
 
 import           Control.Lens
 import           Control.Monad
-import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans
+import           Control.Monad.Trans.Maybe
 
-import Data.Monoid
+import           Data.Monoid
 
 import qualified Data.IntSet               as IS
 import qualified Data.List                 as L
-import qualified Data.Set                  as S
 import qualified Data.Vector               as V
 
 import           Jvmhs.Data.Graph
@@ -76,6 +75,62 @@ sdd p v = do
             then return x
             else return y
 
+-- | Original delta-debugging
+ddmin ::
+     (Monad m)
+  => ([x] -> m Bool)
+  -- ^ a function can test delta
+  -> [x]
+  -> m [x]
+ddmin p xs =
+  unset <$> ddmin' _set 2
+  where
+    reference = V.fromList xs
+    _set = IS.fromAscList [0 .. V.length reference-1]
+    unset = map (reference V.!) . IS.toList
+    property = p . unset
+
+    ddmin' world n
+      | worldSize == 1 = return world
+      | otherwise = do
+          firstDelta <- getFirstM property deltaSet
+          firstDeltaCompl <- getFirstM property deltaComplSet
+          case (firstDelta, firstDeltaCompl) of
+            (Just a, _)        ->
+              ddmin' a 2
+            (Nothing, Just a)  ->
+              ddmin' a (max (n-1) 2)
+            (Nothing, Nothing)
+              | n < worldSize ->
+                  ddmin' world (min worldSize (2*n))
+              | otherwise ->
+                  return world
+      where
+        worldSize = IS.size world
+
+        deltaSet      = chopSet (IS.toAscList world)
+        deltaComplSet = IS.difference world <$> deltaSet
+
+        blockSize = worldSize `roundUpQuot` n
+
+        chopSet [] = []
+        chopSet s =
+            let (h, r) = splitAt blockSize s
+            in IS.fromAscList h : chopSet r
+
+roundUpQuot :: Int -> Int -> Int
+roundUpQuot i j =
+  let (q, r) = quotRem i j in q + if r > 0 then 1 else 0
+
+getFirstM ::
+    (Foldable t, Monad m)
+ => (a -> m Bool)
+ -> t a
+ -> m (Maybe a)
+getFirstM testFun =
+  runMaybeT . getAlt
+    . foldMap (\a -> Alt (lift (testFun a) >>= guard >> return a))
+
 -- | Given a vector of elements more and more true for a predicate, give the smallest
 -- index such that the predicate is satisfied.
 binarySearch ::
@@ -95,60 +150,3 @@ binarySearch vec p =
         if inLowerHalf
           then go i pivot
           else go (pivot + 1) j
-
-ddmin ::
-     (Monad m, Ord x)
---     (Monad m, MonadIO m, Show x)
-  => S.Set x
-  -> (S.Set x -> m Bool)
-  -- ^ a function can test delta
-  -> m(S.Set x)
-
-ddmin world = ddmin' world 2
-
-ddmin' ::
-     (Monad m, Ord x)
---     (Monad m, MonadIO m, Show x)
-  => S.Set x
-  -> Int
-  -> (S.Set x -> m Bool)
-  -- ^ a function can test delta
-  -> m(S.Set x)
-ddmin' world n testFunc
-  | S.size world == 1 = return world
-  | otherwise = do
-      firstDelta <- getFirstM testFunc deltaSet
-      firstDeltaCompl <- getFirstM testFunc deltaComplSet
-      case (firstDelta, firstDeltaCompl) of
-        (Just a, _)        ->
-          ddmin' a 2 testFunc
-        (Nothing, Just a)  ->
-          ddmin' a (max (n-1) 2) testFunc
-        (Nothing, Nothing)
-          | n < S.size world ->
-              ddmin' world (min (S.size world) (2*n)) testFunc
-          | otherwise ->
-              return world
-      where deltaSet      = chopSet n world
-            deltaComplSet = S.difference world <$> deltaSet
-
-chopSet :: Ord x => Int -> S.Set x -> [S.Set x]
-chopSet n s = go s
-  where
-    blockSize = length s `roundUpQuot` n
-    go s'
-      | S.null s' = []
-      | otherwise = let (h, r) = S.splitAt blockSize s' in h : go r
-
-roundUpQuot :: Int -> Int -> Int
-roundUpQuot i j =
-  let (q, r) = quotRem i j in q + if r > 0 then 1 else 0
-
-getFirstM ::
-    (Foldable t, Monad m)
- => (a -> m Bool)
- -> t a
- -> m (Maybe a)
-getFirstM testFun =
-  runMaybeT . getAlt
-    . foldMap (\a -> Alt (lift (testFun a) >>= guard >> return a))
