@@ -137,7 +137,8 @@ chopSet n s = go s
       | otherwise = let (h, r) = S.splitAt blockSize s' in h : go r
 
 roundUpQuot :: Int -> Int -> Int
-roundUpQuot i j = ceiling ((fromIntegral i / fromIntegral j)::Float)
+roundUpQuot i j =
+  let (q, r) = quotRem i j in q + if r > 0 then 1 else 0
 
 getFirst ::
     (Foldable t, Monad m)
