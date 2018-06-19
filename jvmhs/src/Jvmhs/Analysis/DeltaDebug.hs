@@ -1,7 +1,7 @@
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
-{-# LANGUAGE RankNTypes       #-}
-{-# LANGUAGE FlexibleContexts       #-}
 {-|
 Module      : Jvmhs.Analysis.DeltaDebug
 Copyright   : (c) Christian Gram Kalhauge, 2018
@@ -19,13 +19,17 @@ module Jvmhs.Analysis.DeltaDebug
 
 import           Control.Lens
 import           Control.Monad
+import           Control.Monad.Trans.Maybe
+import           Control.Monad.Trans
 
-import qualified Data.IntSet as IS
-import qualified Data.Set as S
-import qualified Data.Vector as V
-import qualified Data.List as L
+import Data.Monoid
 
-import Jvmhs.Data.Graph
+import qualified Data.IntSet               as IS
+import qualified Data.List                 as L
+import qualified Data.Set                  as S
+import qualified Data.Vector               as V
+
+import           Jvmhs.Data.Graph
 
 -- | Graph delta-debugging
 gdd ::
@@ -113,8 +117,8 @@ ddmin' ::
 ddmin' world n testFunc
   | S.size world == 1 = return world
   | otherwise = do
-      firstDelta <- getFirst testFunc deltaSet
-      firstDeltaCompl <- getFirst testFunc deltaComplSet
+      firstDelta <- getFirstM testFunc deltaSet
+      firstDeltaCompl <- getFirstM testFunc deltaComplSet
       case (firstDelta, firstDeltaCompl) of
         (Just a, _)        ->
           ddmin' a 2 testFunc
@@ -140,21 +144,11 @@ roundUpQuot :: Int -> Int -> Int
 roundUpQuot i j =
   let (q, r) = quotRem i j in q + if r > 0 then 1 else 0
 
-getFirst ::
+getFirstM ::
     (Foldable t, Monad m)
- => (S.Set x -> m Bool)
- -> t (S.Set x)
- -> m (Maybe (S.Set x))
-
-getFirst testFun =
-  foldM fun Nothing
-  where
-    fun b a = case (b, a) of
-                (Nothing, _) -> do
-                    rsl <- testFun a
-                    if rsl
-                    then
-                      return $ Just a
-                    else
-                      return Nothing
-                (Just a', _) -> return (Just a')
+ => (a -> m Bool)
+ -> t a
+ -> m (Maybe a)
+getFirstM testFun =
+  runMaybeT . getAlt
+    . foldMap (\a -> Alt (lift (testFun a) >>= guard >> return a))
