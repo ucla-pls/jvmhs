@@ -72,7 +72,8 @@ sdd p v = do
             then return x
             else return y
 
-
+-- | Given a vector of elements more and more true for a predicate, give the smallest
+-- index such that the predicate is satisfied.
 binarySearch ::
   (Monad m)
   => V.Vector e
