@@ -7,8 +7,10 @@ module Main where
 import qualified Data.List             as L
 import           Data.Monoid
 import qualified Data.Set              as S
+import qualified Data.Vector           as V
 import qualified Data.Text             as Text
 import qualified Data.Text.IO          as Text
+import           Data.List.Split
 import           System.Console.Docopt
 import           System.Directory
 import           System.Environment    (getArgs)
@@ -22,6 +24,8 @@ import           Control.Monad.IO.Class
 
 import           Control.Lens          hiding (argument)
 import           Jvmhs
+import           Jvmhs.Analysis.Reduce
+import           Control.Concurrent
 
 patterns :: Docopt
 patterns = [docopt|
@@ -36,6 +40,7 @@ Options:
   --stdlib               Also include the stdlib (Don't do this)
   --jre=<jre>            The location of the stdlib
   -W, --warn             Warn about missing classes to the stderr
+  -r=<reduction>         Reduections
   --progress=<progress>  A file that will contain csv data for each
                          interation of the program
   -c, --core <core>      The core classes, that should not be removed
@@ -50,6 +55,7 @@ data Config = Config
   , _cfgClasses        :: S.Set ClassName
   , _cfgUseStdlib      :: Bool
   , _cfgWarn           :: Bool
+  , _cfgReductions     :: [String]
   , _cfgTempFolder     :: FilePath
   , _cfgJre            :: Maybe FilePath
   , _cfgProgressFile   :: Maybe FilePath
@@ -66,6 +72,7 @@ parseConfig :: Arguments -> IO Config
 parseConfig args = do
   classnames <- readClassNames
   tmpfolder <- getCanonicalTemporaryDirectory
+  reductions <- splitReductions
   return $ Config
     { _cfgClassPath =
         case concatMap splitClassPath $ getAllArgs args (longOption "cp") of
@@ -74,6 +81,7 @@ parseConfig args = do
     , _cfgOutput = getArg args (shortOption 'o')
     , _cfgClasses = classnames
     , _cfgWarn = isPresent args (longOption "warn")
+    , _cfgReductions = reductions
     , _cfgUseStdlib = isPresent args (longOption "stdlib")
     , _cfgJre = getArg args (longOption "jre")
     , _cfgProgressFile = getArg args (longOption "progress")
@@ -90,6 +98,11 @@ parseConfig args = do
       --   then do (classnames' ++) . lines <$> getContents
       --   else return classnames'
       return . S.fromList . map strCls $ classnames'
+    splitReductions = do
+      case getArg args (shortOption 'r') of
+        Nothing -> return []
+        Just s  -> return $ splitOn ":" s
+
 
 
 setupProgress :: Config -> IO ()
@@ -117,7 +130,7 @@ logProgress cfg name =
                   , Sum (cls^.classInterfaces.to length)
                   , Sum (cls^.classMethods.to length)
                   ))
-      prop <- runProperty cfg
+      prop <- runProperty cfg $ (^. className) <$> clss
       liftIO $ withFile pf AppendMode $ \h -> do
         hPutStrLn h $ L.intercalate ","
           [ name
@@ -131,20 +144,28 @@ logProgress cfg name =
       return ()
 
 runProperty ::
-  (MonadClassPool m, MonadIO m)
+  (MonadClassPool m, MonadIO m, Foldable t)
   => Config
+  -> t ClassName
   -> m Bool
-runProperty cfg =
+runProperty cfg clss =
   case cfg^.cfgProperty of
     cmd:cmdArgs -> do
       tmp <- liftIO $ do
         createDirectoryIfMissing True (cfg^.cfgTempFolder)
         createTempDirectory (cfg^.cfgTempFolder) "jreduce"
-      saveAllClasses tmp
+      saveClasses tmp clss
       res <- liftIO $ withCreateProcess (proc cmd (cmdArgs ++ [tmp])) $
         \_ _ _ ph -> do
-          ec <- waitForProcess ph
-          return $ ec == ExitSuccess
+--          ec <- waitForProcess ph
+          threadDelay 1000000
+          maybeCode <- getProcessExitCode ph
+          case maybeCode of
+            Nothing -> do
+                          terminateProcess ph
+                          return True
+            Just ec -> return $ ec == ExitSuccess
+--          return $ ec == ExitSuccess
       liftIO (
         if (cfg^.cfgKeepTempFolder) then
           putStrLn tmp
@@ -153,6 +174,7 @@ runProperty cfg =
         )
       return res
     _ -> return True
+
 
 runJReduce :: Config -> IO ()
 runJReduce cfg = do
@@ -163,9 +185,36 @@ runJReduce cfg = do
   handleFailedToLoad errs
 
   void . flip runClassPoolT st $ do
+    clss <- allClassNames
     logProgress cfg "-"
-    (found, missing) <- computeClassClosure (cfg^.cfgClasses)
-    logProgress cfg "class-closure"
+
+
+    forM_ (cfg^.cfgReductions) $ \red ->
+          case red of
+            "ddmin" ->
+              do
+                minVec <- ddmin (S.fromList clss) (runProperty cfg)
+                forM_ clss $ \c ->
+                  unless (c `S.member` minVec)  (deleteClass c)
+                logProgress cfg "ddmin"
+            "intf" ->
+              do
+                reduceInterfaces
+                logProgress cfg "reduce-interface"
+            "closure" ->
+              do
+                (found, missing) <- computeClassClosure (cfg^.cfgClasses)
+
+                forM_ clss $ \c ->
+                  unless (c `S.member` found)  (deleteClass c)
+                logProgress cfg "class-closure"
+            _ ->
+              liftIO $ print "wrong reducer"
+    liftIO $ print "all classes:"
+    liftIO $ print clss
+    curent <- allClassNames
+    liftIO $ print "reduced classes"
+    liftIO $ print curent
 
   where
     handleFailedToLoad [] = return ()

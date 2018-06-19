@@ -5,9 +5,9 @@ import SpecHelper
 import Jvmhs
 import Jvmhs.Analysis.Reduce
 
-import qualified Data.Set as S
-import qualified Data.Map as M
-
+import qualified Data.Set     as S
+import qualified Data.Map     as M
+import qualified Data.Vector  as V
 --outputPath :: FilePath
 --outputPath = "test/output/interface"
 --
@@ -85,3 +85,21 @@ spec_reduceInterfaces = do
       reduceInterfaces -- ["ItfcParent", "Itfc", "Itfc2", "SimpleI"]
       getClass "SimpleI"
     (x^.classInterfaces) `shouldMatchList` ["ItfcParent", "Itfc"]
+
+
+
+spec_ddmin :: Spec
+spec_ddmin = do
+  it "ddmin should be able to find elem with size 1" $
+    do
+      let numSet = S.fromList [1..8]
+      rslt <- ddmin numSet is7
+      S.toList rslt `shouldBe` [7]
+  it "ddmin should be able to find [1,7,8]" $
+      do
+        let numSet = S.fromList [1..8]
+        rslt <- ddmin numSet is178
+        S.toList rslt `shouldBe` [1,7,8]
+  where is7 v = return $ and [(S.member 7 v)]
+        is178 v =
+          return $ and [(S.member 1 v), (S.member 7 v), (S.member 8 v)]

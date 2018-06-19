@@ -25,6 +25,8 @@ dependencies:
   - process
   - directory
   - temporary
+  - vector
+  - split
 
 executables:
   jreduce:
