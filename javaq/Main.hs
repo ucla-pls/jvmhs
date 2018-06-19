@@ -240,17 +240,13 @@ decompile cfg = do
             Left msg -> return $ Left msg
         ) (const $ return ())
     OutputDot GTSCC -> do
-      graph' <- runClassPool classReader $ do
+      (graph, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
         snd . sccGraph <$> mkClassGraph classnames
-      case graph' of
-        Left msg -> print msg
-        Right graph -> putStrLn $ graphToDot graph
+      putStrLn $ graphToDot graph
     OutputDot GTFull -> do
-      graph' <- runClassPool classReader $ do
+      (graph, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
         mkClassGraph classnames
-      case graph' of
-        Left msg -> print msg
-        Right graph -> putStrLn $ graphToDot graph
+      putStrLn $ graphToDot graph
    where
      encode' :: ToJSON e => Either a e -> IO (Either a ())
      encode' =
