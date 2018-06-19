@@ -126,34 +126,15 @@ ddmin' world n testFunc
           | otherwise ->
               return world
       where deltaSet      = chopSet n world
-            deltaComplSet = S.map (S.difference world) deltaSet
-            sHead         = S.elemAt 0
+            deltaComplSet = S.difference world <$> deltaSet
 
-chopSet :: Ord x => Int -> S.Set x -> S.Set (S.Set x)
-chopSet n s
-  | divisible = chopSet' blockSize n s S.empty
-  | otherwise = chopSet' blockSize (vectorLength `mod` n) s S.empty
-  where blockSize = vectorLength `roundUpQuot` n
-        vectorLength = length s
-        divisible =  length s `mod` n == 0
-
-chopSet' ::
-     Ord x
-  => Int
-  -- ^ size of each Set (delta)
-  -> Int
-  -- ^ num of Set remaining should be larger
-  -> S.Set x
-  -> S.Set (S.Set x)
-  -> S.Set (S.Set x)
-
-chopSet' i n s rslt
-  | S.null s       = rslt
-  | otherwise         = let (block, rest) = S.splitAt newBlockSize s
-                          in chopSet'
-                            newBlockSize newN rest (S.insert block rslt )
-  where newN         = if n > -1 then n-1 else n
-        newBlockSize = if n == 0 then i-1 else i
+chopSet :: Ord x => Int -> S.Set x -> [S.Set x]
+chopSet n s = go s
+  where
+    blockSize = length s `roundUpQuot` n
+    go s'
+      | S.null s' = []
+      | otherwise = let (h, r) = S.splitAt blockSize s' in h : go r
 
 roundUpQuot :: Int -> Int -> Int
 roundUpQuot i j = ceiling ((fromIntegral i / fromIntegral j)::Float)
