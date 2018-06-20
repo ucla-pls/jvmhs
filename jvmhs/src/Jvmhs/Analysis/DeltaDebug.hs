@@ -14,7 +14,10 @@ module Jvmhs.Analysis.DeltaDebug
   ( ddmin
   , gdd
   , sdd
+  , sdd'
+
   , binarySearch
+  , binarySearch'
   ) where
 
 import           Control.Lens
@@ -22,7 +25,7 @@ import           Control.Monad
 import           Control.Monad.Trans
 import           Control.Monad.Trans.Maybe
 
-import           Data.Monoid
+import           Data.Functor
 
 import qualified Data.IntSet               as IS
 import qualified Data.List                 as L
@@ -42,38 +45,48 @@ gdd ::
 gdd p gr = do
   -- First compute the strongly connected components graph
   let par = V.fromList . L.sortOn IS.size . map snd $ partition' gr
-  fmap asLabels . sdd (p.asLabels) $ par
+  fmap asLabels . sdd' (p.asLabels) $ par
   where
     asLabels = toListOf (folded.toLabel gr._Just) . IS.toList
+
+
+sdd ::
+  (Monad m)
+  => ([v] -> m Bool)
+  -> [v]
+  -> m [v]
+sdd p xs =
+  unset <$> sdd' (p . unset) _set
+  where
+    reference = V.fromList xs
+    _set = V.fromList [IS.singleton i | i <- [0 .. V.length reference-1]]
+    unset = map (reference V.!) . IS.toList
 
 -- | Set delta-debugging
 -- Given a list of sets sorted after size, then return the smallest possible
 -- set such that uphold the predicate.
-sdd ::
+sdd' ::
   (Monad m)
   => (IS.IntSet -> m Bool)
   -> V.Vector IS.IntSet
   -> m IS.IntSet
-sdd p v = do
-  let mvunion = V.scanl' IS.union IS.empty v
-  i <- binarySearch mvunion p
-  if i == 0
-    then return IS.empty
+sdd' p v = do
+  let mvunion = V.postscanl' IS.union IS.empty v
+  Just i <- binarySearch p mvunion
+  let s = v V.! i
+  t <- p s
+  if t
+    then pure s
     else do
-      let s = v V.! (i - 1)
-      t <- p s
-      if t
-        then return s
-        else do
-          x <- sdd p . V.map (IS.union s) $ V.take (i - 1) v
-          y <- sdd p (V.fromList
-                      . (++ [x])
-                      . V.toList
-                      . V.ifilter (\j s' -> j /= i - 1 && IS.size s' < IS.size x)
-                      $ v)
-          if IS.size x < IS.size y
-            then return x
-            else return y
+      x <- sdd' p . V.map (IS.union s) $ V.take i v
+      y <- sdd' p (V.fromList
+                  . (++ [x])
+                  . V.toList
+                  . V.ifilter (\j s' -> j /= i && IS.size s' < IS.size x)
+                  $ v)
+      if IS.size x < IS.size y
+        then return x
+        else return y
 
 -- | Original delta-debugging
 ddmin ::
@@ -83,70 +96,78 @@ ddmin ::
   -> [x]
   -> m [x]
 ddmin p xs =
-  unset <$> ddmin' _set 2
+  unset <$> ddmin' 2 (p . unset) _set
   where
     reference = V.fromList xs
     _set = IS.fromAscList [0 .. V.length reference-1]
     unset = map (reference V.!) . IS.toList
-    property = p . unset
 
-    ddmin' world n
-      | worldSize == 1 = return world
-      | otherwise = do
-          firstDelta <- getFirstM property deltaSet
-          firstDeltaCompl <- getFirstM property deltaComplSet
-          case (firstDelta, firstDeltaCompl) of
-            (Just a, _)        ->
-              ddmin' a 2
-            (Nothing, Just a)  ->
-              ddmin' a (max (n-1) 2)
-            (Nothing, Nothing)
-              | n < worldSize ->
-                  ddmin' world (min worldSize (2*n))
-              | otherwise ->
-                  return world
-      where
-        worldSize = IS.size world
+ddmin' ::
+  (Monad m)
+  => Int
+  -> (IS.IntSet -> m Bool)
+  -> IS.IntSet
+  -> m IS.IntSet
+ddmin' n p world
+  | worldSize < n =
+    pure world
+  | otherwise = do
+    f <- runMaybeT . msum . concat $
+      [ go 2 <$> deltaSet
+      , go (max (n-1) 2) <$> deltaComplSet
+      ]
+    case f of
+      Just w ->
+        return w
+      Nothing
+        | n < worldSize ->
+          ddmin' (min worldSize (2*n)) p world
+        | otherwise ->
+          return world
+  where
+    deltaSet      = chopSet (IS.toAscList world)
+    deltaComplSet = IS.difference world <$> deltaSet
 
-        deltaSet      = chopSet (IS.toAscList world)
-        deltaComplSet = IS.difference world <$> deltaSet
+    go n' a = do
+      guard =<< lift (p a)
+      lift $ ddmin' n' p a
 
-        blockSize = worldSize `roundUpQuot` n
+    worldSize = IS.size world
+    blockSize = worldSize `roundUpQuot` n
 
-        chopSet [] = []
-        chopSet s =
-            let (h, r) = splitAt blockSize s
-            in IS.fromAscList h : chopSet r
+    chopSet [] = []
+    chopSet s =
+      let (h, r) = splitAt blockSize s
+      in IS.fromAscList h : chopSet r
 
 roundUpQuot :: Int -> Int -> Int
 roundUpQuot i j =
   let (q, r) = quotRem i j in q + if r > 0 then 1 else 0
 
-getFirstM ::
-    (Foldable t, Monad m)
- => (a -> m Bool)
- -> t a
- -> m (Maybe a)
-getFirstM testFun =
-  runMaybeT . getAlt
-    . foldMap (\a -> Alt (lift (testFun a) >>= guard >> return a))
+binarySearch ::
+  (Monad m)
+  => (e -> m Bool)
+  -> V.Vector e
+  -> m (Maybe Int)
+binarySearch p =
+  runMaybeT . binarySearch' (lift . p >=> guard)
 
 -- | Given a vector of elements more and more true for a predicate, give the smallest
 -- index such that the predicate is satisfied.
-binarySearch ::
-  (Monad m)
-  => V.Vector e
-  -> (e -> m Bool)
+binarySearch' ::
+  (MonadPlus m)
+  => (e -> m ())
+  -> V.Vector e
   -> m Int
-binarySearch vec p =
+binarySearch' p vec =
   go 0 (V.length vec)
   where
     go i j
-      | i == j  =
-        return i
-      | otherwise = do
+      | i == j =
+        guard (i < V.length vec) $> i
+      | otherwise =
         let pivot = i + ((j - i) `quot` 2)
-        inLowerHalf <- p (vec V.! pivot)
-        if inLowerHalf
-          then go i pivot
-          else go (pivot + 1) j
+        in msum
+         [ p (vec V.! pivot) >> go i pivot
+         , go (pivot + 1) j
+         ]
