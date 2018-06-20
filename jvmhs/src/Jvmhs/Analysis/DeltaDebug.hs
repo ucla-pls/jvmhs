@@ -25,6 +25,7 @@ import           Control.Monad
 import           Control.Monad.Trans
 import           Control.Monad.Trans.Maybe
 
+import           Data.Bool
 import           Data.Functor
 
 import qualified Data.IntSet               as IS
@@ -142,7 +143,8 @@ ddmin' n p world
 
 roundUpQuot :: Int -> Int -> Int
 roundUpQuot i j =
-  let (q, r) = quotRem i j in q + if r > 0 then 1 else 0
+  q + bool 1 0 (r > 0)
+  where (q, r) = quotRem i j
 
 binarySearch ::
   (Monad m)
