@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE LambdaCase       #-}
 {-|
 Module      : Jvmhs.Analysis.DeltaDebug
@@ -52,7 +51,7 @@ gdd ::
 gdd p gr = do
   -- First compute the strongly connected components graph
   let par = V.fromList . L.sortOn IS.size . map snd $ partition' gr
-  fmap asLabels . sddH (p.asLabels) $ par
+  fmap asLabels . sdd' (p.asLabels) $ par
   where
     asLabels = toListOf (folded.toLabel gr._Just) . IS.toList
 
@@ -62,49 +61,58 @@ sdd ::
   => ([x] -> m Bool)
   -> [x]
   -> m [x]
-sdd p xs = do
-  unset <$> sddH (p . unset) _set
+sdd p xs = 
+  unset <$> sdd' (p . unset) _set
   where
     reference = V.fromList xs
     _set = V.fromList [IS.singleton i | i <- [0 .. V.length reference-1]]
     unset = map (reference V.!) . IS.toList
 
-sddH ::
-  (Monad m)
-  => (IS.IntSet -> m Bool)
-  -> V.Vector IS.IntSet
-  -> m IS.IntSet
-sddH p vs = do
-  p IS.empty >>= \case
-    True ->
-      pure IS.empty
-    False -> do
-      s <- runMaybeT $ sdd' (IS.size total) IS.empty (lift . p >=> guard) vs
-      return $ fromMaybe total s
-  where total = V.foldr (IS.union) IS.empty vs
-
 -- | Set delta-debugging
 -- Given a list of sets sorted after size, then return the smallest possible
 -- set such that uphold the predicate.
 sdd' ::
-  (MonadPlus m)
-  => Int
-  -> IS.IntSet
-  -> (IS.IntSet -> m ())
+  (Monad m)
+  => (IS.IntSet -> m Bool)
   -> V.Vector IS.IntSet
   -> m IS.IntSet
-sdd' k known p v = do
-  let
-    cutoff = runIdentity $ binarySearch (\a -> pure $ IS.size a >= k) v
-    mvunion = V.postscanl' IS.union known (maybe v (flip V.take v) cutoff)
-  i <- binarySearch' p mvunion
-  let s = (v V.! i `IS.union` known)
-  msum
-    [ p s $> s
-    , do
-      x <- sdd' k s p $ V.take i v
-      sdd' (IS.size x) known p (V.ifilter (\j _ -> j /= i) $ v) <|> return x
-    ]
+sdd' pred vs =
+  pred IS.empty >>= \case
+    True ->
+      pure IS.empty
+    False -> do
+      s <- runMaybeT $ go (IS.size total) IS.empty vs
+      return $ fromMaybe total s
+  where
+    total = V.foldr IS.union IS.empty vs
+    p = lift . pred >=> guard
+
+    -- The recursive function,
+    --   k is the max size of set
+    --   known is the set of values known to be in the set
+    --   v is the vector to be searched for sets
+    go k known v = do
+      let
+        -- A vector of sets smaller than k
+        smaller = maybe v (`V.take` v) . runIdentity
+           $ binarySearch (pure.(k<).IS.size) v
+
+      -- A binary search over the union of the remaining sets and the known set.
+      i <- binarySearch' p $ V.postscanl' IS.union known smaller
+
+      -- s is the smallest set where the moving union satisfies the predicate
+      let s = (v V.! i `IS.union` known)
+
+      -- If the predicate satisfies the smallest set, then great!
+      p s $> s <|>
+        -- else find the subset that satisfies the predicated
+        ( do
+          subset <- go k s $ V.take i v;
+          -- check if a smaller set exists that does not contain the damming elements
+          -- from s.
+          go (IS.size subset) known (V.ifilter (\j _ -> j /= i) v)
+            <|> return subset
+        )
 
 -- | Original delta-debugging
 ddmin ::
