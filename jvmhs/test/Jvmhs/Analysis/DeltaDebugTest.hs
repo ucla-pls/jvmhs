@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Jvmhs.Analysis.DeltaDebugTest where
 
 import SpecHelper
@@ -7,11 +8,8 @@ import Jvmhs
 import Data.Monoid
 
 import Control.Monad.Writer.Class
-import Control.Monad.Trans.Maybe
-import Control.Monad
 
 import qualified Data.Vector as V
-import qualified Data.IntSet as IS
 
 
 spec_binarySearch :: Spec
@@ -37,65 +35,95 @@ graph =
   , (2, 4, ())
   ]
 
+em :: MonadWriter () m => ([v] -> Bool) -> [v] -> m Bool
+em f = return . f
+
 -- spec_gdd :: Spec
 -- spec_gdd = do
---   it "can find a minimal closure for k = 0" $ do
---     gdd (\_ -> tell (Sum 1) >> return True) graph
---       `shouldBe`
---       (Sum (3 :: Int), Just ([] :: [Int]))
+--   -- it "can find a minimal closure for k = 0" $ do
+--   --   gdd (em $ const True) graph
+--   --     `shouldBe`
+--   --     ((), ([] :: [Int]))
 --   it "can find a minimal closure for k = 1" $ do
---     gdd (\s -> tell (Sum 1) >> return (any (== 2) s)) graph
+--     gdd (em $ any (== 2)) graph
 --       `shouldBe`
---       (Sum (4 :: Int), Just ([2, 3, 4] :: [Int]))
+--       ((), ([2, 3, 4] :: [Int]))
 --   it "can find a minimal closure for k = 2" $ do
---     gdd(\s -> tell (Sum 1) >> return (any (== 3) s && any (== 4) s)) graph
+--     gdd(em $ (\s -> any (== 3) s && any (== 4) s)) graph
 --       `shouldBe`
---       (Sum (9 :: Int), Just ([3, 4] :: [Int]))
+--       ((), ([3, 4] :: [Int]))
 
--- spec_sdd :: Spec
--- spec_sdd = do
---   let v8 = V.fromList $ map (IS.singleton) [1..8]
---   -- it "can return the empty set" $ do
---   --   sdd (\_ -> tell (Sum 1) >> return True) v8
---   --     `shouldBe` (Sum (4 :: Int), IS.fromList [])
 
---   it "can solve a simple case " $ do
---     sdd' (\s -> tell (Sum 1) >> return (3 `IS.member` s)) v8
---       `shouldBe` (Sum (4 :: Int), IS.fromList [3])
+test8 :: [Int]
+test8 = [1..8]
 
---   it "can solve the dd-min case" $ do
---     let
---       s178 = IS.fromList [1,7,8]
---       is178 s = return (s178 `IS.isSubsetOf` s)
---     sdd' (\s -> tell (Sum 1) >> is178 s) v8
---       `shouldBe` (Sum (20 :: Int), IS.fromList [1,7,8])
+is7 :: Foldable t => t Int -> Bool
+is7 v =
+  elem (7 :: Int) v
 
---   it "can solve a k=2 case " $ do
---     let
---       s167 = IS.fromList [1,6,7]
---       s28 = IS.fromList [2,8]
---       test s = return $ (s167 `IS.isSubsetOf` s) || (s28 `IS.isSubsetOf` s)
---     sdd' (\s -> tell (Sum 1) >> test s) v8
---       `shouldBe` (Sum (28 :: Int), IS.fromList [2,8])
+is167 :: Foldable t => t Int -> Bool
+is167 v =
+  and [(elem 1 v), (elem 6 v), (elem (7 :: Int) v)]
 
+is178 :: Foldable t => t Int -> Bool
+is178 v =
+  and [(elem 1 v), (elem 7 v), (elem (8 :: Int) v)]
+
+is1234 :: Foldable t => t Int -> Bool
+is1234 v =
+  and [(elem 1 v), (elem 2 v), (elem 3 v), (elem 4 v)]
+
+is28 :: Foldable t => t Int -> Bool
+is28 v =
+  and [(elem 2 v), (elem (8 :: Int) v)]
+
+
+count :: MonadWriter (Sum Int) m => ([v] -> Bool) -> [v] -> m Bool
+count f s = do
+  tell $ Sum 1
+  return $ f s
+
+listt :: MonadWriter [[v]] m => ([v] -> Bool) -> [v] -> m Bool
+listt f s = do
+  tell [s]
+  return $ f s
+
+spec_sdd :: Spec
+spec_sdd = do
+  it "can solve a simple case " $ do
+    sdd (count is7) test8 `shouldBe` (Sum 5, [7])
+
+  it "can solve the dd-min case" $ do
+    sdd (count is178) test8 `shouldBe` (Sum 18, [1,7,8])
+
+  it "can solve a k=2 case " $ do
+    sdd (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 25, [2,8])
+
+  it "returns a empty element if true" $
+    sdd (count $ const True) test8 `shouldBe` (Sum 1, [])
+
+  it "returns everything if false" $
+    sdd (count $ const False) test8 `shouldBe` (Sum 4, test8)
+
+  it "does find an optimal solution for some cases" $ do
+    sdd (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 19, [7])
 
 spec_ddmin :: Spec
 spec_ddmin = do
   it "is be able to find elem with size 1" $
-    ddmin (\a -> tell (Sum 1) >> is7 a) l8
-      `shouldBe` (Sum (5:: Int), [7])
+    ddmin (count is7) test8 `shouldBe` (Sum 5, [7])
+
   it "is be able to find [1,7,8]" $
-    ddmin (\a -> tell (Sum 1) >> is178 a) l8
-      `shouldBe` (Sum (31:: Int), [1,7,8])
-  it "returns a single element from the set if true" $
-    ddmin (\_ -> tell (Sum 1) >> pure True) l8
-      `shouldBe` (Sum (3:: Int), [1])
+    ddmin (count is178) test8 `shouldBe` (Sum 31, [1,7,8])
+
+  it "returns a single element if true" $
+    ddmin (count $ const True) test8 `shouldBe` (Sum 3, [1])
+
+  it "does find an optimal solution for some cases" $ do
+    ddmin (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 33, [2,8])
+
+  it "does not find an optimal solution for some cases" $ do
+    ddmin (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 13, [1,2,3,4])
+
   it "returns everything if false" $
-    ddmin (\_ -> tell (Sum 1) >> pure False) l8
-      `shouldBe` (Sum (28 :: Int), l8)
-  where
-    l8 :: [Int]
-    l8 = [1..8]
-    is7 v = return $ elem (7 :: Int) v
-    is178 v =
-      return $ and [(elem 1 v), (elem 7 v), (elem (8 :: Int) v)]
+    ddmin (count $ const False) test8 `shouldBe` (Sum 28, test8)

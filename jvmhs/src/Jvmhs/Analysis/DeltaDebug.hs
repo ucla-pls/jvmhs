@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE LambdaCase       #-}
 {-|
 Module      : Jvmhs.Analysis.DeltaDebug
 Copyright   : (c) Christian Gram Kalhauge, 2018
@@ -18,15 +19,20 @@ module Jvmhs.Analysis.DeltaDebug
 
   , binarySearch
   , binarySearch'
+
   ) where
 
 import           Control.Lens
 import           Control.Monad
+import           Control.Applicative
 import           Control.Monad.Trans
 import           Control.Monad.Trans.Maybe
 
 import           Data.Bool
+import           Data.Maybe
 import           Data.Functor
+
+import           Debug.Trace
 
 import qualified Data.IntSet               as IS
 import qualified Data.List                 as L
@@ -46,48 +52,59 @@ gdd ::
 gdd p gr = do
   -- First compute the strongly connected components graph
   let par = V.fromList . L.sortOn IS.size . map snd $ partition' gr
-  fmap asLabels . sdd' (p.asLabels) $ par
+  fmap asLabels . sddH (p.asLabels) $ par
   where
     asLabels = toListOf (folded.toLabel gr._Just) . IS.toList
 
 
 sdd ::
   (Monad m)
-  => ([v] -> m Bool)
-  -> [v]
-  -> m [v]
-sdd p xs =
-  unset <$> sdd' (p . unset) _set
+  => ([x] -> m Bool)
+  -> [x]
+  -> m [x]
+sdd p xs = do
+  unset <$> sddH (p . unset) _set
   where
     reference = V.fromList xs
     _set = V.fromList [IS.singleton i | i <- [0 .. V.length reference-1]]
     unset = map (reference V.!) . IS.toList
 
--- | Set delta-debugging
--- Given a list of sets sorted after size, then return the smallest possible
--- set such that uphold the predicate.
-sdd' ::
+sddH ::
   (Monad m)
   => (IS.IntSet -> m Bool)
   -> V.Vector IS.IntSet
   -> m IS.IntSet
-sdd' p v = do
-  let mvunion = V.postscanl' IS.union IS.empty v
-  Just i <- binarySearch p mvunion
-  let s = v V.! i
-  t <- p s
-  if t
-    then pure s
-    else do
-      x <- sdd' p . V.map (IS.union s) $ V.take i v
-      y <- sdd' p (V.fromList
-                  . (++ [x])
-                  . V.toList
-                  . V.ifilter (\j s' -> j /= i && IS.size s' < IS.size x)
-                  $ v)
-      if IS.size x < IS.size y
-        then return x
-        else return y
+sddH p vs = do
+  p IS.empty >>= \case
+    True ->
+      pure IS.empty
+    False -> do
+      s <- runMaybeT $ sdd' (IS.size total) IS.empty (lift . p >=> guard) vs
+      return $ fromMaybe total s
+  where total = V.foldr (IS.union) IS.empty vs
+
+-- | Set delta-debugging
+-- Given a list of sets sorted after size, then return the smallest possible
+-- set such that uphold the predicate.
+sdd' ::
+  (MonadPlus m)
+  => Int
+  -> IS.IntSet
+  -> (IS.IntSet -> m ())
+  -> V.Vector IS.IntSet
+  -> m IS.IntSet
+sdd' k known p v = do
+  let
+    cutoff = runIdentity $ binarySearch (\a -> pure $ IS.size a >= k) v
+    mvunion = V.postscanl' IS.union known (maybe v (flip V.take v) cutoff)
+  i <- binarySearch' p mvunion
+  let s = (v V.! i `IS.union` known)
+  msum
+    [ p s $> s
+    , do
+      x <- sdd' k s p $ V.take i v
+      sdd' (IS.size x) known p (V.ifilter (\j _ -> j /= i) $ v) <|> return x
+    ]
 
 -- | Original delta-debugging
 ddmin ::
@@ -143,7 +160,7 @@ ddmin' n p world
 
 roundUpQuot :: Int -> Int -> Int
 roundUpQuot i j =
-  q + bool 1 0 (r > 0)
+  q + bool 0 1 (r > 0)
   where (q, r) = quotRem i j
 
 binarySearch ::

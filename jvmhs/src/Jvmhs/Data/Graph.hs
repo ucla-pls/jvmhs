@@ -29,6 +29,10 @@ module Jvmhs.Data.Graph
   -- * Algorithms
   , partition
   , partition'
+
+  -- * Re-exports
+  , F.order
+  , F.size
   ) where
 
 import           Control.Lens
