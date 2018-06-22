@@ -23,6 +23,7 @@ module Jvmhs.Analysis.DeltaDebug
   , sddx
   , MZ
   , ZZ
+  , CUZ
   , Zet (..)
 
   ) where
@@ -63,7 +64,7 @@ sdd ::
   -> [x]
   -> m [x]
 sdd =
-  sddx (fromListOfSet :: [Z] -> CUZ)
+  sddx (fromListOfSet :: [Z] -> MZ)
 
 sddx ::
   (Monad m, Zet zz)
@@ -80,6 +81,7 @@ sddx hlp p xs =
 
 {-# SPECIALIZE sddx :: ([IS.IntSet]-> MZ) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
 {-# SPECIALIZE sddx :: ([IS.IntSet]-> ZZ) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
+{-# SPECIALIZE sddx :: ([IS.IntSet]-> CUZ) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
 
 -- | Set delta-debugging
 -- Given a list of sets sorted after size, then return the smallest possible
@@ -90,7 +92,7 @@ sdd' ::
   -> [IS.IntSet]
   -> m IS.IntSet
 sdd' predicate ls =
-  sddx' predicate (fromListOfSet ls :: CUZ)
+  sddx' predicate (fromListOfSet ls :: MZ)
 
 sddx' ::
   (Monad m, Zet zz)
@@ -119,6 +121,7 @@ sddx' predicate ls =
 
 {-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> MZ -> m IS.IntSet #-}
 {-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> ZZ -> m IS.IntSet #-}
+{-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> CUZ -> m IS.IntSet #-}
 
 
 -- | Original delta-debugging

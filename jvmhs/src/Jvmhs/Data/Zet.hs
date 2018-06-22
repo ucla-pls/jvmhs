@@ -20,6 +20,8 @@ import qualified Data.IntSet   as IS
 import qualified Data.List     as L
 import qualified Data.Vector   as V
 
+
+import Debug.Trace
 type Z = IS.IntSet
 
 class Zet zz where
@@ -71,33 +73,35 @@ instance Zet MZ where
 data UnionZet
   = UZBranch Z UnionZet UnionZet
   | UZNode Z
-  | UZEmpty
+  deriving (Show, Eq)
 
-newtype CUZ = CUZ (Z, UnionZet)
+newtype CUZ = CUZ (Z, Maybe UnionZet)
+  deriving (Show, Eq)
 
 toListZet :: UnionZet -> [Z]
 toListZet z =
   go z []
   where
-    go (UZEmpty) = id
     go (UZNode x) = (x:)
     go (UZBranch _ lz rz) =
       go lz . go rz
 
-
 -- mergeUZ :: UnionZet -> UnionZet -> UnionZet
 -- mergeUZ UZEmpty a = a
 -- mergeUZ a UZEmpty = a
--- mergeUZ lz rz =
---   UZBranch (totalUZ lz `IS.union` totalUZ rz) lz rz
 
 mergeUZ :: UnionZet -> UnionZet -> UnionZet
-mergeUZ x y = fromListOfSetUZ (toListZet x ++  toListZet y)
+mergeUZ lz rz =
+  UZBranch (totalUZ lz `IS.union` totalUZ rz) lz rz
+
+mergeMUZ :: Maybe UnionZet -> Maybe UnionZet -> Maybe UnionZet
+mergeMUZ Nothing a = a
+mergeMUZ a Nothing = a
+mergeMUZ (Just x) (Just y) = Just $ mergeUZ x y
 
 totalUZ :: UnionZet -> Z
 totalUZ (UZBranch z _ _) = z
 totalUZ (UZNode z) = z
-totalUZ (UZEmpty) = IS.empty
 
 fromListOfSetUZ :: [IS.IntSet] -> UnionZet
 fromListOfSetUZ zs =
@@ -112,31 +116,33 @@ fromListOfSetUZ zs =
         rz = go (n - p) r
       in UZBranch (totalUZ lz `IS.union` totalUZ rz) lz rz
 
+
 instance Zet CUZ where
   fromListOfSet zs =
-    CUZ (IS.empty, fromListOfSetUZ zs)
+    CUZ (IS.empty, Just $ fromListOfSetUZ zs)
 
-  splitZ p (CUZ (c, z)) = do
+  splitZ _ (CUZ (_, Nothing)) = mzero
+  splitZ p cuz@(CUZ (c, Just z)) = do
     (lz, m, rz) <- go c z
     return (CUZ (c, lz), m `IS.union` c, CUZ (c, rz))
     where
-      go _ (UZEmpty) = mzero
-      go _ (UZNode x) = return $ (UZEmpty, x, UZEmpty)
-      go b (UZBranch _ lz rz) =
+      go b a@(UZNode x) =
+        p (b `IS.union` x) $> (Nothing, x, Nothing)
+      go b a@(UZBranch tz lz rz) =
+        p (b `IS.union` tz) >>
         ( do
-            p (b `IS.union` totalUZ lz)
             (lhs, r, rhs) <- go b lz
-            return (lhs, r, rhs `mergeUZ` rz)
+            return (lhs, r, rhs `mergeMUZ` Just rz)
         )
         <|>
         ( do
             (lhs, r, rhs) <- go (b `IS.union` totalUZ lz) rz
-            return (lz `mergeUZ` lhs, r, rhs)
+            return (Just lz `mergeMUZ` lhs, r, rhs)
         )
 
-  conditionZ (CUZ (c', z)) c = CUZ (c `IS.union` c', go z)
+  conditionZ (CUZ (c', Nothing)) c = CUZ (c `IS.union` c', Nothing)
+  conditionZ (CUZ (c', Just z)) c = CUZ (c `IS.union` c', Just $ go z)
     where
-      go UZEmpty = UZEmpty
       go (UZNode x) = UZNode (x IS.\\ c)
       go x@(UZBranch tz lz rz)
         | IS.null (tz `IS.intersection` c) = x
@@ -145,21 +151,21 @@ instance Zet CUZ where
         | otherwise =
           fromListOfSetUZ [ s IS.\\ c | s <- toListZet x]
 
-  filterZ k (CUZ (c, z)) = CUZ (c, go z)
+  filterZ _ (CUZ (c, Nothing)) = CUZ (c, Nothing)
+  filterZ k (CUZ (c, Just z)) = CUZ (c, go z)
     where
       csize = IS.size c
-      go (UZEmpty) = UZEmpty
       go (UZNode x) =
-        if IS.size x < k - csize then UZNode x else UZEmpty
+        if IS.size x < k - csize then Just (UZNode x) else Nothing
       go (UZBranch _ lz rz) =
         case go rz of
-          UZEmpty -> go lz
-          a -> lz `mergeUZ` a
+          Nothing -> go lz
+          Just a -> Just $ lz `mergeUZ` a
 
+  mergeZ (CUZ (c, z)) (CUZ (_, z2)) = CUZ (c, z `mergeMUZ` z2)
 
-  mergeZ (CUZ (c, z)) (CUZ (_, z2)) = CUZ (c, z `mergeUZ` z2)
-
-  totalZ (CUZ (c, z)) = c `IS.union` totalUZ z
+  totalZ (CUZ (_, Nothing)) = IS.empty
+  totalZ (CUZ (c, Just z)) = c `IS.union` totalUZ z
 
 
 binarySearch ::
