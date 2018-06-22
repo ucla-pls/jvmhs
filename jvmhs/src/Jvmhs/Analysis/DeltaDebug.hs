@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE LambdaCase       #-}
 {-|
 Module      : Jvmhs.Analysis.DeltaDebug
 Copyright   : (c) Christian Gram Kalhauge, 2018
@@ -19,25 +19,29 @@ module Jvmhs.Analysis.DeltaDebug
   , binarySearch
   , binarySearch'
 
+  -- * extras
+  , sddx
+  , MZ
+  , ZZ
+  , Zet (..)
+
   ) where
 
+import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
-import           Control.Applicative
 import           Control.Monad.Trans
 import           Control.Monad.Trans.Maybe
 
 import           Data.Bool
-import           Data.Maybe
 import           Data.Functor
-
-import           Debug.Trace
+import           Data.Maybe
 
 import qualified Data.IntSet               as IS
-import qualified Data.List                 as L
 import qualified Data.Vector               as V
 
 import           Jvmhs.Data.Graph
+import           Jvmhs.Data.Zet
 
 -- | Graph delta-debugging
 gdd ::
@@ -53,18 +57,29 @@ gdd p gr = do
   where
     asLabels = toListOf (folded.toLabel gr._Just) . IS.toList
 
-
 sdd ::
   (Monad m)
   => ([x] -> m Bool)
   -> [x]
   -> m [x]
-sdd p xs =
-  unset <$> sdd' (p . unset) _set
+sdd =
+  sddx (fromListOfSet :: [Z] -> MZ)
+
+sddx ::
+  (Monad m, Zet zz)
+  => ([IS.IntSet] -> zz)
+  -> ([x] -> m Bool)
+  -> [x]
+  -> m [x]
+sddx hlp p xs =
+  unset <$> sddx' (p . unset) (hlp _set)
   where
     reference = V.fromList xs
     _set = [IS.singleton i | i <- [0 .. V.length reference-1]]
     unset = map (reference V.!) . IS.toList
+
+{-# SPECIALIZE sddx :: ([IS.IntSet]-> MZ) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
+{-# SPECIALIZE sddx :: ([IS.IntSet]-> ZZ) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
 
 -- | Set delta-debugging
 -- Given a list of sets sorted after size, then return the smallest possible
@@ -75,14 +90,22 @@ sdd' ::
   -> [IS.IntSet]
   -> m IS.IntSet
 sdd' predicate ls =
+  sddx' predicate (fromListOfSet ls :: MZ)
+
+sddx' ::
+  (Monad m, Zet zz)
+  => (IS.IntSet -> m Bool)
+  -> zz
+  -> m IS.IntSet
+sddx' predicate ls =
   predicate IS.empty >>= \case
     True ->
       pure IS.empty
     False -> do
-      s <- runMaybeT $ go (totalSize) (fromListOfSet ls)
+      s <- runMaybeT $ go (totalSize) ls
       return $ fromMaybe total s
   where
-    total = foldr IS.union IS.empty ls
+    total = totalZ ls
     totalSize = IS.size total
     p = lift . predicate >=> guard
 
@@ -94,30 +117,9 @@ sdd' predicate ls =
             go (IS.size subset) (mergeZ lw hg) <|> return subset
         )
 
-type Z = IS.IntSet
-type ZZ = (Z, V.Vector Z)
+{-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> MZ -> m IS.IntSet #-}
+{-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> ZZ -> m IS.IntSet #-}
 
-fromListOfSet :: [Z] -> ZZ
-fromListOfSet zs =
-  (IS.empty, V.fromList . L.sortOn IS.size $ zs)
-
-splitZ :: MonadPlus m => (Z -> m ()) -> ZZ -> m (ZZ, Z, ZZ)
-splitZ p mu@(b, z) = do
-  i <- binarySearch' (p . IS.union b) (V.postscanl IS.union IS.empty z)
-  return $ (V.take i <$> mu, (z V.! i) `IS.union` b, V.drop (i + 1) <$> mu)
-
-conditionZ :: ZZ -> Z -> ZZ
-conditionZ (a, mu) z =
-  let (_, zz) = fromListOfSet $ mu ^.. traverse . to (IS.\\ z)
-  in (a `IS.union` z, zz)
-
-filterZ :: Int -> ZZ -> ZZ
-filterZ k (b, zz)=
-  (b, V.filter ((<k - bs).IS.size) zz)
-  where bs = IS.size b
-
-mergeZ :: ZZ -> ZZ -> ZZ
-mergeZ (a, zz1) (_, zz2)= (a, zz1 V.++ zz2)
 
 -- | Original delta-debugging
 ddmin ::
@@ -175,31 +177,3 @@ roundUpQuot :: Int -> Int -> Int
 roundUpQuot i j =
   q + bool 0 1 (r > 0)
   where (q, r) = quotRem i j
-
-binarySearch ::
-  (Monad m)
-  => (e -> m Bool)
-  -> V.Vector e
-  -> m (Maybe Int)
-binarySearch p =
-  runMaybeT . binarySearch' (lift . p >=> guard)
-
--- | Given a vector of elements more and more true for a predicate, give the smallest
--- index such that the predicate is satisfied.
-binarySearch' ::
-  (MonadPlus m)
-  => (e -> m ())
-  -> V.Vector e
-  -> m Int
-binarySearch' p vec =
-  go 0 (V.length vec)
-  where
-    go i j
-      | i == j =
-        guard (i < V.length vec) $> i
-      | otherwise =
-        let pivot = i + ((j - i) `quot` 2)
-        in msum
-         [ p (vec V.! pivot) >> go i pivot
-         , go (pivot + 1) j
-         ]

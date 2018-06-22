@@ -6,6 +6,7 @@ import Control.Lens
 
 import Data.List
 import qualified Data.Vector as V
+import qualified Data.IntSet as IS
 
 main :: IO ()
 main =
@@ -21,7 +22,8 @@ mkP :: String -> (Int -> ([Int] -> Bool)) -> [Float] -> Benchmark
 mkP name p sizes =
   bgroup name
     [ mkSizes "ddmin" (\i -> runIdentity . ddmin (pure . p i)) sizes
-    , mkSizes "sdd" (\i -> runIdentity . sdd (pure . p i)) sizes
+    , mkSizes "sddMZ" (\i -> runIdentity . sddx (fromListOfSet :: [IS.IntSet] -> MZ) (pure . p i)) sizes
+    , mkSizes "sddZZ" (\i -> runIdentity . sddx (fromListOfSet :: [IS.IntSet] -> ZZ) (pure . p i)) sizes
     ]
 
 mkSizes :: String -> (Int -> [Int] -> [Int]) -> [Float] -> Benchmark
