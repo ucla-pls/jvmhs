@@ -90,7 +90,7 @@ spec_sdd = do
     sdd (count is7) test8 `shouldBe` (Sum 5, [7])
 
   it "can solve the dd-min case" $
-    sdd (count is178) test8 `shouldBe` (Sum 18, [1,7,8])
+    sdd (listt is178) test8 `shouldBe` ([], [1,7,8])
 
   it "can solve a k=2 case " $
     sdd (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 25, [2,8])

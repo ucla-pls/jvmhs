@@ -63,7 +63,7 @@ sdd ::
   -> [x]
   -> m [x]
 sdd =
-  sddx (fromListOfSet :: [Z] -> MZ)
+  sddx (fromListOfSet :: [Z] -> CUZ)
 
 sddx ::
   (Monad m, Zet zz)
@@ -90,7 +90,7 @@ sdd' ::
   -> [IS.IntSet]
   -> m IS.IntSet
 sdd' predicate ls =
-  sddx' predicate (fromListOfSet ls :: MZ)
+  sddx' predicate (fromListOfSet ls :: CUZ)
 
 sddx' ::
   (Monad m, Zet zz)

@@ -12,6 +12,7 @@ module Jvmhs.Data.Zet where
 
 import           Control.Lens
 import           Control.Monad
+import           Control.Applicative
 import           Control.Monad.Trans
 import           Control.Monad.Trans.Maybe
 import           Data.Functor
@@ -63,6 +64,103 @@ instance Zet MZ where
   mergeZ (MZ (a, zz1)) (MZ (_, zz2)) = (MZ (a, zz1 V.++ zz2))
 
   totalZ (MZ (_, zz)) = V.foldr IS.union IS.empty zz
+
+
+-- | A union Zet, is a binary tree of sets, where the branches holds
+-- the nodes of the sets.
+data UnionZet
+  = UZBranch Z UnionZet UnionZet
+  | UZNode Z
+  | UZEmpty
+
+newtype CUZ = CUZ (Z, UnionZet)
+
+toListZet :: UnionZet -> [Z]
+toListZet z =
+  go z []
+  where
+    go (UZEmpty) = id
+    go (UZNode x) = (x:)
+    go (UZBranch _ lz rz) =
+      go lz . go rz
+
+
+-- mergeUZ :: UnionZet -> UnionZet -> UnionZet
+-- mergeUZ UZEmpty a = a
+-- mergeUZ a UZEmpty = a
+-- mergeUZ lz rz =
+--   UZBranch (totalUZ lz `IS.union` totalUZ rz) lz rz
+
+mergeUZ :: UnionZet -> UnionZet -> UnionZet
+mergeUZ x y = fromListOfSetUZ (toListZet x ++  toListZet y)
+
+totalUZ :: UnionZet -> Z
+totalUZ (UZBranch z _ _) = z
+totalUZ (UZNode z) = z
+totalUZ (UZEmpty) = IS.empty
+
+fromListOfSetUZ :: [IS.IntSet] -> UnionZet
+fromListOfSetUZ zs =
+  go (L.length zs) $ L.sortOn IS.size zs
+  where
+    go _ [x] = UZNode x
+    go n xs =
+      let
+        p = (n `quot` 2)
+        (l, r) = L.splitAt p xs
+        lz = go p l
+        rz = go (n - p) r
+      in UZBranch (totalUZ lz `IS.union` totalUZ rz) lz rz
+
+instance Zet CUZ where
+  fromListOfSet zs =
+    CUZ (IS.empty, fromListOfSetUZ zs)
+
+  splitZ p (CUZ (c, z)) = do
+    (lz, m, rz) <- go c z
+    return (CUZ (c, lz), m `IS.union` c, CUZ (c, rz))
+    where
+      go _ (UZEmpty) = mzero
+      go _ (UZNode x) = return $ (UZEmpty, x, UZEmpty)
+      go b (UZBranch _ lz rz) =
+        ( do
+            p (b `IS.union` totalUZ lz)
+            (lhs, r, rhs) <- go b lz
+            return (lhs, r, rhs `mergeUZ` rz)
+        )
+        <|>
+        ( do
+            (lhs, r, rhs) <- go (b `IS.union` totalUZ lz) rz
+            return (lz `mergeUZ` lhs, r, rhs)
+        )
+
+  conditionZ (CUZ (c', z)) c = CUZ (c `IS.union` c', go z)
+    where
+      go UZEmpty = UZEmpty
+      go (UZNode x) = UZNode (x IS.\\ c)
+      go x@(UZBranch tz lz rz)
+        | IS.null (tz `IS.intersection` c) = x
+        | IS.null (totalUZ rz `IS.intersection` c) =
+          go lz `mergeUZ` rz
+        | otherwise =
+          fromListOfSetUZ [ s IS.\\ c | s <- toListZet x]
+
+  filterZ k (CUZ (c, z)) = CUZ (c, go z)
+    where
+      csize = IS.size c
+      go (UZEmpty) = UZEmpty
+      go (UZNode x) =
+        if IS.size x < k - csize then UZNode x else UZEmpty
+      go (UZBranch _ lz rz) =
+        case go rz of
+          UZEmpty -> go lz
+          a -> lz `mergeUZ` a
+
+
+  mergeZ (CUZ (c, z)) (CUZ (_, z2)) = CUZ (c, z `mergeUZ` z2)
+
+  totalZ (CUZ (c, z)) = c `IS.union` totalUZ z
+
 
 binarySearch ::
   (Monad m)
