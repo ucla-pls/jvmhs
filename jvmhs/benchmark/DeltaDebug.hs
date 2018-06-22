@@ -11,9 +11,9 @@ main :: IO ()
 main =
   defaultMain
   [ mkP "one" (\i -> elem (i `quot` 2) ) [100,200,300]
-  , mkP "two" (\i -> isSubsequenceOf [0, i - 1])  [100,200,300]
-  , mkP "three" (\i -> isSubsequenceOf [0, i `quot` 2, i - 1]) [50,150,300]
-  , mkP "half" (\i -> isSubsequenceOf [0..i `quot` 2]) [0.3,0.6,0.9]
+  , mkP "two" (\i -> isSubsequenceOf [0, i - 1])  [50,100,150]
+  , mkP "three" (\i -> isSubsequenceOf [0, i `quot` 2, i - 1]) [10,20,30]
+  , mkP "half" (\i -> isSubsequenceOf [0..i `quot` 2]) [0.5,1,1.5]
   , mkP "even half" (\i -> isSubsequenceOf [0,2..i - 1]) [0.3,0.6,0.9]
   ]
 

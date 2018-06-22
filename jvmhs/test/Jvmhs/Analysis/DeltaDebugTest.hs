@@ -104,6 +104,9 @@ spec_sdd = do
   it "does find an optimal solution for all cases" $
     sdd (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 19, [7])
 
+  it "can find half" $
+    sdd (count (isSubsequenceOf [0..50])) [0..100] `shouldBe` (Sum 474, [0..50] :: [Int])
+
   it "can find the even halves" $
     sdd (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 569, [0,2..100])
 
@@ -132,3 +135,9 @@ spec_ddmin = do
 
   it "returns everything if false" $
     ddmin (count $ const False) test8 `shouldBe` (Sum 28, test8)
+
+  it "can find half" $
+    ddmin (count (isSubsequenceOf [0..50])) [0..100] `shouldBe` (Sum 209, [0..50] :: [Int])
+
+  it "can find the even halves" $
+    ddmin (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 5464, [0,2..100])
