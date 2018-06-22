@@ -49,9 +49,7 @@ gdd ::
   -> m [v]
   -- ^ Returns a minimal set of nodes, where the property is true
 gdd p gr = do
-  -- First compute the strongly connected components graph
-  let par = L.sortOn IS.size . map snd $ partition' gr
-  fmap asLabels . sdd' (p.asLabels) $ par
+  fmap asLabels . sdd' (p.asLabels) . map snd . partition' $ gr
   where
     asLabels = toListOf (folded.toLabel gr._Just) . IS.toList
 
@@ -97,27 +95,29 @@ sdd' predicate ls =
         )
 
 type Z = IS.IntSet
-type ZZ = V.Vector Z
+type ZZ = (Z, V.Vector Z)
 
 fromListOfSet :: [Z] -> ZZ
-fromListOfSet =
-  V.fromList . L.sortOn IS.size
+fromListOfSet zs =
+  (IS.empty, V.fromList . L.sortOn IS.size $ zs)
 
 splitZ :: MonadPlus m => (Z -> m ()) -> ZZ -> m (ZZ, Z, ZZ)
-splitZ p mu = do
-  i <- binarySearch' p (V.postscanl IS.union IS.empty mu)
-  return $ (V.take i mu, mu V.! i, V.drop (i + 1) mu)
+splitZ p mu@(b, z) = do
+  i <- binarySearch' (p . IS.union b) (V.postscanl IS.union IS.empty z)
+  return $ (V.take i <$> mu, (z V.! i) `IS.union` b, V.drop (i + 1) <$> mu)
 
 conditionZ :: ZZ -> Z -> ZZ
-conditionZ mu z =
-  fromListOfSet $ mu ^.. traverse . to (IS.union z)
+conditionZ (a, mu) z =
+  let (_, zz) = fromListOfSet $ mu ^.. traverse . to (IS.\\ z)
+  in (a `IS.union` z, zz)
 
 filterZ :: Int -> ZZ -> ZZ
-filterZ k =
-  V.filter ((<k).IS.size)
+filterZ k (b, zz)=
+  (b, V.filter ((<k - bs).IS.size) zz)
+  where bs = IS.size b
 
 mergeZ :: ZZ -> ZZ -> ZZ
-mergeZ = (V.++)
+mergeZ (a, zz1) (_, zz2)= (a, zz1 V.++ zz2)
 
 -- | Original delta-debugging
 ddmin ::
