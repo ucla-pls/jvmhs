@@ -60,3 +60,12 @@ tests:
       - generic-random
       - hspec-expectations-pretty-diff
 
+benchmarks:
+  delta-debug:
+    source-dirs: benchmark
+    main: DeltaDebug.hs
+    dependencies:
+      - jvmhs
+      - criterion
+      - lens
+      - vector

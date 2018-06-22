@@ -11,6 +11,7 @@ import Data.List
 import Control.Monad.Writer.Class
 
 import qualified Data.Vector as V
+import qualified Data.IntSet as IS
 
 
 spec_binarySearch :: Spec
@@ -36,7 +37,7 @@ graph =
   , (2, 4, ())
   ]
 
-em :: MonadWriter () m => ([v] -> Bool) -> [v] -> m Bool
+em :: MonadWriter () m => (a -> Bool) -> a -> m Bool
 em f = return . f
 
 spec_gdd :: Spec
@@ -73,12 +74,12 @@ is1234 = isSubsequenceOf [1, 2, 3, 4]
 is28 :: [Int] -> Bool
 is28 = isSubsequenceOf [2, 8]
 
-count :: MonadWriter (Sum Int) m => ([v] -> Bool) -> [v] -> m Bool
+count :: MonadWriter (Sum Int) m => (a -> Bool) -> a -> m Bool
 count f s = do
   tell $ Sum 1
   return $ f s
 
-listt :: MonadWriter [[v]] m => ([v] -> Bool) -> [v] -> m Bool
+listt :: MonadWriter [a] m => (a -> Bool) -> a -> m Bool
 listt f s = do
   tell [s]
   return $ f s
@@ -100,8 +101,17 @@ spec_sdd = do
   it "returns everything if false" $
     sdd (count $ const False) test8 `shouldBe` (Sum 4, test8)
 
-  it "does find an optimal solution for some cases" $
+  it "does find an optimal solution for all cases" $
     sdd (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 19, [7])
+
+  it "can find the even halves" $
+    sdd (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 569, [0,2..100])
+
+spec_sdd' :: Spec
+spec_sdd' = do
+  it "can handle overlapping sets" $
+    sdd' (em $ IS.isSubsetOf (IS.fromList [1,2,3,4]))
+     [ IS.fromList i | i <- [[1,5],[1,2,3],[2,3,4]]] `shouldBe` ((), IS.fromList [1,2,3,4])
 
 spec_ddmin :: Spec
 spec_ddmin = do

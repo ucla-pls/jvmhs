@@ -50,7 +50,7 @@ gdd ::
   -- ^ Returns a minimal set of nodes, where the property is true
 gdd p gr = do
   -- First compute the strongly connected components graph
-  let par = V.fromList . L.sortOn IS.size . map snd $ partition' gr
+  let par = L.sortOn IS.size . map snd $ partition' gr
   fmap asLabels . sdd' (p.asLabels) $ par
   where
     asLabels = toListOf (folded.toLabel gr._Just) . IS.toList
@@ -61,11 +61,11 @@ sdd ::
   => ([x] -> m Bool)
   -> [x]
   -> m [x]
-sdd p xs = 
+sdd p xs =
   unset <$> sdd' (p . unset) _set
   where
     reference = V.fromList xs
-    _set = V.fromList [IS.singleton i | i <- [0 .. V.length reference-1]]
+    _set = [IS.singleton i | i <- [0 .. V.length reference-1]]
     unset = map (reference V.!) . IS.toList
 
 -- | Set delta-debugging
@@ -74,31 +74,36 @@ sdd p xs =
 sdd' ::
   (Monad m)
   => (IS.IntSet -> m Bool)
-  -> V.Vector IS.IntSet
+  -> [IS.IntSet]
   -> m IS.IntSet
-sdd' pred vs =
-  pred IS.empty >>= \case
+sdd' predicate ls =
+  predicate IS.empty >>= \case
     True ->
       pure IS.empty
     False -> do
-      s <- runMaybeT $ go (IS.size total) IS.empty vs
+      s <- runMaybeT $ calcMuAndGo totalSize IS.empty vs
       return $ fromMaybe total s
   where
+    vs = V.fromList ls
     total = V.foldr IS.union IS.empty vs
-    p = lift . pred >=> guard
+    totalSize = IS.size total
+    p = lift . predicate >=> guard
+
+    calcMu k known v = mu
+      where
+        mu = V.generate vi $ \i -> (bool known (mu V.! (i - 1)) (i > 0)) `IS.union` (v V.! i)
+        vi = fromMaybe (V.length v).runIdentity $ binarySearch (pure.(k<).IS.size) v
+
+    calcMuAndGo k known v =
+      go k known v (calcMu k known v)
 
     -- The recursive function,
     --   k is the max size of set
     --   known is the set of values known to be in the set
     --   v is the vector to be searched for sets
-    go k known v = do
-      let
-        -- A vector of sets smaller than k
-        smaller = maybe v (`V.take` v) . runIdentity
-           $ binarySearch (pure.(k<).IS.size) v
-
+    go k known v mu = do
       -- A binary search over the union of the remaining sets and the known set.
-      i <- binarySearch' p $ V.postscanl' IS.union known smaller
+      i <- binarySearch' p mu
 
       -- s is the smallest set where the moving union satisfies the predicate
       let s = (v V.! i `IS.union` known)
@@ -107,12 +112,17 @@ sdd' pred vs =
       p s $> s <|>
         -- else find the subset that satisfies the predicated
         ( do
-          subset <- go k s $ V.take i v;
-          -- check if a smaller set exists that does not contain the damming elements
-          -- from s.
-          go (IS.size subset) known (V.ifilter (\j _ -> j /= i) v)
-            <|> return subset
+            subset <- go k s (V.take i v) (IS.union s <$> V.take i mu)
+            -- check if a smaller set exists that does not contain the damming elements
+            -- from s.
+            calcMuAndGo (IS.size subset) known (V.ifilter (\j _ -> j /= i) v)
+              <|> return subset
         )
+
+-- class SetSet a where
+--   split :: Monad m => (IS.IntSet -> m Bool) -> a -> m (a, IS.IntSet, a)
+--   condition :: IS.IntSet -> a -> a
+--   merge :: a -> a -> a
 
 -- | Original delta-debugging
 ddmin ::
