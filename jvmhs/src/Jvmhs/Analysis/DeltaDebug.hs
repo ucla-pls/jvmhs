@@ -81,48 +81,43 @@ sdd' predicate ls =
     True ->
       pure IS.empty
     False -> do
-      s <- runMaybeT $ calcMuAndGo totalSize IS.empty vs
+      s <- runMaybeT $ go (totalSize) (fromListOfSet ls)
       return $ fromMaybe total s
   where
-    vs = V.fromList ls
-    total = V.foldr IS.union IS.empty vs
+    total = foldr IS.union IS.empty ls
     totalSize = IS.size total
     p = lift . predicate >=> guard
 
-    calcMu k known v = mu
-      where
-        mu = V.generate vi $ \i -> (bool known (mu V.! (i - 1)) (i > 0)) `IS.union` (v V.! i)
-        vi = fromMaybe (V.length v).runIdentity $ binarySearch (pure.(k<).IS.size) v
-
-    calcMuAndGo k known v =
-      go k known v (calcMu k known v)
-
-    -- The recursive function,
-    --   k is the max size of set
-    --   known is the set of values known to be in the set
-    --   v is the vector to be searched for sets
-    go k known v mu = do
-      -- A binary search over the union of the remaining sets and the known set.
-      i <- binarySearch' p mu
-
-      -- s is the smallest set where the moving union satisfies the predicate
-      let s = (v V.! i `IS.union` known)
-
-      -- If the predicate satisfies the smallest set, then great!
+    go k mu = do
+      (lw, s, hg) <- splitZ p (filterZ k mu)
       p s $> s <|>
-        -- else find the subset that satisfies the predicated
         ( do
-            subset <- go k s (V.take i v) (IS.union s <$> V.take i mu)
-            -- check if a smaller set exists that does not contain the damming elements
-            -- from s.
-            calcMuAndGo (IS.size subset) known (V.ifilter (\j _ -> j /= i) v)
-              <|> return subset
+            subset <- go k (conditionZ lw s)
+            go (IS.size subset) (mergeZ lw hg) <|> return subset
         )
 
--- class SetSet a where
---   split :: Monad m => (IS.IntSet -> m Bool) -> a -> m (a, IS.IntSet, a)
---   condition :: IS.IntSet -> a -> a
---   merge :: a -> a -> a
+type Z = IS.IntSet
+type ZZ = V.Vector Z
+
+fromListOfSet :: [Z] -> ZZ
+fromListOfSet =
+  V.fromList . L.sortOn IS.size
+
+splitZ :: MonadPlus m => (Z -> m ()) -> ZZ -> m (ZZ, Z, ZZ)
+splitZ p mu = do
+  i <- binarySearch' p (V.postscanl IS.union IS.empty mu)
+  return $ (V.take i mu, mu V.! i, V.drop (i + 1) mu)
+
+conditionZ :: ZZ -> Z -> ZZ
+conditionZ mu z =
+  fromListOfSet $ mu ^.. traverse . to (IS.union z)
+
+filterZ :: Int -> ZZ -> ZZ
+filterZ k =
+  V.filter ((<k).IS.size)
+
+mergeZ :: ZZ -> ZZ -> ZZ
+mergeZ = (V.++)
 
 -- | Original delta-debugging
 ddmin ::
