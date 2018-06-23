@@ -29,6 +29,7 @@ spec_binarySearch = do
     binarySearch (\_ -> pure False) l100 `shouldBe` Identity Nothing
 
 
+
 graph :: Graph Int ()
 graph =
   mkGraphFromEdges
@@ -55,6 +56,11 @@ spec_gdd = do
       `shouldBe`
       ((), [3, 4] :: [Int])
 
+  it "works on more ./simple-graph.txt" $ do
+    gr <- graphFromFile "test/data/graphs/simple-graph.txt"
+    gdd (em $ isSubsequenceOf [4, 6]) gr
+     `shouldBe`
+     ((), [3, 4, 6, 7, 8] :: [Int])
 
 test8 :: [Int]
 test8 = [1..8]
@@ -90,7 +96,7 @@ spec_sdd = do
     sdd (count is7) test8 `shouldBe` (Sum 5, [7])
 
   it "can solve the dd-min case" $
-    sdd (listt is178) test8 `shouldBe` ([], [1,7,8])
+    sdd (count is178) test8 `shouldBe` (Sum 18, [1,7,8])
 
   it "can solve a k=2 case " $
     sdd (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 25, [2,8])

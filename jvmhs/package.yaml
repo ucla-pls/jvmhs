@@ -38,6 +38,7 @@ dependencies:
   - deepseq
   - fgl
   - fgl-visualize
+  - attoparsec
 
 library:
   source-dirs: src

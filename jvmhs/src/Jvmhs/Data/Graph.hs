@@ -33,6 +33,9 @@ module Jvmhs.Data.Graph
   -- * Re-exports
   , F.order
   , F.size
+
+  -- * Helper functions
+  , graphFromFile
   ) where
 
 import           Control.Lens
@@ -44,6 +47,11 @@ import           Data.Tuple                        (swap)
 import qualified Data.IntSet as IS
 import qualified Data.Vector as V
 import qualified Data.List as L
+
+import System.IO
+import qualified Data.ByteString as BS
+
+import qualified Data.Attoparsec.ByteString.Char8 as P
 
 import           Data.Graph.Inductive.Dot          (fglToDot, showDot)
 
@@ -136,3 +144,17 @@ partition' gr =
         s'  = IS.fromList s
         closure = IS.unions (s':before)
       return (s', closure)
+
+-- | Reads a graph from file. Expects the file to a list of two integres.
+graphFromFile ::
+  FilePath ->
+  IO (Graph Int ())
+graphFromFile filepath =
+  withFile filepath ReadMode $ \h -> do
+    Just g <- P.maybeResult <$> P.parseWith (BS.hGet h 4096) fp BS.empty
+    return $ mkGraphFromEdges g
+
+  where
+    fp :: P.Parser [(Int, Int, ())]
+    fp = P.many' lp <* P.endOfInput
+    lp = (,,()) <$> P.decimal <* P.space <*> P.decimal <* P.endOfLine
