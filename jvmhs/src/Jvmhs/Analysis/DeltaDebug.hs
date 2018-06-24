@@ -12,9 +12,11 @@ This library contains delta-debugging related functions.
 -}
 module Jvmhs.Analysis.DeltaDebug
   ( ddmin
-  , gdd
   , sdd
   , sdd'
+
+  , gdd
+  , gddmin
 
   , binarySearch
   , binarySearch'
@@ -137,6 +139,20 @@ ddmin p xs =
     reference = V.fromList xs
     _set = IS.fromAscList [0 .. V.length reference-1]
     unset = map (reference V.!) . IS.toList
+
+-- | Ddmin which upholds the graph requirements
+gddmin ::
+     (Monad m, Ord x)
+  => ([x] -> m Bool)
+  -> Graph x e
+  -> m [x]
+gddmin p gr =
+  ddmin predicate (gr ^.. grNodes)
+  where
+    predicate x =
+      if x `isClosedIn` gr
+      then p x
+      else return False
 
 ddmin' ::
   (Monad m)

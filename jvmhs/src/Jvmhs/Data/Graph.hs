@@ -1,7 +1,8 @@
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE TupleSections       #-}
-{-# LANGUAGE RankNTypes       #-}
-{-# LANGUAGE FlexibleContexts       #-}
 {-|
 Module      : Jvmhs.Data.Graph
 Copyright   : (c) Christian Gram Kalhauge, 2018
@@ -25,8 +26,10 @@ module Jvmhs.Data.Graph
 
   -- * Lenses
   , toLabel
+  , grNodes
 
   -- * Algorithms
+  , isClosedIn
   , partition
   , partition'
 
@@ -38,20 +41,22 @@ module Jvmhs.Data.Graph
   , graphFromFile
   ) where
 
+
+import Control.DeepSeq
 import           Control.Lens
 import qualified Data.Map                          as M
 import           Data.Maybe
 import           Data.Monoid                       ((<>))
 import           Data.Tuple                        (swap)
 
-import qualified Data.IntSet as IS
-import qualified Data.Vector as V
-import qualified Data.List as L
+import qualified Data.IntSet                       as IS
+import qualified Data.List                         as L
+import qualified Data.Vector                       as V
 
-import System.IO
-import qualified Data.ByteString as BS
+import qualified Data.ByteString                   as BS
+import           System.IO
 
-import qualified Data.Attoparsec.ByteString.Char8 as P
+import qualified Data.Attoparsec.ByteString.Char8  as P
 
 import           Data.Graph.Inductive.Dot          (fglToDot, showDot)
 
@@ -64,14 +69,26 @@ import           Data.Graph.Inductive.Query.DFS
 import           Jvmhs.LensHelpers
 
 -- | The graph representation
-type Graph v e = Gr v e
+data Graph v e = Graph
+  { _innerGraph :: !(Gr v e)
+  , _nodeMap    :: !(NodeMap v)
+  }
+
+instance (NFData v, NFData e) => NFData (Graph v e) where
+  rnf (Graph a b) = seq (seq (rnf a) rnf b) ()
+
 type NodeMap v = M.Map v Int
 
+makeLenses ''Graph
+
 grNodes :: IndexedFold Int (Graph v e) v
-grNodes = ifolding F.labNodes
+grNodes = innerGraph . ifolding F.labNodes
 
 toLabel :: Graph v e -> Getter Int (Maybe v)
-toLabel gr = to (F.lab gr)
+toLabel gr = to (F.lab $ view innerGraph gr)
+
+fromLabel :: Ord v => Graph v e -> Getter v (Maybe Int)
+fromLabel gr = to (`M.lookup` view nodeMap gr)
 
 -- | Create a graph from nodes and edges. Any edge where both nodes are not in
 -- the inputs will be removed. *This functions assumes that there is only one
@@ -82,7 +99,7 @@ mkGraph ::
   -> t (v,v,e)
   -> Graph v e
 mkGraph nodes edges =
-  F.mkGraph nodes_ edges_
+  Graph (F.mkGraph nodes_ edges_) nodemap
   where
     nodes_ = itoListOf folded nodes
     nodemap = M.fromList $ swap <$> nodes_
@@ -97,13 +114,25 @@ mkGraphFromEdges ::
 mkGraphFromEdges edges =
   mkGraph (edges^.folded.(_1 <> _2).toSet) edges
 
+isClosedIn ::
+  (Foldable f, Ord v)
+  => f v
+  -> Graph v e
+  -> Bool
+isClosedIn vs gr =
+  closure == input
+  where
+    input = (L.sort $ vs ^.. folded.fromLabel gr._Just)
+    closure = L.sort $ dfs input (gr^.innerGraph)
+
+
 -- | Output the graph as a dot graph string
 graphToDot ::
   (Show v, Show e)
   => Graph v e
   -> String
 graphToDot =
-  showDot . fglToDot
+  showDot . fglToDot . _innerGraph
 
 -- | Create a graph of strongly connected components.
 sccGraph ::
@@ -111,11 +140,13 @@ sccGraph ::
   => Graph v e
   -> (NodeMap v, Graph [v] ())
 sccGraph gr =
-  (nodemap, gr')
+  (nodemap', Graph gr' nodemap)
   where
-    condense = condensation gr
-    gr' = F.nmap (fromJust . mapM (F.lab gr)) condense
-    nodemap = M.fromList $ gr' ^..grNodes. withIndex . to unfoldN.traverse
+    condense = condensation (gr ^. innerGraph)
+    gr' = F.nmap (fromJust . mapM (F.lab (gr ^. innerGraph))) condense
+    nodes = gr' ^..ifolding (F.labNodes). withIndex
+    nodemap = M.fromList $ nodes ^.. traverse . to swap
+    nodemap' = M.fromList $ nodes ^.. traverse . to unfoldN .traverse
     unfoldN (n,l) = map (,n) l
 
 -- | Compute the different possible closures for a graph, returns a list of
@@ -132,7 +163,7 @@ partition' :: Graph v e -> [ (IS.IntSet, IS.IntSet) ]
 partition' gr =
   catMaybes . V.toList $ cv
   where
-    sccgr = condensation gr
+    sccgr = condensation (gr ^. innerGraph)
 
     cv = V.fromList [ getNode n | n <- enumFromTo 0 (snd $ F.nodeRange sccgr)]
 
@@ -153,7 +184,6 @@ graphFromFile filepath =
   withFile filepath ReadMode $ \h -> do
     Just g <- P.maybeResult <$> P.parseWith (BS.hGet h 4096) fp BS.empty
     return $ mkGraphFromEdges g
-
   where
     fp :: P.Parser [(Int, Int, ())]
     fp = P.many' lp <* P.endOfInput

@@ -47,17 +47,22 @@ simpleB =
 graphB :: Benchmark
 graphB =
   bgroup "graph"
-    [ runWith "ran-1000-1000" bench0
-    , runWith "ran-1000-2000" bench0
-    , runWith "ran-1000-3000" bench0
-    , runWith "ran-1000-4000" bench0
-    , runWith "ran-1000-5000" bench0
-    , runWith "ran-2000-2000" bench0
-    , runWith "ran-2000-4000" bench0
-    , runWith "ran-2000-6000" bench0
-    , runWith "ran-2000-8000" bench0
-    , runWith "ran-2000-10000" bench0
-    -- , runWith "ran-3000-3000" bench0
+    [ bgroup "small"
+      [ runWith "ran-100-100" bench0
+      , runWith "ran-200-200" bench0
+      , runWith "ran-300-300" bench0
+      , runWith "ran-400-400" bench0
+      , runWith "ran-500-500" bench0
+      ]
+    , bgroup "big"
+      [ runWith "ran-1000-1000" benchGddOnly
+      , runWith "ran-1000-3000" benchGddOnly
+      , runWith "ran-1000-5000" benchGddOnly
+
+      , runWith "ran-2000-2000" benchGddOnly
+      , runWith "ran-2000-6000" benchGddOnly
+      , runWith "ran-2000-10000" benchGddOnly
+      ]
     ]
 
   where
@@ -65,6 +70,12 @@ graphB =
       env (graphFromFile ("benchmark/data/" ++ grname ++ ".txt")) (f grname)
 
     bench0 name gr =
+      bgroup name
+        [ bench "gdd" $ whnf (runw (elem 0) gdd) gr
+        , bench "gddmin" $ whnf (runw (elem 0) gddmin) gr
+        ]
+
+    benchGddOnly name gr =
       bench name $ whnf (runw (elem 0) gdd) gr
 
     runw p f = runIdentity . f (pure . p)

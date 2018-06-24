@@ -20,8 +20,6 @@ import qualified Data.IntSet   as IS
 import qualified Data.List     as L
 import qualified Data.Vector   as V
 
-
-import Debug.Trace
 type Z = IS.IntSet
 
 class Zet zz where
@@ -122,13 +120,13 @@ instance Zet CUZ where
     CUZ (IS.empty, Just $ fromListOfSetUZ zs)
 
   splitZ _ (CUZ (_, Nothing)) = mzero
-  splitZ p cuz@(CUZ (c, Just z)) = do
+  splitZ p (CUZ (c, Just z)) = do
     (lz, m, rz) <- go c z
     return (CUZ (c, lz), m `IS.union` c, CUZ (c, rz))
     where
-      go b a@(UZNode x) =
+      go b (UZNode x) =
         p (b `IS.union` x) $> (Nothing, x, Nothing)
-      go b a@(UZBranch tz lz rz) =
+      go b (UZBranch tz lz rz) =
         p (b `IS.union` tz) >>
         ( do
             (lhs, r, rhs) <- go b lz

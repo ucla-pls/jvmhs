@@ -30,37 +30,9 @@ spec_binarySearch = do
 
 
 
-graph :: Graph Int ()
-graph =
-  mkGraphFromEdges
-  [ (1, 2, ())
-  , (2, 3, ())
-  , (2, 4, ())
-  ]
-
 em :: MonadWriter () m => (a -> Bool) -> a -> m Bool
 em f = return . f
 
-spec_gdd :: Spec
-spec_gdd = do
-  it "can find a minimal closure for k = 0" $
-    gdd (em $ const True) graph
-      `shouldBe`
-      ((), [] :: [Int])
-  it "can find a minimal closure for k = 1" $
-    gdd (em $ elem 2) graph
-      `shouldBe`
-      ((), [2, 3, 4] :: [Int])
-  it "can find a minimal closure for k = 2" $
-    gdd(em $ \s -> elem 3 s && elem 4 s) graph
-      `shouldBe`
-      ((), [3, 4] :: [Int])
-
-  it "works on more ./simple-graph.txt" $ do
-    gr <- graphFromFile "test/data/graphs/simple-graph.txt"
-    gdd (em $ isSubsequenceOf [4, 6]) gr
-     `shouldBe`
-     ((), [3, 4, 6, 7, 8] :: [Int])
 
 test8 :: [Int]
 test8 = [1..8]
@@ -147,3 +119,49 @@ spec_ddmin = do
 
   it "can find the even halves" $
     ddmin (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 5464, [0,2..100])
+
+graph :: Graph Int ()
+graph =
+  mkGraphFromEdges
+  [ (1, 2, ())
+  , (2, 3, ())
+  , (2, 4, ())
+  ]
+
+spec_gdd :: Spec
+spec_gdd = do
+  it "can find a minimal closure for k = 0" $
+    gdd (em $ const True) graph
+      `shouldBe`
+      ((), [] :: [Int])
+  it "can find a minimal closure for k = 1" $
+    gdd (em $ elem 2) graph
+      `shouldBe`
+      ((), [2, 3, 4] :: [Int])
+  it "can find a minimal closure for k = 2" $
+    gdd(em $ \s -> elem 3 s && elem 4 s) graph
+      `shouldBe`
+      ((), [3, 4] :: [Int])
+
+  it "works on more ./simple-graph.txt" $ do
+    gr <- graphFromFile "test/data/graphs/simple-graph.txt"
+    gdd (em $ isSubsequenceOf [4, 6]) gr
+     `shouldBe`
+     ((), [3, 4, 6, 7, 8] :: [Int])
+
+spec_gddmin :: Spec
+spec_gddmin = do
+  it "can find a minimal closure for k = 1" $
+    gddmin (em $ elem 2) graph
+      `shouldBe`
+      ((), [2, 3, 4] :: [Int])
+  it "can find a minimal closure for k = 2" $
+    gddmin (em $ \s -> elem 3 s && elem 4 s) graph
+      `shouldBe`
+      ((), [3, 4] :: [Int])
+
+  it "works on more ./simple-graph.txt" $ do
+    gr <- graphFromFile "test/data/graphs/simple-graph.txt"
+    gddmin (em $ isSubsequenceOf [4, 6]) gr
+     `shouldBe`
+     ((), [3, 4, 6, 7, 8] :: [Int])
