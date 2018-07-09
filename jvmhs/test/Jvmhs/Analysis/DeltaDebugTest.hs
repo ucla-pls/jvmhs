@@ -6,6 +6,7 @@ import SpecHelper
 import Jvmhs
 
 import Data.Monoid
+import Data.Maybe
 import Data.List
 
 import Control.Monad.Writer.Class
@@ -62,6 +63,12 @@ listt f s = do
   tell [s]
   return $ f s
 
+printt :: Show a => (a -> Bool) -> a -> IO Bool
+printt f s = do
+  let t = f s
+  print (s, t)
+  return t
+
 spec_sdd :: Spec
 spec_sdd = do
   it "can solve a simple case " $
@@ -93,6 +100,37 @@ spec_sdd' = do
   it "can handle overlapping sets" $
     sdd' (em $ IS.isSubsetOf (IS.fromList [1,2,3,4]))
      [ IS.fromList i | i <- [[1,5],[1,2,3],[2,3,4]]] `shouldBe` ((), IS.fromList [1,2,3,4])
+
+spec_idd :: Spec
+spec_idd = do
+  it "can solve a simple case simple-idd" $
+    idd (count is7) test8 `shouldBe` (Sum 5, [7])
+
+  it "can solve the dd-min case" $
+    idd (count is178) test8 `shouldBe` (Sum 18, [1,7,8])
+
+  it "can solve a k=2 case " $
+    idd (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 25, [2,8])
+
+  it "returns a empty element if true" $
+    idd (count $ const True) test8 `shouldBe` (Sum 1, [])
+
+  it "returns everything if false" $
+    idd (count $ const False) test8 `shouldBe` (Sum 4, test8)
+
+  it "does find an optimal solution for all cases" $
+    idd (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 19, [7])
+
+  -- it "can find half" $ do
+  --   res <- idd (printt (isSubsequenceOf [0..25])) [0..50]
+  --   res `shouldBe` ([0..25] :: [Int])
+
+  it "can find half" $
+    sdd (count (isSubsequenceOf [0..50])) [0..100] `shouldBe` (Sum 474, [0..50] :: [Int])
+
+  it "can find the even halves" $
+    idd (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 569, [0,2..100])
+
 
 spec_ddmin :: Spec
 spec_ddmin = do

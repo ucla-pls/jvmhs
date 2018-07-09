@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE TupleSections    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -18,15 +19,16 @@ module Jvmhs.Analysis.DeltaDebug
   , gdd
   , gddmin
 
-  , binarySearch
-  , binarySearch'
+  , idd'
+  , idd
+
+  , Zet.binarySearch
+  , Zet.binarySearch'
 
   -- * extras
   , sddx
-  , MZ
-  , ZZ
-  , CUZ
-  , Zet (..)
+  , Zet.VectorZet
+  -- , Zet.Zet
 
   ) where
 
@@ -39,12 +41,15 @@ import           Control.Monad.Trans.Maybe
 import           Data.Bool
 import           Data.Functor
 import           Data.Maybe
+import           Data.Monoid
+
+import Debug.Trace
 
 import qualified Data.IntSet               as IS
 import qualified Data.Vector               as V
 
 import           Jvmhs.Data.Graph
-import           Jvmhs.Data.Zet
+import qualified Jvmhs.Data.Zet as Zet
 
 -- | Graph delta-debugging
 gdd ::
@@ -66,24 +71,21 @@ sdd ::
   -> [x]
   -> m [x]
 sdd =
-  sddx (fromListOfSet :: [Z] -> MZ)
+  sddx $ (Zet.fromListOfSet :: [IS.IntSet] -> Zet.VectorZet) . map IS.singleton
 
 sddx ::
-  (Monad m, Zet zz)
-  => ([IS.IntSet] -> zz)
+  (Monad m, Zet.Zet IS.IntSet zz)
+  => ([Int] -> zz)
   -> ([x] -> m Bool)
   -> [x]
   -> m [x]
 sddx hlp p xs =
-  unset <$> sddx' (p . unset) (hlp _set)
+  unset <$> sddx' (p . unset) (hlp [0 .. V.length reference-1])
   where
     reference = V.fromList xs
-    _set = [IS.singleton i | i <- [0 .. V.length reference-1]]
     unset = map (reference V.!) . IS.toList
 
-{-# SPECIALIZE sddx :: ([IS.IntSet]-> MZ) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
-{-# SPECIALIZE sddx :: ([IS.IntSet]-> ZZ) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
-{-# SPECIALIZE sddx :: ([IS.IntSet]-> CUZ) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
+{-# SPECIALIZE sddx :: ([Int] -> Zet.VectorZet) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
 
 -- | Set delta-debugging
 -- Given a list of sets sorted after size, then return the smallest possible
@@ -94,37 +96,129 @@ sdd' ::
   -> [IS.IntSet]
   -> m IS.IntSet
 sdd' predicate ls =
-  sddx' predicate (fromListOfSet ls :: MZ)
+  sddx' predicate (Zet.fromListOfSet ls :: Zet.VectorZet)
 
 sddx' ::
-  (Monad m, Zet zz)
-  => (IS.IntSet -> m Bool)
+  (Monad m, Zet.Zet z zz)
+  => (z -> m Bool)
   -> zz
-  -> m IS.IntSet
+  -> m z
 sddx' predicate ls =
-  predicate IS.empty >>= \case
+  predicate (_empty) >>= \case
     True ->
-      pure IS.empty
+      pure _empty
     False -> do
-      s <- runMaybeT $ go (totalSize) ls
+      s <- runMaybeT $ go (Zet.sizeZ ls total) ls
       return $ fromMaybe total s
   where
-    total = totalZ ls
-    totalSize = IS.size total
+    _empty = Zet.emptyZ ls
+    total = Zet.total ls
     p = lift . predicate >=> guard
 
     go k mu = do
-      (lw, s, hg) <- splitZ p (filterZ k mu)
+      (lw, s, hg) <- Zet.split p (Zet.filter k mu)
       p s $> s <|>
         ( do
-            subset <- go k (conditionZ lw s)
-            go (IS.size subset) (mergeZ lw hg) <|> return subset
+            subset <- go k lw
+            go (Zet.sizeZ lw subset) hg <|> return subset
         )
 
-{-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> MZ -> m IS.IntSet #-}
-{-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> ZZ -> m IS.IntSet #-}
-{-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> CUZ -> m IS.IntSet #-}
+{-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> Zet.VectorZet -> m IS.IntSet #-}
 
+idd ::
+  (Monad m)
+  => ([x] -> m Bool)
+  -> [x]
+  -> m [x]
+idd p xs =
+  maybe [] unset <$> midd
+  where
+    midd =
+      idd'
+        (p.unset) IS.singleton (\k x ls -> if k > IS.size x then V.fromList . reverse $ ls else V.empty)
+        V.toList
+        _split IS.size (V.length reference)
+        (V.imap (const) reference)
+    reference = V.fromList xs
+    unset = map (reference V.!) . IS.toList
+    _split v
+      | V.length v == 1 = Left . Just $ V.head v
+      | V.length v == 0 = Left Nothing
+      | otherwise = Right (V.splitAt (V.length v `quot` 2) v)
+
+idd' ::
+  forall m x fx sx. (Monad m, Monoid fx, Show x, Show fx, Show sx)
+  => (fx -> m Bool)
+  -> (x -> fx)
+  -> (Int -> fx -> [x] -> sx)
+  -> (sx -> [x])
+  -> (sx -> Either (Maybe x) (sx, sx))
+  -> (fx -> Int)
+  -> Int
+  -> sx
+  -> m (Maybe fx)
+idd' p f reorder items split cost k' s' =
+  search k' mempty s'
+  where
+    search k r s =
+      snd <$> go k r [] s
+
+    go ::
+      Int -- ^ Maximal cost
+      -> fx -- ^ Known values
+      -> [x] -- ^ Tested values
+      -> sx -- ^ Search space
+      -> m ([x], Maybe fx)
+      -- ^ Returns a list of tested values and maybe a smallest solution
+    go k r c s = do
+      -- traceShowM (k, r, c, s)
+      -- Test if the search space has any values
+      case split s of
+        Left Nothing ->
+          return (c, Nothing)
+        Left (Just x) -> do
+          --traceShowM x
+          -- If the search space has size 1, then test if it is a solution.
+          let r' = f x <> r
+          t <- p r'
+          -- traceShowM (r', t)
+          case t of
+            True ->
+              -- If yes, it must be the smallest
+              return (c, Just r')
+            False ->
+              -- If no, then search for a subset in the visited solutions,
+              -- conditioned on x.
+              (c,) <$> search k r' (reorder k r' c)
+        Right (bt, tp) -> do
+          -- traceShowM (bt, tp)
+          let
+            bt' = reverse (items bt) ++ c
+            r' = (r <> foldMap f bt')
+          t <- p r'
+          --traceShowM (r', t)
+          case t of
+            True -> do
+              -- Find the minimal solution in the bottom half
+              (c', res) <- go k r c bt
+              case res of
+                -- if there is no solution in the bottom half, search
+                -- the top half with knowledge of the c'.
+                Nothing ->
+                  go k r c' tp
+                -- If there is a solution, continue the search with c', but
+                -- don't accept solution worse than what we have found.
+                Just r'' -> do
+                  t' <- p (r <> foldMap f c' <> foldMap f (items tp))
+                  if t'
+                    then do
+                      (_, res') <- go (cost r'') r c' tp
+                      return (c', res' <|> res)
+                    else
+                      return (c', res)
+            False -> do
+              go k r bt' tp
+{-# INLINABLE idd' #-}
 
 -- | Original delta-debugging
 ddmin ::
