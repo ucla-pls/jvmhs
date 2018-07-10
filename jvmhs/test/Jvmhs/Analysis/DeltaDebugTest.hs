@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Jvmhs.Analysis.DeltaDebugTest where
 
@@ -69,36 +70,42 @@ printt f s = do
   print (s, t)
   return t
 
-spec_sdd :: Spec
-spec_sdd = do
+spec_zdd :: Spec
+spec_zdd = do
   it "can solve a simple case " $
-    sdd (count is7) test8 `shouldBe` (Sum 5, [7])
+    zdd (count is7) test8 `shouldBe` (Sum 5, [7])
 
   it "can solve the dd-min case" $
-    sdd (count is178) test8 `shouldBe` (Sum 18, [1,7,8])
+    zdd (count is178) test8 `shouldBe` (Sum 18, [1,7,8])
 
   it "can solve a k=2 case " $
-    sdd (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 25, [2,8])
+    zdd (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 25, [2,8])
 
   it "returns a empty element if true" $
-    sdd (count $ const True) test8 `shouldBe` (Sum 1, [])
+    zdd (count $ const True) test8 `shouldBe` (Sum 1, [])
 
   it "returns everything if false" $
-    sdd (count $ const False) test8 `shouldBe` (Sum 4, test8)
+    zdd (count $ const False) test8 `shouldBe` (Sum 4, test8)
 
   it "does find an optimal solution for all cases" $
-    sdd (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 19, [7])
+    zdd (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 19, [7])
 
   it "can find half" $
-    sdd (count (isSubsequenceOf [0..50])) [0..100] `shouldBe` (Sum 474, [0..50] :: [Int])
+    zdd (count (isSubsequenceOf [0..50])) [0..100] `shouldBe` (Sum 474, [0..50] :: [Int])
 
   it "can find the even halves" $
-    sdd (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 569, [0,2..100])
+    zdd (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 569, [0,2..100])
 
-spec_sdd' :: Spec
-spec_sdd' = do
+spec_zsdd :: Spec
+spec_zsdd = do
   it "can handle overlapping sets" $
-    sdd' (em $ IS.isSubsetOf (IS.fromList [1,2,3,4]))
+    zsdd (em $ IS.isSubsetOf (IS.fromList [1,2,3,4]))
+     [ IS.fromList i | i <- [[1,5],[1,2,3],[2,3,4]]] `shouldBe` ((), IS.fromList [1,2,3,4])
+
+spec_isdd :: Spec
+spec_isdd = do
+  it "can handle overlapping sets" $
+    isdd (em $ IS.isSubsetOf (IS.fromList [1,2,3,4]))
      [ IS.fromList i | i <- [[1,5],[1,2,3],[2,3,4]]] `shouldBe` ((), IS.fromList [1,2,3,4])
 
 spec_idd :: Spec
@@ -126,10 +133,40 @@ spec_idd = do
   --   res `shouldBe` ([0..25] :: [Int])
 
   it "can find half" $
-    sdd (count (isSubsequenceOf [0..50])) [0..100] `shouldBe` (Sum 474, [0..50] :: [Int])
+    idd (count (isSubsequenceOf [0..50])) [0..100] `shouldBe` (Sum 298, [0..50] :: [Int])
 
   it "can find the even halves" $
     idd (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 393, [0,2..100])
+
+spec_iidd :: Spec
+spec_iidd = do
+  it "can solve a simple case simple-iidd" $
+    iidd (count is7) test8 `shouldBe` (Sum 4, [7])
+
+  it "can solve the dd-min case" $
+    iidd (count is178) test8 `shouldBe` (Sum 10, [1,7,8])
+
+  it "can solve a k=2 case " $
+    iidd (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 16, [2,8])
+
+  it "returns a empty element if true" $ do
+    iidd (count $ const True) test8 `shouldBe` (Sum 3, [1])
+
+  it "returns everything if false" $
+    iidd (count $ const False) test8 `shouldBe` (Sum 24, test8)
+
+  it "does find an optimal solution for all cases" $
+    iidd (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 13, [7])
+
+  -- it "can find half" $ do
+  --   res <- iidd (printt (isSubsequenceOf [0..25])) [0..50]
+  --   res `shouldBe` ([0..25] :: [Int])
+
+  it "can find half" $
+    iidd (count (isSubsequenceOf [0..50])) [0..100] `shouldBe` (Sum 298, [0..50] :: [Int])
+
+  it "can find the even halves" $
+    iidd (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 393, [0,2..100])
 
 
 spec_ddmin :: Spec
@@ -166,40 +203,56 @@ graph =
   , (2, 4, ())
   ]
 
-spec_gdd :: Spec
-spec_gdd = do
+spec_zgdd :: Spec
+spec_zgdd = do
   it "can find a minimal closure for k = 0" $
-    gdd (em $ const True) graph
+    zgdd (count $ const True) graph
       `shouldBe`
-      ((), [] :: [Int])
+      (Sum 1, [] :: [Int])
   it "can find a minimal closure for k = 1" $
-    gdd (em $ elem 2) graph
+    zgdd (count $ elem 2) graph
       `shouldBe`
-      ((), [2, 3, 4] :: [Int])
+      (Sum 4, [2, 3, 4] :: [Int])
   it "can find a minimal closure for k = 2" $
-    gdd(em $ \s -> elem 3 s && elem 4 s) graph
+    zgdd(count $ \s -> elem 3 s && elem 4 s) graph
       `shouldBe`
-      ((), [3, 4] :: [Int])
+      (Sum 7, [3, 4] :: [Int])
 
   it "works on more ./simple-graph.txt" $ do
     gr <- graphFromFile "test/data/graphs/simple-graph.txt"
-    gdd (em $ isSubsequenceOf [4, 6]) gr
+    zgdd (count $ isSubsequenceOf [4, 6]) gr
      `shouldBe`
-     ((), [3, 4, 6, 7, 8] :: [Int])
+     (Sum 11, [3, 4, 6, 7, 8] :: [Int])
+
+spec_igdd :: Spec
+spec_igdd = do
+  it "can find a minimal closure for k = 1" $
+    igdd (count $ elem 2) graph
+      `shouldBe`
+      (Sum 4, [2, 3, 4] :: [Int])
+  it "can find a minimal closure for k = 2" $
+    igdd(count $ \s -> elem 3 s && elem 4 s) graph
+      `shouldBe`
+      (Sum 4, [3, 4] :: [Int])
+  it "works on more ./simple-graph.txt" $ do
+    gr <- graphFromFile "test/data/graphs/simple-graph.txt"
+    igdd (count $ isSubsequenceOf [4, 6]) gr
+     `shouldBe`
+     (Sum 9, [3, 4, 6, 7, 8] :: [Int])
 
 spec_gddmin :: Spec
 spec_gddmin = do
   it "can find a minimal closure for k = 1" $
-    gddmin (em $ elem 2) graph
+    gddmin (count $ elem 2) graph
       `shouldBe`
-      ((), [2, 3, 4] :: [Int])
+      (Sum 8, [2, 3, 4] :: [Int])
   it "can find a minimal closure for k = 2" $
-    gddmin (em $ \s -> elem 3 s && elem 4 s) graph
+    gddmin (count $ \s -> elem 3 s && elem 4 s) graph
       `shouldBe`
-      ((), [3, 4] :: [Int])
+      (Sum 5, [3, 4] :: [Int])
 
   it "works on more ./simple-graph.txt" $ do
     gr <- graphFromFile "test/data/graphs/simple-graph.txt"
-    gddmin (em $ isSubsequenceOf [4, 6]) gr
+    gddmin (count $ isSubsequenceOf [4, 6]) gr
      `shouldBe`
-     ((), [3, 4, 6, 7, 8] :: [Int])
+     (Sum 17, [3, 4, 6, 7, 8] :: [Int])

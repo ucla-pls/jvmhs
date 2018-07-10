@@ -12,21 +12,27 @@ Maintainer  : kalhauge@cs.ucla.edu
 This library contains delta-debugging related functions.
 -}
 module Jvmhs.Analysis.DeltaDebug
-  ( ddmin
-  , sdd
-  , sdd'
+  (
+    DeltaDebugger
+  , SetDeltaDebugger
+  , GraphDeltaDebugger
 
-  , gdd
+  , ddmin
   , gddmin
 
-  , idd'
   , idd
+  , igdd
+  , iidd
+  , isdd
+
+  , zdd
+  , zgdd
+  , zsdd
 
   , Zet.binarySearch
   , Zet.binarySearch'
 
   -- * extras
-  , sddx
   , Zet.VectorZet
   -- , Zet.Zet
 
@@ -46,180 +52,41 @@ import           Data.Monoid
 import Debug.Trace
 
 import qualified Data.IntSet               as IS
+import qualified Data.List                 as L
 import qualified Data.Vector               as V
 
 import           Jvmhs.Data.Graph
 import qualified Jvmhs.Data.Zet as Zet
 
--- | Graph delta-debugging
-gdd ::
-  (Monad m)
-  => ([v] -> m Bool)
-  -- ^ The property
-  -> Graph v e
-  -- ^ A graph
-  -> m [v]
-  -- ^ Returns a minimal set of nodes, where the property is true
-gdd p gr = do
-  fmap asLabels . sdd' (p.asLabels) . map snd . partition' $ gr
+type DeltaDebugger =
+  forall x m. (Monad m) => ([x] -> m Bool) -> [x] -> m [x]
+
+type SetDeltaDebugger =
+  forall m. (Monad m) => (IS.IntSet -> m Bool) -> [IS.IntSet] -> m IS.IntSet
+
+type GraphDeltaDebugger =
+  forall x e m. (Monad m, Ord x) => ([x] -> m Bool) -> Graph x e -> m [x]
+
+desetdd :: SetDeltaDebugger -> DeltaDebugger
+desetdd dd p xs =
+  unset <$> dd (p . unset) (map IS.singleton [0 .. V.length reference-1])
+  where
+    reference = V.fromList xs
+    unset = map (reference V.!) . IS.toList
+{-# INLINE desetdd #-}
+
+desetgdd :: SetDeltaDebugger -> GraphDeltaDebugger
+desetgdd dd p gr =
+  fmap asLabels . dd (p.asLabels) . map snd . partition' $ gr
   where
     asLabels = toListOf (folded.toLabel gr._Just) . IS.toList
+{-# INLINE desetgdd #-}
 
-sdd ::
-  (Monad m)
-  => ([x] -> m Bool)
-  -> [x]
-  -> m [x]
-sdd =
-  sddx $ (Zet.fromListOfSet :: [IS.IntSet] -> Zet.VectorZet) . map IS.singleton
 
-sddx ::
-  (Monad m, Zet.Zet IS.IntSet zz)
-  => ([Int] -> zz)
-  -> ([x] -> m Bool)
-  -> [x]
-  -> m [x]
-sddx hlp p xs =
-  unset <$> sddx' (p . unset) (hlp [0 .. V.length reference-1])
-  where
-    reference = V.fromList xs
-    unset = map (reference V.!) . IS.toList
-
-{-# SPECIALIZE sddx :: ([Int] -> Zet.VectorZet) -> ([x] -> Identity Bool) -> [x] -> Identity [x] #-}
-
--- | Set delta-debugging
--- Given a list of sets sorted after size, then return the smallest possible
--- set such that uphold the predicate.
-sdd' ::
-  (Monad m)
-  => (IS.IntSet -> m Bool)
-  -> [IS.IntSet]
-  -> m IS.IntSet
-sdd' predicate ls =
-  sddx' predicate (Zet.fromListOfSet ls :: Zet.VectorZet)
-
-sddx' ::
-  (Monad m, Zet.Zet z zz)
-  => (z -> m Bool)
-  -> zz
-  -> m z
-sddx' predicate ls =
-  predicate (_empty) >>= \case
-    True ->
-      pure _empty
-    False -> do
-      s <- runMaybeT $ go (Zet.sizeZ ls total) ls
-      return $ fromMaybe total s
-  where
-    _empty = Zet.emptyZ ls
-    total = Zet.total ls
-    p = lift . predicate >=> guard
-
-    go k mu = do
-      (lw, s, hg) <- Zet.split p (Zet.filter k mu)
-      p s $> s <|>
-        ( do
-            subset <- go k lw
-            go (Zet.sizeZ lw subset) hg <|> return subset
-        )
-
-{-# SPECIALIZE sddx' :: (Monad m) => (IS.IntSet -> m Bool) -> Zet.VectorZet -> m IS.IntSet #-}
-
-idd ::
-  (Monad m)
-  => ([x] -> m Bool)
-  -> [x]
-  -> m [x]
-idd p xs =
-  maybe xs unset <$> runMaybeT midd
-  where
-    midd =
-      idd'
-        (predicate.unset)
-        (IS.null)
-        (V.fromList . IS.toList)
-        (IS.fromAscList . V.toList)
-        _split IS.size (V.length reference)
-        (V.imap (const) reference)
-    predicate = lift . p >=> guard
-    reference = V.fromList xs
-    unset = map (reference V.!) . IS.toList
-    _split i v
-      | i == 0 = mzero
-      | V.length v == 1 = return . Left . IS.singleton $ V.head v
-      | otherwise = return $ Right (V.splitAt (V.length v `quot` 2) v)
-
-idd' ::
-  forall m x sx. (MonadPlus m, Monoid x, Show x, Show sx)
-  => (x -> m ())
-     -- ^ The predicate to test with
-  -> (x -> Bool)
-     -- ^ Check if a solution is empty
-  -> (x -> sx)
-     -- ^ Turn a solution into a search space
-  -> (sx -> x)
-     -- ^ Turn a search space into solution
-  -> (Int -> sx -> m (Either x (sx, sx)))
-     -- ^ Given a maximal size of a single element split the search space into
-     -- pieces. If nothing exists in the search space fail with mzero.
-  -> (x -> Int)
-     -- ^ A cost function
-  -> Int
-     -- ^ A maximal cost
-  -> sx
-     -- ^ The search space
-  -> m x
-idd' p isnull fromsol tosol split cost k' s' = do
-  snd <$> go k' mempty mempty s'
-  where
-    testngo k r c s = do
-      guard $ k > cost r
-      p (c <> tosol s <> r)
-      go k r c s
-
-    go k r c s = do
-      -- Split the search space
-      res <- split (k - cost r) s
-      case res of
-        Left x ->
-          -- If there only exist one element
-          let r' = x <> r in msum
-            [ -- then return r' if there is nothing in the searched values
-              guard (isnull c) $> (mempty, r')
-
-            , -- there is something in the already searched values, test
-              -- if the single value is enough
-              p r' $> (c,r')
-
-            , -- else search the already searched values for a smaller set
-              do
-                guard $ k > cost r'
-                (_, r'') <- go k r' mempty (fromsol c)
-                return (c, r'')
-            ]
-
-        Right (bt, tp) ->
-          -- If it is possible to split the search space
-          msum
-            [ -- test if the solution is in the bottom part of the search space
-              do
-                (c', r') <- testngo k r c bt
-                -- if a solution was found, search the top part for a smaller solution
-                testngo (cost r' - 1) r c' tp <|> return (c', r')
-
-            , -- else search the top part, with the bottom part added to the
-              -- already searched values
-              go k r (c <> tosol bt) tp
-            ]
-{-# INLINABLE idd' #-}
+-- The Original DeltaDebugger
 
 -- | Original delta-debugging
-ddmin ::
-     (Monad m)
-  => ([x] -> m Bool)
-  -- ^ a function can test delta
-  -> [x]
-  -> m [x]
+ddmin :: DeltaDebugger
 ddmin p xs =
   unset <$> ddmin' 2 (p . unset) _set
   where
@@ -278,6 +145,174 @@ ddmin' n p world
     chopSet s =
       let (h, r) = splitAt blockSize s
       in IS.fromAscList h : chopSet r
+
+
+-- Zet SetDeltaDebugger
+
+zdd :: DeltaDebugger
+zdd = desetdd zsdd
+
+-- | Set delta-debugging
+-- Given a list of sets sorted after size, then return the smallest possible
+-- set such that uphold the predicate.
+zsdd :: SetDeltaDebugger
+zsdd predicate ls =
+  corezdd predicate (Zet.fromListOfSet ls :: Zet.VectorZet)
+
+zgdd :: GraphDeltaDebugger
+zgdd =
+  desetgdd zsdd
+
+corezdd ::
+  (Monad m, Zet.Zet z zz)
+  => (z -> m Bool)
+  -> zz
+  -> m z
+corezdd predicate ls =
+  predicate (_empty) >>= \case
+    True ->
+      pure _empty
+    False -> do
+      s <- runMaybeT $ go (Zet.sizeZ ls total) ls
+      return $ fromMaybe total s
+  where
+    _empty = Zet.emptyZ ls
+    total = Zet.total ls
+    p = lift . predicate >=> guard
+
+    go k mu = do
+      (lw, s, hg) <- Zet.split p (Zet.filter k mu)
+      p s $> s <|>
+        ( do
+            subset <- go k lw
+            go (Zet.sizeZ lw subset) hg <|> return subset
+        )
+
+{-# INLINE corezdd #-}
+
+-- Search SetDeltaDebugger
+
+idd :: DeltaDebugger
+idd p xs =
+  maybe xs unset <$> runMaybeT midd
+  where
+    midd =
+      coreidd
+        (predicate.unset)
+        (IS.null)
+        (const $ V.fromList . IS.toList)
+        (IS.fromAscList . V.toList)
+        _split IS.size (V.length reference)
+        (V.imap (const) reference)
+    predicate = lift . p >=> guard
+    reference = V.fromList xs
+    unset = map (reference V.!) . IS.toList
+    _split i v
+      | i == 0 = mzero
+      | V.length v == 1 = return . Left . IS.singleton $ V.head v
+      | otherwise = return $ Right (V.splitAt (V.length v `quot` 2) v)
+
+isdd :: SetDeltaDebugger
+isdd p xs =
+  maybe total fst <$> runMaybeT midd
+  where
+    total = (IS.unions xs)
+    midd =
+      coreidd
+        (predicate . fst)
+        (IS.null . fst)
+        (\r -> fromListOfSets . L.map (flip IS.difference (fst r)) . snd)
+        ((\v -> (IS.unions v, v)) . V.toList)
+        _split (IS.size . fst) (IS.size total)
+        (fromListOfSets $ xs)
+    predicate = lift . p >=> guard
+
+    fromListOfSets =
+      V.fromList . L.sortOn IS.size
+
+    _split ::
+         forall m. MonadPlus m
+      => Int
+      -> V.Vector IS.IntSet
+      -> m (Either (IS.IntSet, [IS.IntSet]) (V.Vector IS.IntSet, V.Vector IS.IntSet))
+    _split i v' =
+      let v = V.filter ((i >=) . IS.size) v'
+      in msum
+      [ do guard (V.length v == 1)
+           return . Left . (\x -> (x, [x])) $ V.head v
+      , do guard (V.length v > 1)
+           return $ Right (V.splitAt (V.length v `quot` 2) v)
+      ]
+
+iidd :: DeltaDebugger
+iidd = desetdd isdd
+
+igdd :: GraphDeltaDebugger
+igdd = desetgdd isdd
+
+coreidd ::
+  forall m x sx. (MonadPlus m, Monoid x, Show x, Show sx)
+  => (x -> m ())
+     -- ^ The predicate to test with
+  -> (x -> Bool)
+     -- ^ Check if a solution is empty
+  -> (x -> x -> sx)
+     -- ^ Turn a solution into a search space, conditioned on a solution
+  -> (sx -> x)
+     -- ^ Turn a search space into solution
+  -> (Int -> sx -> m (Either x (sx, sx)))
+     -- ^ Given a maximal size of a single element split the search space into
+     -- pieces. If nothing exists in the search space fail with mzero.
+  -> (x -> Int)
+     -- ^ A cost function
+  -> Int
+     -- ^ A maximal cost
+  -> sx
+     -- ^ The search space
+  -> m x
+coreidd p isnull fromsol tosol split cost k' s' = do
+  snd <$> go k' mempty mempty s'
+  where
+    testngo k r c s = do
+      guard $ k > cost r
+      p (c <> tosol s <> r)
+      go k r c s
+
+    go k r c s = do
+      -- Split the search space
+      res <- split (k - cost r) s
+      case res of
+        Left x ->
+          -- If there only exist one element
+          let r' = x <> r in msum
+            [ -- then return r' if there is nothing in the searched values
+              guard (isnull c) $> (mempty, r')
+
+            , -- there is something in the already searched values, test
+              -- if the single value is enough
+              p r' $> (c,r')
+
+            , -- else search the already searched values for a smaller set
+              do
+                guard $ k > cost r'
+                (_, r'') <- go k r' mempty (fromsol r' c)
+                return (c, r'')
+            ]
+
+        Right (bt, tp) ->
+          -- If it is possible to split the search space
+          msum
+            [ -- test if the solution is in the bottom part of the search space
+              do
+                (c', r') <- testngo k r c bt
+                -- if a solution was found, search the top part for a smaller solution
+                testngo (cost r' - 1) r c' tp <|> return (c', r')
+
+            , -- else search the top part, with the bottom part added to the
+              -- already searched values
+              go k r (c <> tosol bt) tp
+            ]
+{-# INLINE coreidd #-}
 
 roundUpQuot :: Int -> Int -> Int
 roundUpQuot i j =

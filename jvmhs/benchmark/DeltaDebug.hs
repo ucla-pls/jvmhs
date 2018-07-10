@@ -32,7 +32,7 @@ simpleB =
     mkP name p sizes =
       bgroup name
         [ mkSizes "ddmin" (runw p ddmin) sizes
-        , mkSizes "sdd" (runw p $ sdd) sizes
+        , mkSizes "zdd" (runw p $ zdd) sizes
         , mkSizes "idd" (runw p $ idd) sizes
         ]
 
@@ -51,7 +51,7 @@ graphB =
       , runWith "ran-200-200" bench0
       , runWith "ran-300-300" bench0
       , runWith "ran-400-400" bench0
-      , runWith "ran-500-500" bench0
+      -- , runWith "ran-500-500" bench0
       ]
     , bgroup "big"
       [ runWith "ran-1000-1000" benchGddOnly
@@ -70,11 +70,16 @@ graphB =
 
     bench0 name gr =
       bgroup name
-        [ bench "gdd" $ whnf (runw (elem 0) gdd) gr
+        [ bench "zgdd" $ whnf (runw (elem 0) zgdd) gr
+        , bench "igdd" $ whnf (runw (elem 0) igdd) gr
         , bench "gddmin" $ whnf (runw (elem 0) gddmin) gr
         ]
 
     benchGddOnly name gr =
-      bench name $ whnf (runw (elem 0) gdd) gr
+      bgroup name
+        [ bench "zgdd" $ whnf (runw (elem 0) zgdd) gr
+        , bench "igdd" $ whnf (runw (elem 0) igdd) gr
+        , bench "partition" $ whnf partition' gr
+        ]
 
     runw p f = runIdentity . f (pure . p)
