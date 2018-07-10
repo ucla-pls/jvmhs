@@ -131,93 +131,73 @@ idd ::
   -> [x]
   -> m [x]
 idd p xs =
-  maybe [] unset <$> midd
+  maybe xs unset <$> runMaybeT midd
   where
     midd =
       idd'
-        (p.unset) IS.singleton (\k x ls -> if k > IS.size x then V.fromList . reverse $ ls else V.empty)
+        (predicate.unset)
+        IS.singleton
+        (V.fromList . reverse)
         V.toList
         _split IS.size (V.length reference)
         (V.imap (const) reference)
+    predicate = lift . p >=> guard
     reference = V.fromList xs
     unset = map (reference V.!) . IS.toList
-    _split v
-      | V.length v == 1 = Left . Just $ V.head v
-      | V.length v == 0 = Left Nothing
-      | otherwise = Right (V.splitAt (V.length v `quot` 2) v)
+    _split i v
+      | i == 0 = mzero
+      | V.length v == 1 = return . Left $ V.head v
+      | otherwise = return $ Right (V.splitAt (V.length v `quot` 2) v)
 
 idd' ::
-  forall m x fx sx. (Monad m, Monoid fx, Show x, Show fx, Show sx)
-  => (fx -> m Bool)
+  forall m x fx sx. (MonadPlus m, Monoid fx, Show x, Show fx, Show sx)
+  => (fx -> m ())
   -> (x -> fx)
-  -> (Int -> fx -> [x] -> sx)
+  -> ([x] -> sx)
   -> (sx -> [x])
-  -> (sx -> Either (Maybe x) (sx, sx))
+  -> (Int -> sx -> m (Either x (sx, sx)))
   -> (fx -> Int)
   -> Int
   -> sx
-  -> m (Maybe fx)
-idd' p f reorder items split cost k' s' =
+  -> m fx
+idd' p f reorder items split cost k' s' = do
   search k' mempty s'
   where
     search k r s =
       snd <$> go k r [] s
+
+    test r c s =
+      p (r <> foldMap f c <> foldMap f (items s))
+
+    testngo k r c s = do
+      guard $ k > cost r
+      test r c s
+      go k r c s
 
     go ::
       Int -- ^ Maximal cost
       -> fx -- ^ Known values
       -> [x] -- ^ Tested values
       -> sx -- ^ Search space
-      -> m ([x], Maybe fx)
+      -> m ([x], fx)
       -- ^ Returns a list of tested values and maybe a smallest solution
     go k r c s = do
+      -- Test if any solution exists in this space
       -- traceShowM (k, r, c, s)
-      -- Test if the search space has any values
-      case split s of
-        Left Nothing ->
-          return (c, Nothing)
-        Left (Just x) -> do
-          --traceShowM x
-          -- If the search space has size 1, then test if it is a solution.
+      res <- split (k - cost r) s
+      case res of
+        Left x ->
           let r' = f x <> r
-          t <- p r'
-          -- traceShowM (r', t)
-          case t of
-            True ->
-              -- If yes, it must be the smallest
-              return (c, Just r')
-            False ->
-              -- If no, then search for a subset in the visited solutions,
-              -- conditioned on x.
-              (c,) <$> search k r' (reorder k r' c)
-        Right (bt, tp) -> do
-          -- traceShowM (bt, tp)
-          let
-            bt' = reverse (items bt) ++ c
-            r' = (r <> foldMap f bt')
-          t <- p r'
-          --traceShowM (r', t)
-          case t of
-            True -> do
-              -- Find the minimal solution in the bottom half
-              (c', res) <- go k r c bt
-              case res of
-                -- if there is no solution in the bottom half, search
-                -- the top half with knowledge of the c'.
-                Nothing ->
-                  go k r c' tp
-                -- If there is a solution, continue the search with c', but
-                -- don't accept solution worse than what we have found.
-                Just r'' -> do
-                  t' <- p (r <> foldMap f c' <> foldMap f (items tp))
-                  if t'
-                    then do
-                      (_, res') <- go (cost r'') r c' tp
-                      return (c', res' <|> res)
-                    else
-                      return (c', res)
-            False -> do
-              go k r bt' tp
+          in case c of
+            [] ->
+              return ([] , r')
+            _ ->
+              ((c,r') <$ p r') <|> ((c,) <$> search k r' (reorder c))
+        Right (bt, tp) ->
+          ( do
+               (c', r') <- testngo k r c bt
+               testngo (cost r' - 1) r c' tp <|> (return (c', r'))
+          ) <|> go k r (reverse (items bt) ++ c) tp
 {-# INLINABLE idd' #-}
 
 -- | Original delta-debugging

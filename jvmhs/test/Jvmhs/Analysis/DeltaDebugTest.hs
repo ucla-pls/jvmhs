@@ -104,22 +104,22 @@ spec_sdd' = do
 spec_idd :: Spec
 spec_idd = do
   it "can solve a simple case simple-idd" $
-    idd (count is7) test8 `shouldBe` (Sum 5, [7])
+    idd (count is7) test8 `shouldBe` (Sum 4, [7])
 
   it "can solve the dd-min case" $
-    idd (count is178) test8 `shouldBe` (Sum 18, [1,7,8])
+    idd (count is178) test8 `shouldBe` (Sum 10, [1,7,8])
 
   it "can solve a k=2 case " $
-    idd (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 25, [2,8])
+    idd (count (\s -> is167 s || is28 s)) test8 `shouldBe` (Sum 16, [2,8])
 
-  it "returns a empty element if true" $
-    idd (count $ const True) test8 `shouldBe` (Sum 1, [])
+  it "returns a empty element if true" $ do
+    idd (count $ const True) test8 `shouldBe` (Sum 3, [1])
 
   it "returns everything if false" $
-    idd (count $ const False) test8 `shouldBe` (Sum 4, test8)
+    idd (count $ const False) test8 `shouldBe` (Sum 24, test8)
 
   it "does find an optimal solution for all cases" $
-    idd (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 19, [7])
+    idd (count (\s -> is1234 s || is7 s)) test8 `shouldBe` (Sum 13, [7])
 
   -- it "can find half" $ do
   --   res <- idd (printt (isSubsequenceOf [0..25])) [0..50]
@@ -129,7 +129,7 @@ spec_idd = do
     sdd (count (isSubsequenceOf [0..50])) [0..100] `shouldBe` (Sum 474, [0..50] :: [Int])
 
   it "can find the even halves" $
-    idd (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 569, [0,2..100])
+    idd (count $ isSubsequenceOf ([0,2..100] :: [Int])) [0..100] `shouldBe` (Sum 393, [0,2..100])
 
 
 spec_ddmin :: Spec
