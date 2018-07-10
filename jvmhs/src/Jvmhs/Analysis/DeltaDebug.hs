@@ -136,9 +136,9 @@ idd p xs =
     midd =
       idd'
         (predicate.unset)
-        IS.singleton
-        (V.fromList . reverse)
-        V.toList
+        (IS.null)
+        (V.fromList . IS.toList)
+        (IS.fromAscList . V.toList)
         _split IS.size (V.length reference)
         (V.imap (const) reference)
     predicate = lift . p >=> guard
@@ -146,59 +146,46 @@ idd p xs =
     unset = map (reference V.!) . IS.toList
     _split i v
       | i == 0 = mzero
-      | V.length v == 1 = return . Left $ V.head v
+      | V.length v == 1 = return . Left . IS.singleton $ V.head v
       | otherwise = return $ Right (V.splitAt (V.length v `quot` 2) v)
 
 idd' ::
-  forall m x fx sx. (MonadPlus m, Monoid fx, Show x, Show fx, Show sx)
-  => (fx -> m ())
+  forall m x sx. (MonadPlus m, Monoid x, Show x, Show sx)
+  => (x -> m ())
      -- ^ The predicate to test with
-  -> (x -> fx)
-     -- ^ A function to lift an x into the collection fx
-  -> ([x] -> sx)
-     -- ^ Turn a list of x into a search space
-  -> (sx -> [x])
-     -- ^ Turn a search space into a list
+  -> (x -> Bool)
+     -- ^ Check if a solution is empty
+  -> (x -> sx)
+     -- ^ Turn a solution into a search space
+  -> (sx -> x)
+     -- ^ Turn a search space into solution
   -> (Int -> sx -> m (Either x (sx, sx)))
      -- ^ Given a maximal size of a single element split the search space into
      -- pieces. If nothing exists in the search space fail with mzero.
-  -> (fx -> Int)
+  -> (x -> Int)
      -- ^ A cost function
   -> Int
      -- ^ A maximal cost
   -> sx
      -- ^ The search space
-  -> m fx
-idd' p f reorder items split cost k' s' = do
-  search k' mempty s'
+  -> m x
+idd' p isnull fromsol tosol split cost k' s' = do
+  snd <$> go k' mempty mempty s'
   where
-    search k r s =
-      snd <$> go k r mempty s
-
-    test r c s =
-      p (r <> fst c <> foldMap f (items s))
-
     testngo k r c s = do
       guard $ k > cost r
-      test r c s
+      p (c <> tosol s <> r)
       go k r c s
 
-    go ::
-      Int -- ^ Maximal cost
-      -> fx -- ^ Known values
-      -> (fx, [x]) -- ^ Tested values
-      -> sx -- ^ Search space
-      -> m ((fx, [x]), fx)
-      -- ^ Returns a list of tested values and maybe a smallest solution
     go k r c s = do
       -- Split the search space
       res <- split (k - cost r) s
       case res of
         Left x ->
           -- If there only exist one element
-          let r' = f x <> r in msum
+          let r' = x <> r in msum
             [ -- then return r' if there is nothing in the searched values
-              guard (null $ snd c) $> (mempty, r')
+              guard (isnull c) $> (mempty, r')
 
             , -- there is something in the already searched values, test
               -- if the single value is enough
@@ -207,7 +194,7 @@ idd' p f reorder items split cost k' s' = do
             , -- else search the already searched values for a smaller set
               do
                 guard $ k > cost r'
-                r'' <- search k r' (reorder . snd $ c)
+                (_, r'') <- go k r' mempty (fromsol c)
                 return (c, r'')
             ]
 
@@ -222,13 +209,8 @@ idd' p f reorder items split cost k' s' = do
 
             , -- else search the top part, with the bottom part added to the
               -- already searched values
-              go k r (addtotested bt c) tp
+              go k r (c <> tosol bt) tp
             ]
-
-    addtotested :: sx -> (fx, [x]) -> (fx, [x])
-    addtotested s (cx, c) =
-      (cx <> foldMap f ss, reverse ss ++ c)
-      where ss = items s
 {-# INLINABLE idd' #-}
 
 -- | Original delta-debugging
