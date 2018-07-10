@@ -152,22 +152,31 @@ idd p xs =
 idd' ::
   forall m x fx sx. (MonadPlus m, Monoid fx, Show x, Show fx, Show sx)
   => (fx -> m ())
+     -- ^ The predicate to test with
   -> (x -> fx)
+     -- ^ A function to lift an x into the collection fx
   -> ([x] -> sx)
+     -- ^ Turn a list of x into a search space
   -> (sx -> [x])
+     -- ^ Turn a search space into a list
   -> (Int -> sx -> m (Either x (sx, sx)))
+     -- ^ Given a maximal size of a single element split the search space into
+     -- pieces. If nothing exists in the search space fail with mzero.
   -> (fx -> Int)
+     -- ^ A cost function
   -> Int
+     -- ^ A maximal cost
   -> sx
+     -- ^ The search space
   -> m fx
 idd' p f reorder items split cost k' s' = do
   search k' mempty s'
   where
     search k r s =
-      snd <$> go k r [] s
+      snd <$> go k r mempty s
 
     test r c s =
-      p (r <> foldMap f c <> foldMap f (items s))
+      p (r <> fst c <> foldMap f (items s))
 
     testngo k r c s = do
       guard $ k > cost r
@@ -177,27 +186,49 @@ idd' p f reorder items split cost k' s' = do
     go ::
       Int -- ^ Maximal cost
       -> fx -- ^ Known values
-      -> [x] -- ^ Tested values
+      -> (fx, [x]) -- ^ Tested values
       -> sx -- ^ Search space
-      -> m ([x], fx)
+      -> m ((fx, [x]), fx)
       -- ^ Returns a list of tested values and maybe a smallest solution
     go k r c s = do
-      -- Test if any solution exists in this space
-      -- traceShowM (k, r, c, s)
+      -- Split the search space
       res <- split (k - cost r) s
       case res of
         Left x ->
-          let r' = f x <> r
-          in case c of
-            [] ->
-              return ([] , r')
-            _ ->
-              ((c,r') <$ p r') <|> ((c,) <$> search k r' (reorder c))
+          -- If there only exist one element
+          let r' = f x <> r in msum
+            [ -- then return r' if there is nothing in the searched values
+              guard (null $ snd c) $> (mempty, r')
+
+            , -- there is something in the already searched values, test
+              -- if the single value is enough
+              p r' $> (c,r')
+
+            , -- else search the already searched values for a smaller set
+              do
+                guard $ k > cost r'
+                r'' <- search k r' (reorder . snd $ c)
+                return (c, r'')
+            ]
+
         Right (bt, tp) ->
-          ( do
-               (c', r') <- testngo k r c bt
-               testngo (cost r' - 1) r c' tp <|> (return (c', r'))
-          ) <|> go k r (reverse (items bt) ++ c) tp
+          -- If it is possible to split the search space
+          msum
+            [ -- test if the solution is in the bottom part of the search space
+              do
+                (c', r') <- testngo k r c bt
+                -- if a solution was found, search the top part for a smaller solution
+                testngo (cost r' - 1) r c' tp <|> return (c', r')
+
+            , -- else search the top part, with the bottom part added to the
+              -- already searched values
+              go k r (addtotested bt c) tp
+            ]
+
+    addtotested :: sx -> (fx, [x]) -> (fx, [x])
+    addtotested s (cx, c) =
+      (cx <> foldMap f ss, reverse ss ++ c)
+      where ss = items s
 {-# INLINABLE idd' #-}
 
 -- | Original delta-debugging

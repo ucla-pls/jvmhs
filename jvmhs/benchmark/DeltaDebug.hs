@@ -27,14 +27,13 @@ simpleB =
     ]
 
   where
-    mz = fromListOfSet :: [IS.IntSet] -> MZ
-
     runw p f i = runIdentity . f (pure . p i)
 
     mkP name p sizes =
       bgroup name
         [ mkSizes "ddmin" (runw p ddmin) sizes
-        , mkSizes "sdd" (runw p $ sddx mz) sizes
+        , mkSizes "sdd" (runw p $ sdd) sizes
+        , mkSizes "idd" (runw p $ idd) sizes
         ]
 
     mkSizes name f sizes =
