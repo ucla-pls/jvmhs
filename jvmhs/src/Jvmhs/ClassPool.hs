@@ -28,9 +28,13 @@ module Jvmhs.ClassPool
 
   , hasClass
   , allClasses
+  , getClasses
+
+  , onlyClasses
 
   , modifyClass
   , modifyClasses
+
 
   -- ** Lens helpers
   , pool
@@ -80,6 +84,7 @@ import           Control.Lens.Action
 
 import           Data.Either                (partitionEithers)
 import qualified Data.Map                   as M
+import qualified Data.Set                   as S
 import           Data.Maybe
 import           Data.Monoid
 
@@ -144,6 +149,12 @@ deleteClass :: MonadClassPool m => ClassName -> m ()
 deleteClass cn =
   setClass cn Nothing
 
+-- | Deletes all classes not in the list
+onlyClasses :: (MonadClassPool m) => [ClassName] -> m ()
+onlyClasses cns = do
+  let keep = S.fromList cns
+  modifyClasses (\cls -> if (cls^.className) `S.member` keep then Just cls else Nothing)
+
 -- | Get all the classes from the class pool
 allClasses :: MonadClassPool m => m [Class]
 allClasses =
@@ -163,6 +174,11 @@ pool' ::
      MonadClassPool m
   => Action m ClassName (Either ClassName Class)
 pool' = act (\cn -> maybe (Left cn) (Right) <$> getClass cn)
+
+-- | Get all the classes from the class pool
+getClasses :: (Foldable t, MonadClassPool m) => t ClassName -> m [Class]
+getClasses =
+  (^!! folded.pool._Just)
 
 
 -- | Given a ClassReader load a class into the ClassPool
