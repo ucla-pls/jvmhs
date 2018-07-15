@@ -31,6 +31,7 @@ module Jvmhs.ClassPool
   , getClasses
 
   , onlyClasses
+  , onlyClasses'
 
   , modifyClass
   , modifyClasses
@@ -69,8 +70,17 @@ module Jvmhs.ClassPool
   , runClassPoolTWithReader
 
 
-  -- ** ClassPoolIO
-  -- An unpure implementation of the `MonadClassPool`
+  -- ** CachedClassPoolT
+  -- An implementation that loads a cache of all classes instead of having
+  -- to load all values up front.
+
+  , CachedClassPoolT (..)
+  , CachedClassPool
+
+  , runCachedClassPool
+  , runCachedClassPoolT
+
+  , cachedOnlyClasses'
   ) where
 
 -- import           Control.Monad          (foldM)
@@ -87,6 +97,7 @@ import qualified Data.Map                   as M
 import qualified Data.Set                   as S
 import           Data.Maybe
 import           Data.Monoid
+import           Data.Foldable as F
 
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
@@ -150,9 +161,13 @@ deleteClass cn =
   setClass cn Nothing
 
 -- | Deletes all classes not in the list
-onlyClasses :: (MonadClassPool m) => [ClassName] -> m ()
+onlyClasses :: (MonadClassPool m, Foldable f) => f ClassName -> m ()
 onlyClasses cns = do
-  let keep = S.fromList cns
+  onlyClasses' $ S.fromList (F.toList cns)
+
+-- | Deletes all classes not in the set
+onlyClasses' :: (MonadClassPool m) => S.Set ClassName -> m ()
+onlyClasses' keep = do
   modifyClasses (\cls -> if (cls^.className) `S.member` keep then Just cls else Nothing)
 
 -- | Get all the classes from the class pool
@@ -291,10 +306,6 @@ instance Monad m => MonadClassPool (ClassPoolT m) where
     fmap put . M.alterF f n <$> get
 
   -- | Perform an action over all the classes in the ClassPool
-  -- traverseClasses ::
-  --   (Applicative f) =>
-  --   (Class -> f (Maybe Class))
-  --   -> m (f (m ()))
   traverseClasses f = do
     fmap put . M.traverseMaybeWithKey (\_ cls -> f cls) <$> get
 
@@ -325,3 +336,84 @@ runClassPoolTWithReader ::
   -> m (a, ClassPoolState)
 runClassPoolTWithReader fm r =
   runClassPoolT (loadClassesFromReader r >>= fm) mempty
+
+-- | CachedClassPoolState is a the same uncached, but can contain Nothing as to
+-- tell that the value have been loaded.
+type CachedClassPoolState = M.Map ClassName (Maybe Class)
+
+newtype CachedClassPoolT r m a = CachedClassPoolT
+  { runCachedClassPoolT' :: StateT CachedClassPoolState (ReaderT r m) a }
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadReader r
+    , MonadState CachedClassPoolState
+    , MonadIO )
+
+cacheClass ::
+  (ClassReader r, MonadIO m)
+  => ClassName
+  -> CachedClassPoolT r m CachedClassPoolState
+cacheClass n = do
+  cpp <- M.alterF cache n =<< get
+  put cpp
+  return cpp
+  where
+    cache Nothing = do
+      r <- ask
+      ec <- liftIO $ readClass n r
+      return . Just $ case ec of
+        Left _ -> Nothing
+        Right cls -> Just cls
+    cache mc =
+      return mc
+
+cachedOnlyClasses' ::
+  (ClassReader r, MonadIO m)
+  => S.Set ClassName
+  -> CachedClassPoolT r m ()
+cachedOnlyClasses' keep = do
+  cns <- allClassNames
+  modify $
+    \s -> M.fromList . (fmap $
+    \cn -> (cn,
+            if cn `S.member` keep
+            then fromMaybe Nothing $ cn `M.lookup` s
+            else Nothing)) $ cns
+
+instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) where
+  -- alterClass ::
+  --   forall f. (Functor f) =>
+  --   (Maybe Class -> f (Maybe Class))
+  --   -> ClassName
+  --   -> m (f (m ()))
+  alterClass f n = do
+    fmap put . M.alterF (fmap Just . f . fromJust) n <$> cacheClass n
+
+  -- | Perform an action over all the classes in the ClassPool
+  traverseClasses f = do
+    mapM_ cacheClass =<< allClassNames
+    fmap put . M.traverseWithKey (\_ s -> maybe (pure Nothing) f s) <$> get
+
+  allClassNames = do
+    creader <- ask
+    fmap fst <$> liftIO (classes creader)
+
+runCachedClassPoolT ::
+     (ClassReader r, MonadIO m)
+  => CachedClassPoolT r m a
+  -> r
+  -> m (a, CachedClassPoolState)
+runCachedClassPoolT (CachedClassPoolT m) r =
+  flip runReaderT r . flip runStateT mempty $ m
+
+type CachedClassPool = CachedClassPoolT ClassPreloader IO
+
+-- | Run a `CachedClassPool` given a class pool
+runCachedClassPool ::
+  CachedClassPool a
+  -> ClassPreloader
+  -> IO (a, CachedClassPoolState)
+runCachedClassPool =
+  runCachedClassPoolT
