@@ -398,7 +398,8 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
 
   allClassNames = do
     creader <- ask
-    fmap fst <$> liftIO (classes creader)
+    classnames <- fmap fst <$> liftIO (classes creader)
+    filterM hasClass classnames
 
 runCachedClassPoolT ::
      (ClassReader r, MonadIO m)
