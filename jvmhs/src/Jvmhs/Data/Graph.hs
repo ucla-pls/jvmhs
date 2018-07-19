@@ -50,6 +50,7 @@ import           Data.Monoid                       ((<>))
 import           Data.Tuple                        (swap)
 
 import qualified Data.IntSet                       as IS
+import qualified Data.IntMap                       as IM
 import qualified Data.List                         as L
 import qualified Data.Vector                       as V
 
@@ -57,6 +58,8 @@ import qualified Data.ByteString                   as BS
 import           System.IO
 
 import qualified Data.Attoparsec.ByteString.Char8  as P
+
+import Debug.Trace
 
 import           Data.Graph.Inductive.Dot          (fglToDot, showDot)
 
@@ -158,20 +161,28 @@ partition gr =
     asLabels =
       toListOf (to (IS.toList) . folded . toLabel gr. _Just)
 
-
 partition' :: Graph v e -> [ (IS.IntSet, IS.IntSet) ]
-partition' gr =
+partition' graph =
   catMaybes . V.toList $ cv
   where
-    sccgr = condensation (gr ^. innerGraph)
+    gr = (graph ^. innerGraph)
+    sccs = scc gr
+    iscc = zip [0..] sccs
+    vMap = IM.fromList . concatMap (\(i,xs) -> map (,i) xs) $ iscc
 
-    cv = V.fromList [ getNode n | n <- enumFromTo 0 (snd $ F.nodeRange sccgr)]
+    edges = map (\(i, ls) -> IS.unions . map (IS.delete i . getEdges) $ ls) iscc
 
-    getNode :: Int -> Maybe (IS.IntSet, IS.IntSet)
-    getNode n = do
-      (_, _, s, t) <- fst $ n `F.match` sccgr
+    cv = V.fromList (zipWith getNode sccs edges)
+
+    getEdges =
+      IS.fromList
+      . map ((vMap IM.!) . view _2)
+      . F.out gr
+
+    getNode :: [Int] -> IS.IntSet -> Maybe (IS.IntSet, IS.IntSet)
+    getNode s t = do
       let
-        Just before = sequence [ (cv V.! b) ^? _Just._2 | (_, b) <- t ]
+        Just before = sequence [ (cv V.! b) ^? _Just._2 | b <- IS.toList t ]
         s'  = IS.fromList s
         closure = IS.unions (s':before)
       return (s', closure)

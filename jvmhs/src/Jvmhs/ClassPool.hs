@@ -99,6 +99,8 @@ import           Data.Maybe
 import           Data.Monoid
 import           Data.Foldable as F
 
+import           Debug.Trace
+
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Type
@@ -361,6 +363,7 @@ cacheClass n = do
   return cpp
   where
     cache Nothing = do
+      traceM $ "Caching.. " ++ show n
       r <- ask
       ec <- liftIO $ readClass n r
       return . Just $ case ec of

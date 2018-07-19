@@ -10,3 +10,6 @@ extra-deps:
   - jvm-binary-0.1.0
 flags: {}
 extra-package-dbs:
+build:
+  library-profiling: true
+  executable-profiling: true

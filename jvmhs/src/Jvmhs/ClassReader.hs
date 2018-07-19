@@ -284,9 +284,25 @@ instance ClassReader CJar where
       Nothing ->
         return $ Left ClassNotFound
 
-  classes this@(CJar _ arch) = do
-     let fls = catMaybes . map (asClassName . eRelativePath) $ zEntries arch
-     return $ map (,CCJar this) fls
+  classes (CJar _ arch) = do
+     return . catMaybes . flip map (zEntries arch) $ \e ->
+       (,CCEntry (CEntry e)) <$> (asClassName . eRelativePath $ e)
+
+newtype CEntry = CEntry Entry
+  deriving (Show)
+
+instance ClassReader CEntry where
+  getClassBytes (CEntry entry) cn =
+    if asClassName (eRelativePath entry) == Just cn
+    then
+        return $ Right (fromEntry entry)
+    else
+        return $ Left ClassNotFound
+
+  classes this@(CEntry entry) = do
+    case asClassName . eRelativePath $ entry of
+      Just cn -> return [(cn, CCEntry this)]
+      Nothing -> return []
 
 -- | Return a class container from a file path. It might return
 -- `Nothing` if it's not a folder or a jar.
@@ -316,14 +332,17 @@ instance ClassReader FilePath where
 data ClassContainer
   = CCFolder CFolder
   | CCJar CJar
+  | CCEntry CEntry
   deriving (Show)
 
 instance ClassReader (ClassContainer) where
   getClassBytes (CCFolder x) = getClassBytes x
   getClassBytes (CCJar x)    = getClassBytes x
+  getClassBytes (CCEntry x)  = getClassBytes x
 
   classes (CCFolder x) = classes x
   classes (CCJar x)    = classes x
+  classes (CCEntry x)  = classes x
 
 
 makeLenses ''CFolder
