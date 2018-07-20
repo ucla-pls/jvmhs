@@ -28,9 +28,14 @@ module Jvmhs.ClassPool
 
   , hasClass
   , allClasses
+  , getClasses
+
+  , onlyClasses
+  , onlyClasses'
 
   , modifyClass
   , modifyClasses
+
 
   -- ** Lens helpers
   , pool
@@ -46,7 +51,6 @@ module Jvmhs.ClassPool
 
   -- ** Saving the class to disk
   , saveClass
-  , saveClasses
   , saveAllClasses
 
   -- * Implementations
@@ -65,8 +69,16 @@ module Jvmhs.ClassPool
   , runClassPoolTWithReader
 
 
-  -- ** ClassPoolIO
-  -- An unpure implementation of the `MonadClassPool`
+  -- ** CachedClassPoolT
+  -- An implementation that loads a cache of all classes instead of having
+  -- to load all values up front.
+
+  , CachedClassPoolT (..)
+  , CachedClassPool
+
+  , runCachedClassPool
+  , runCachedClassPoolT
+
   ) where
 
 -- import           Control.Monad          (foldM)
@@ -80,8 +92,15 @@ import           Control.Lens.Action
 
 import           Data.Either                (partitionEithers)
 import qualified Data.Map                   as M
+import qualified Data.Set                   as S
 import           Data.Maybe
 import           Data.Monoid
+import           Data.Foldable as F
+
+import qualified Data.ByteString.Lazy as BL
+--import qualified Data.ByteString as BS
+
+import           Debug.Trace
 
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
@@ -109,6 +128,20 @@ class Monad m => MonadClassPool m where
   -- appear once in the
   allClassNames ::
     m [ClassName]
+
+  -- | Saves only the classes provided in the foldable list of classnames.
+  -- Names not found in the ClassPool are ignored.
+  -- @
+  -- saveClasses "out" ["java.util.ArrayList", "java.util.LinkedList"]
+  -- @
+  saveClasses ::
+      (MonadIO m)
+    => FilePath
+    -> [ClassName]
+    -> m ()
+  saveClasses fp cns = do
+    void . liftIO . writeClasses fp =<< (cns ^!! folded . pool . _Just)
+
 
 -- | Get a class from a class pool.
 getClass :: MonadClassPool m => ClassName -> m (Maybe Class)
@@ -144,6 +177,16 @@ deleteClass :: MonadClassPool m => ClassName -> m ()
 deleteClass cn =
   setClass cn Nothing
 
+-- | Deletes all classes not in the list
+onlyClasses :: (MonadClassPool m, Foldable f) => f ClassName -> m ()
+onlyClasses cns = do
+  onlyClasses' $ S.fromList (F.toList cns)
+
+-- | Deletes all classes not in the set
+onlyClasses' :: (MonadClassPool m) => S.Set ClassName -> m ()
+onlyClasses' keep = do
+  modifyClasses (\cls -> if (cls^.className) `S.member` keep then Just cls else Nothing)
+
 -- | Get all the classes from the class pool
 allClasses :: MonadClassPool m => m [Class]
 allClasses =
@@ -164,6 +207,10 @@ pool' ::
   => Action m ClassName (Either ClassName Class)
 pool' = act (\cn -> maybe (Left cn) (Right) <$> getClass cn)
 
+-- | Get all the classes from the class pool
+getClasses :: (Foldable t, MonadClassPool m) => t ClassName -> m [Class]
+getClasses =
+  (^!! folded.pool._Just)
 
 -- | Given a ClassReader load a class into the ClassPool
 loadClass ::
@@ -202,21 +249,7 @@ saveAllClasses ::
   => FilePath
   -> m ()
 saveAllClasses fp = do
-  allClasses >>= liftIO . writeClasses fp
-
--- | Saves only the classes provided in the foldable list of classnames.
--- Names not found in the ClassPool are ignored.
--- @
--- saveClasses "out" ["java.util.ArrayList", "java.util.LinkedList"]
--- @
-saveClasses ::
-    (MonadClassPool m, MonadIO m, Foldable f)
-  => FilePath
-  -> f ClassName
-  -> m ()
-saveClasses fp cns = do
-  clss <- cns ^!! folded . pool . _Just
-  liftIO . writeClasses fp $ clss
+  allClassNames >>= saveClasses fp
 
 -- | Saves a single class to the given class path.
 -- @
@@ -226,12 +259,9 @@ saveClass ::
     (MonadClassPool m, MonadIO m)
   => FilePath
   -> ClassName
-  -> m (Maybe ())
+  -> m ()
 saveClass fp cn = do
-  m <- getClass cn
-  case m of
-    Just c  -> Just <$> (liftIO $ writeClass fp c)
-    Nothing -> return $ Nothing
+  saveClasses fp [cn]
 
 
 instance MonadClassPool m => MonadClassPool (ReaderT r m) where
@@ -275,10 +305,6 @@ instance Monad m => MonadClassPool (ClassPoolT m) where
     fmap put . M.alterF f n <$> get
 
   -- | Perform an action over all the classes in the ClassPool
-  -- traverseClasses ::
-  --   (Applicative f) =>
-  --   (Class -> f (Maybe Class))
-  --   -> m (f (m ()))
   traverseClasses f = do
     fmap put . M.traverseMaybeWithKey (\_ cls -> f cls) <$> get
 
@@ -309,3 +335,135 @@ runClassPoolTWithReader ::
   -> m (a, ClassPoolState)
 runClassPoolTWithReader fm r =
   runClassPoolT (loadClassesFromReader r >>= fm) mempty
+
+data ClassState
+  = CSSaved Class BL.ByteString
+  | CSPure Class
+  | CSUnread
+
+type CachedClassPoolState = M.Map ClassName ClassState
+
+newtype CachedClassPoolT r m a = CachedClassPoolT
+  { runCachedClassPoolT' :: StateT CachedClassPoolState (ReaderT r m) a }
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadReader r
+    , MonadState CachedClassPoolState
+    , MonadIO )
+
+cacheClass ::
+  (ClassReader r, MonadIO m)
+  => ClassName
+  -> CachedClassPoolT r m CachedClassPoolState
+cacheClass n = do
+  cpp <- M.alterF cache n =<< get
+  put cpp
+  return cpp
+  where
+    cache (Just CSUnread) = do
+      traceM $ "Caching.. " ++ show n
+      ec <- liftIO . readClass n =<< ask
+      return $ case ec of
+        Left _ -> Nothing
+        Right cls -> Just (CSPure cls)
+    cache mc =
+      return mc
+
+-- cachedOnlyClasses' ::
+--   (ClassReader r, MonadIO m)
+--   => S.Set ClassName
+--   -> CachedClassPoolT r m ()
+-- cachedOnlyClasses' keep = do
+--   cns <- allClassNames
+--   modify $
+--     \s -> M.fromList . (fmap $
+--     \cn -> (cn,
+--             if cn `S.member` keep
+--             then fromMaybe Nothing $ cn `M.lookup` s
+--             else Nothing)) $ cns
+
+inMaybeClassState ::
+  (Functor f)
+  => (Maybe Class -> f (Maybe Class))
+  -> Maybe ClassState
+  -> f (Maybe ClassState)
+inMaybeClassState f x =
+  case x of
+    Nothing -> fmap CSPure <$> f Nothing
+    Just x' -> inClassState (f . Just) x'
+
+inClassState ::
+  (Functor f)
+  => (Class -> f (Maybe Class))
+  -> ClassState
+  -> f (Maybe ClassState)
+inClassState f x =
+  fmap CSPure <$> case x of
+    CSPure cs -> f cs
+    CSSaved cs _ -> f cs
+    CSUnread -> error "Should not happen!"
+
+instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) where
+  -- alterClass ::
+  --   forall f. (Functor f) =>
+  --   (Maybe Class -> f (Maybe Class))
+  --   -> ClassName
+  --   -> m (f (m ()))
+  alterClass f n = do
+    fmap put . M.alterF (inMaybeClassState f) n <$> cacheClass n
+
+  -- | Perform an action over all the classes in the ClassPool
+  traverseClasses f = do
+    mapM_ cacheClass =<< allClassNames
+    fmap put . M.traverseMaybeWithKey (\_ -> inClassState f) <$> get
+
+  allClassNames =
+    M.keys <$> get
+
+  -- | Saves only the classes provided in the foldable list of classnames.
+  -- Names not found in the ClassPool are ignored.
+  -- @
+  -- saveClasses "out" ["java.util.ArrayList", "java.util.LinkedList"]
+  -- @
+  -- saveClasses ::
+  --     (MonadIO m, Foldable t)
+  --   => FilePath
+  --   -> t ClassName
+  --   -> m ()
+  saveClasses fp cns = do
+    bs <- forM cns $ \cn -> do
+      cs <- cacheClass cn
+      let (bs, mp) = M.alterF helper cn cs
+      put mp
+      return ((cn,) <$> bs)
+    liftIO . writeBytesToFilePath fp $ catMaybes bs
+    where
+      helper Nothing = (Nothing, Nothing)
+      helper (Just (CSPure cs)) =
+        let bs = deserializeClass cs in
+        (Just bs, Just (CSSaved cs bs))
+      helper this@(Just (CSSaved _ bs)) =
+        (Just bs, this)
+      helper (Just CSUnread) =
+        error "Should have been read"
+
+runCachedClassPoolT ::
+     (ClassReader r, MonadIO m)
+  => CachedClassPoolT r m a
+  -> r
+  -> m (a, CachedClassPoolState)
+runCachedClassPoolT (CachedClassPoolT m) r = do
+  cns <- liftIO $ classes r
+  flip runReaderT r . flip runStateT (M.fromList [ (cn,CSUnread) | (cn,_) <- cns ]) $ m
+
+type CachedClassPool = CachedClassPoolT ClassPreloader IO
+
+-- | Run a `CachedClassPool` given a class pool
+runCachedClassPool ::
+  CachedClassPool a
+  -> ClassPreloader
+  -> IO (a, CachedClassPoolState)
+runCachedClassPool =
+  runCachedClassPoolT

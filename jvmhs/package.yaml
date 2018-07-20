@@ -30,13 +30,15 @@ dependencies:
   - directory
   - filepath
   - process
-  - containers
+  - containers 
   - text
   - vector
   - mtl
+  - transformers
   - deepseq
   - fgl
   - fgl-visualize
+  - attoparsec
 
 library:
   source-dirs: src
@@ -59,3 +61,12 @@ tests:
       - generic-random
       - hspec-expectations-pretty-diff
 
+benchmarks:
+  delta-debug:
+    source-dirs: benchmark
+    main: DeltaDebug.hs
+    dependencies:
+      - jvmhs
+      - criterion
+      - lens
+      - vector

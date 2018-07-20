@@ -27,6 +27,8 @@ module Jvmhs.ClassReader
 
   , writeClass
   , writeClasses
+  , writeBytesToFilePath
+  , deserializeClass
 
   , readClassFile'
   , convertClass
@@ -159,39 +161,48 @@ class ClassReader m where
   -- | Returns a list of `ClassName` and the containers they are in.
   classes :: m -> IO [ (ClassName, ClassContainer) ]
 
+deserializeClass :: Class -> BL.ByteString
+deserializeClass =
+  B.writeClassFile . toClassFile
+
 -- | Write a class to a folder
 writeClass ::
      FilePath
   -> Class
   -> IO ()
 writeClass fp c = do
-  let path = pathOfClass fp $ c^.className
-  createDirectoryIfMissing True (takeDirectory path)
-  let clf = (toClassFile c)
-  BL.writeFile path $ B.writeClassFile clf
+  writeClasses fp (Identity c)
 
 -- | Writes some classes to the filepath. If the filepath
 -- is a jar, a jar is created.
 writeClasses ::
-     (Foldable f)
+     (Functor f, Foldable f)
   => FilePath
   -> f Class
   -> IO ()
-writeClasses fp clss
-  | isJar fp = do
-      let archive = appEndo (foldMap (Endo . addClassToArchive) clss) emptyArchive
-      BL.writeFile fp $ fromArchive archive
-  | otherwise = do
-      forM_ clss $ \c -> do
-        writeClass fp c
+writeClasses fp clss = do
+  let results = (\cls -> (cls^.className, deserializeClass cls)) <$> clss
+  writeBytesToFilePath fp results
 
--- | Adds a class to an archive
-addClassToArchive :: Class -> Archive -> Archive
-addClassToArchive c =
-  addEntryToArchive $ toEntry
-    (Text.unpack (c^.className.fullyQualifiedName) ++ ".class")
-    0
-    (B.writeClassFile $ toClassFile c)
+writeBytesToFilePath ::
+  Foldable t
+  => FilePath
+  -> t (ClassName, BL.ByteString)
+  -> IO ()
+writeBytesToFilePath fp bytes
+  | isJar fp = do
+      let archive = appEndo (foldMap (Endo . addClassToArchive) bytes) emptyArchive
+      BL.writeFile fp $ fromArchive archive
+  | otherwise =
+      forM_ bytes $ \(cn, bs) -> do
+        let path = pathOfClass fp cn
+        createDirectoryIfMissing True (takeDirectory path)
+        BL.writeFile path bs
+  where
+    -- | Adds an entry to an archive
+    addClassToArchive (cn, bs) =
+      addEntryToArchive $ toEntry
+        (cn^.fullyQualifiedName.to Text.unpack ++ ".class") 0 bs
 
 type MonadClassReader r m = (MonadReader r m, MonadIO m, ClassReader r)
 
@@ -230,7 +241,6 @@ readClassesM = do
 
 convertClass :: B.ClassFile B.High -> Class
 convertClass = view isoBinary
-
 
 -- | Classes can be in a folder
 newtype CFolder = CFolder
@@ -284,9 +294,25 @@ instance ClassReader CJar where
       Nothing ->
         return $ Left ClassNotFound
 
-  classes this@(CJar _ arch) = do
-     let fls = catMaybes . map (asClassName . eRelativePath) $ zEntries arch
-     return $ map (,CCJar this) fls
+  classes (CJar _ arch) = do
+     return . catMaybes . flip map (zEntries arch) $ \e ->
+       (,CCEntry (CEntry e)) <$> (asClassName . eRelativePath $ e)
+
+newtype CEntry = CEntry Entry
+  deriving (Show)
+
+instance ClassReader CEntry where
+  getClassBytes (CEntry entry) cn =
+    if asClassName (eRelativePath entry) == Just cn
+    then
+        return $ Right (fromEntry entry)
+    else
+        return $ Left ClassNotFound
+
+  classes this@(CEntry entry) = do
+    case asClassName . eRelativePath $ entry of
+      Just cn -> return [(cn, CCEntry this)]
+      Nothing -> return []
 
 -- | Return a class container from a file path. It might return
 -- `Nothing` if it's not a folder or a jar.
@@ -316,14 +342,17 @@ instance ClassReader FilePath where
 data ClassContainer
   = CCFolder CFolder
   | CCJar CJar
+  | CCEntry CEntry
   deriving (Show)
 
 instance ClassReader (ClassContainer) where
   getClassBytes (CCFolder x) = getClassBytes x
   getClassBytes (CCJar x)    = getClassBytes x
+  getClassBytes (CCEntry x)  = getClassBytes x
 
   classes (CCFolder x) = classes x
   classes (CCJar x)    = classes x
+  classes (CCEntry x)  = classes x
 
 
 makeLenses ''CFolder

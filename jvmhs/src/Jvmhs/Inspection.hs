@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-|
@@ -15,13 +14,10 @@ module Jvmhs.Inspection
   where
 
 import           Control.Lens
-import           Data.Either
-import qualified Data.Set                             as S
 
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
-import           Jvmhs.ClassPool
 
 import qualified Language.JVM                         as B
 import qualified Language.JVM.Attribute.StackMapTable as B
@@ -104,7 +100,7 @@ instance Inspectable VerificationTypeInfo where
   classNames g c =
     case c of
       B.VTObject r -> B.VTObject <$> g r
-      _           -> pure c
+      _            -> pure c
 
 instance Inspectable (B.CConstant B.High) where
   classNames g o =
@@ -193,26 +189,3 @@ instance Inspectable JType where
       JTClass cn -> JTClass <$> g cn
       JTArray t' -> JTArray <$> classNames g t'
       a          -> pure a
-
--- | Computes the class closure in the current space.
--- It will only include classes known to the 'MonadClassPool'.
-computeClassClosure ::
-  MonadClassPool m
-  => S.Set ClassName
-  -> m (S.Set ClassName, S.Set ClassName)
-computeClassClosure =
-  go (S.empty, S.empty)
-  where
-    go (!known, !unknown) !wave
-      | S.null wave = do
-        return (known, unknown)
-      | otherwise = do
-        -- List of all the classes that exists
-        (notexists, exists) <- partitionEithers <$> wave ^!! folded . pool'
-        let
-          found = S.fromList $ exists^..folded.className
-          missed = S.fromList $ notexists^..folded
-          known' = known `S.union` found
-          unknown' = unknown `S.union` missed
-          front = S.fromList $ exists^..folded.classNames
-        go (known', unknown') (front S.\\ known')
