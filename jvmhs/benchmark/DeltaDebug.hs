@@ -70,15 +70,15 @@ graphB =
 
     bench0 name gr =
       bgroup name
-        [ bench "zgdd" $ whnf (runw (elem 0) zgdd) gr
-        , bench "igdd" $ whnf (runw (elem 0) igdd) gr
-        , bench "gddmin" $ whnf (runw (elem 0) gddmin) gr
+        [ bench "zgdd" $ whnf (runw (elem 1) zgdd) gr
+        , bench "igdd" $ whnf (runw (elem 1) igdd) gr
+        , bench "gddmin" $ whnf (runw (elem 1) gddmin) gr
         ]
 
     benchGddOnly name gr =
       bgroup name
-        [ bench "zgdd" $ whnf (runw (elem 0) zgdd) gr
-        , bench "igdd" $ whnf (runw (elem 0) igdd) gr
+        [ bench "zgdd" $ whnf (runw (elem 1) zgdd) gr
+        , bench "igdd" $ whnf (runw (elem 1) igdd) gr
         , bench "partition" $ whnf partition' gr
         ]
 

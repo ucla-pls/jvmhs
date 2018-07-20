@@ -224,6 +224,12 @@ spec_zgdd = do
      `shouldBe`
      (Sum 11, [3, 4, 6, 7, 8] :: [Int])
 
+  it "works on more ./ran-2000-2000.txt" $ do
+    gr <- graphFromFile "benchmark/data/ran-2000-2000.txt"
+    let (s, x) = zgdd (count $ isSubsequenceOf [1]) gr
+    length x `shouldBe` 22
+    s `shouldBe` Sum 13
+
 spec_igdd :: Spec
 spec_igdd = do
   it "can find a minimal closure for k = 1" $
@@ -239,6 +245,12 @@ spec_igdd = do
     igdd (count $ isSubsequenceOf [4, 6]) gr
      `shouldBe`
      (Sum 9, [3, 4, 6, 7, 8] :: [Int])
+
+  it "works on more ./ran-2000-2000.txt" $ do
+    gr <- graphFromFile "benchmark/data/ran-2000-2000.txt"
+    let (s, x) = igdd (count $ isSubsequenceOf [1]) gr
+    length x `shouldBe` 22
+    s `shouldBe` Sum 18
 
 spec_gddmin :: Spec
 spec_gddmin = do
