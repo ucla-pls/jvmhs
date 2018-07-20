@@ -51,7 +51,6 @@ module Jvmhs.ClassPool
 
   -- ** Saving the class to disk
   , saveClass
-  , saveClasses
   , saveAllClasses
 
   -- * Implementations
@@ -98,6 +97,9 @@ import           Data.Maybe
 import           Data.Monoid
 import           Data.Foldable as F
 
+import qualified Data.ByteString.Lazy as BL
+--import qualified Data.ByteString as BS
+
 import           Debug.Trace
 
 import           Jvmhs.ClassReader
@@ -126,6 +128,20 @@ class Monad m => MonadClassPool m where
   -- appear once in the
   allClassNames ::
     m [ClassName]
+
+  -- | Saves only the classes provided in the foldable list of classnames.
+  -- Names not found in the ClassPool are ignored.
+  -- @
+  -- saveClasses "out" ["java.util.ArrayList", "java.util.LinkedList"]
+  -- @
+  saveClasses ::
+      (MonadIO m)
+    => FilePath
+    -> [ClassName]
+    -> m ()
+  saveClasses fp cns = do
+    void . liftIO . writeClasses fp =<< (cns ^!! folded . pool . _Just)
+
 
 -- | Get a class from a class pool.
 getClass :: MonadClassPool m => ClassName -> m (Maybe Class)
@@ -233,21 +249,7 @@ saveAllClasses ::
   => FilePath
   -> m ()
 saveAllClasses fp = do
-  allClasses >>= liftIO . writeClasses fp
-
--- | Saves only the classes provided in the foldable list of classnames.
--- Names not found in the ClassPool are ignored.
--- @
--- saveClasses "out" ["java.util.ArrayList", "java.util.LinkedList"]
--- @
-saveClasses ::
-    (MonadClassPool m, MonadIO m, Foldable f)
-  => FilePath
-  -> f ClassName
-  -> m ()
-saveClasses fp cns = do
-  clss <- cns ^!! folded . pool . _Just
-  liftIO . writeClasses fp $ clss
+  allClassNames >>= saveClasses fp
 
 -- | Saves a single class to the given class path.
 -- @
@@ -257,12 +259,9 @@ saveClass ::
     (MonadClassPool m, MonadIO m)
   => FilePath
   -> ClassName
-  -> m (Maybe ())
+  -> m ()
 saveClass fp cn = do
-  m <- getClass cn
-  case m of
-    Just c  -> Just <$> (liftIO $ writeClass fp c)
-    Nothing -> return $ Nothing
+  saveClasses fp [cn]
 
 
 instance MonadClassPool m => MonadClassPool (ReaderT r m) where
@@ -338,7 +337,7 @@ runClassPoolTWithReader fm r =
   runClassPoolT (loadClassesFromReader r >>= fm) mempty
 
 data ClassState
-  = CSSaved Class FilePath
+  = CSSaved Class BL.ByteString
   | CSPure Class
   | CSUnread
 
@@ -422,6 +421,33 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
 
   allClassNames =
     M.keys <$> get
+
+  -- | Saves only the classes provided in the foldable list of classnames.
+  -- Names not found in the ClassPool are ignored.
+  -- @
+  -- saveClasses "out" ["java.util.ArrayList", "java.util.LinkedList"]
+  -- @
+  -- saveClasses ::
+  --     (MonadIO m, Foldable t)
+  --   => FilePath
+  --   -> t ClassName
+  --   -> m ()
+  saveClasses fp cns = do
+    bs <- forM cns $ \cn -> do
+      cs <- cacheClass cn
+      let (bs, mp) = M.alterF helper cn cs
+      put mp
+      return ((cn,) <$> bs)
+    liftIO . writeBytesToFilePath fp $ catMaybes bs
+    where
+      helper Nothing = (Nothing, Nothing)
+      helper (Just (CSPure cs)) =
+        let bs = deserializeClass cs in
+        (Just bs, Just (CSSaved cs bs))
+      helper this@(Just (CSSaved _ bs)) =
+        (Just bs, this)
+      helper (Just CSUnread) =
+        error "Should have been read"
 
 runCachedClassPoolT ::
      (ClassReader r, MonadIO m)
