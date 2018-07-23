@@ -132,9 +132,9 @@ fieldFromId fid = go
       case mc of
         Nothing -> return Nothing
         Just cls -> do
-          case cls ^? classField fid . to (cls,) of
+          case cls ^. classField fid of
             Nothing -> go (cls^.classSuper)
-            a -> return $ a
+            a -> return . fmap (cls,) $ a
 
 
 -- | Get the class name of the containing class of a method id.
@@ -159,13 +159,13 @@ methodFromId fid cn = do
   case mc of
     Nothing -> return Nothing
     Just cls ->
-      case cls ^? classMethod fid . to (cls,) of
+      case cls ^. classMethod fid of
         Nothing
           | cn /= "java.lang.Object"
             -> methodFromId fid (cls^.classSuper)
           | otherwise
             -> return Nothing
-        a -> return a
+        a -> return . fmap (cls,) $ a
 
 -- | Returns all list of pairs of classes and methods that has
 -- the same id as the method id.
@@ -178,7 +178,7 @@ methodImpls' ::
   -> m [(Class, Method)]
 methodImpls' hry mid cn = do
   implementations hry cn ^!! traverse.pool._Just.to mpair._Just
-  where mpair cls = (cls,) <$> (cls ^? classMethod mid)
+  where mpair cls = (cls ^? classMethod mid . _Just . to (cls,))
 
 -- | Like 'methodImpls'' with the extra check that all the methods has code
 -- executable.

@@ -14,6 +14,7 @@ module Jvmhs.Inspection
   where
 
 import           Control.Lens
+import qualified Data.Set as Set
 
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
@@ -30,13 +31,14 @@ nothing :: Traversal' a b
 nothing = const pure
 {-# INLINE nothing #-}
 
+
 instance Inspectable Class where
   classNames =
     traverseClass
       id id nothing
-      traverse
-      (traverse.classNames)
-      (traverse.classNames)
+      (iso Set.toList Set.fromList . traverse)
+      (mapAsFieldList.traverse.classNames)
+      (mapAsMethodList.traverse.classNames)
       (traverse.classNames)
       nothing
 
@@ -44,8 +46,8 @@ instance Inspectable Field where
   classNames =
     traverseField
       nothing
-      nothing
       classNames
+      nothing
       (traverse.classNames)
       nothing
 
@@ -53,8 +55,8 @@ instance Inspectable Method where
   classNames =
     traverseMethod
       nothing
-      nothing
       classNames
+      nothing
       (traverse.classNames)
       traverse
       nothing

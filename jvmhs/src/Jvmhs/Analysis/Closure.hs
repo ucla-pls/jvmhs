@@ -66,3 +66,23 @@ computeClassClosure =
           unknown' = unknown `S.union` missed
           front = S.fromList $ exists^..folded.classNames
         go (known', unknown') (front S.\\ known')
+
+
+-- -- | Computes the method closure
+-- computeMethodClosure ::
+--   MonadClassPool m
+--   => S.Set MethodId
+--   -> m (S.Set MethodId, S.Set MethodId)
+-- computeMethodClosure =
+--   go (S.empty, S.empty)
+--   where
+--     go (!known, !unknown) !wave
+--       | S.null wave = do
+--           return (known, unknown)
+--       | otherwise = do
+--           -- First get classes of the wave
+--           (notexists, exists) <- partitionEithers <$> wave ^!! folded . getMethod
+
+--   where
+--     getMethod :: Action m MethodName (Either MethodName Method)
+--     getMethod f mn = (mnClassName . pool' . to ())

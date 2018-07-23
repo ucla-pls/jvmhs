@@ -270,9 +270,9 @@ readClassOverview classReader cn = do
       (Text.decodeUtf8 . B16.encode $ hsh)
       (fromIntegral lth)
       (cls^.classSuper)
-      (cls^.classInterfaces)
-      (cls^..classFields.folded.toFieldId)
-      (cls^..classMethods.folded.toMethodId)
+      (cls^..classInterfaces.folded)
+      (cls^..classFields.ifolded.asIndex)
+      (cls^..classMethods.ifolded.asIndex)
 
 readClassCount ::
   ClassReader m

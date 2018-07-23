@@ -29,7 +29,7 @@ findUnusedInterfaces = do
   unusedInterfaces <- S.difference <$> findInterfaces <*> findUsedClasses
   unusedICls <- unusedInterfaces ^!! folded . pool . _Just
   return $ M.fromList
-    (map (\i -> (i^.className, S.fromList $ i^.classInterfaces)) unusedICls)
+    (map (\i -> (i^.className, i^.classInterfaces)) unusedICls)
 
 inlineKey ::
      (Ord a, Foldable t)
@@ -48,8 +48,7 @@ inlineInterfaces ::
   -- ^ If class has interface, replace it with the replacement of that interface
 inlineInterfaces replaceMap cls =
   let oldInterface = cls^.classInterfaces
-  in cls & classInterfaces .~
-    S.toList (inlineKey replaceMap oldInterface)
+  in cls & classInterfaces .~ inlineKey replaceMap oldInterface
 
 toCannoicalIFMapping ::
      Ord a
@@ -88,8 +87,8 @@ findUsedClasses  =
     findUsedClassesInClass cls =
       S.fromList $
         toListOf (traverseClass nothing nothing nothing nothing
-          (traverse.classNames)
-          (traverse.classNames)
+          (mapAsFieldList.traverse.classNames)
+          (mapAsMethodList.traverse.classNames)
           (traverse.classNames)
           nothing) cls
 

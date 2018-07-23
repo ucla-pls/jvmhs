@@ -34,18 +34,22 @@ module Jvmhs.Data.Type
   , methodDReturnType
 
   , MethodId
-  , methodId
-  -- , methodIdName
-  -- , methodIdDescriptor
+  , mkMethodId
+  , methodIdName
+  , methodIdDescriptor
   -- , methodIdToText
+
+  , MethodName (..)
+  , mnClassName
+  , mnId
 
   , FieldDescriptor (..)
   , fieldDType
 
   , FieldId
-  , fieldId
-  -- , fieldIdName
-  -- , fieldIdDescriptor
+  , mkFieldId
+  , fieldIdName
+  , fieldIdDescriptor
   -- , fieldIdToText
 
   , JType (..)
@@ -133,17 +137,47 @@ type MethodId = B.MethodId
 
 type MethodHandle = B.MethodHandle High
 
-methodId :: Text.Text -> MethodDescriptor -> MethodId
-methodId t d = B.MethodId $ B.NameAndType t d
+mkMethodId :: Text.Text -> MethodDescriptor -> MethodId
+mkMethodId t d = B.MethodId $ B.NameAndType t d
 
-fieldId :: Text.Text -> FieldDescriptor -> FieldId
-fieldId t d = B.FieldId $ B.NameAndType t d
+methodIdName :: Lens' MethodId Text.Text
+methodIdName =
+  lens (\(B.MethodId nt) -> B.ntName nt) (\(B.MethodId nt) a -> mkMethodId a (B.ntDescriptor nt))
+
+methodIdDescriptor :: Lens' MethodId MethodDescriptor
+methodIdDescriptor =
+  lens (\(B.MethodId nt) -> B.ntDescriptor nt) (\(B.MethodId nt) a -> mkMethodId (B.ntName nt) a)
+
+mkFieldId :: Text.Text -> FieldDescriptor -> FieldId
+mkFieldId t d = B.FieldId $ B.NameAndType t d
+
+fieldIdName :: Lens' FieldId Text.Text
+fieldIdName =
+  lens (\(B.FieldId nt) -> B.ntName nt) (\(B.FieldId nt) a -> mkFieldId a (B.ntDescriptor nt))
+
+fieldIdDescriptor :: Lens' FieldId FieldDescriptor
+fieldIdDescriptor =
+  lens (\(B.FieldId nt) -> B.ntDescriptor nt) (\(B.FieldId nt) a -> mkFieldId (B.ntName nt) a)
 
 instance ToJSON FieldId where
   toJSON (B.FieldId f) = String . toText $ f
 
 instance ToJSON MethodId where
   toJSON (B.MethodId m) = String . toText $ m
+
+instance ToJSONKey FieldId where
+  -- toJSON (B.FieldId f) = String . toText $ f
+
+instance ToJSONKey MethodId where
+  -- toJSON (B.MethodId m) = String . toText $ m
+
+
+data MethodName = MethodName
+  { _mnClassName :: !ClassName
+  , _mnId :: ! MethodId
+  } deriving (Show, Eq)
+
+makeLenses ''MethodName
 
 -- * Instances
 

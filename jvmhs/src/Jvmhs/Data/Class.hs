@@ -1,9 +1,11 @@
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes        #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-|
 Module      : Jvmhs.Data.Class
 Copyright   : (c) Christian Gram Kalhauge, 2018
@@ -19,6 +21,7 @@ To quickly access information about the class-file use the
 -}
 module Jvmhs.Data.Class
   ( -- * Data structures
+    -- ** Class
     Class (..)
   , className
   , classSuper
@@ -31,21 +34,30 @@ module Jvmhs.Data.Class
   , classVersion
   , traverseClass
 
+  -- *** Helpers
   , isInterface
-
   , dependencies
+  , classField
+  , classMethod
+  , classFieldList
+  , classMethodList
+
+  -- ** Field
 
   , Field (..)
+  , FieldContent (..)
   , fieldAccessFlags
   , fieldName
   , fieldDescriptor
   , fieldValue
   , fieldType
-  , fieldSignature
-  , toFieldId
+  , fieldId
   , traverseField
 
+  -- ** Method
+
   , Method (..)
+  , MethodContent (..)
   , methodAccessFlags
   , methodName
   , methodDescriptor
@@ -53,20 +65,17 @@ module Jvmhs.Data.Class
   , methodExceptions
   , methodReturnType
   , methodArgumentTypes
-  , methodSignature
-  , toMethodId
+  , methodId
   , traverseMethod
-
-  -- * Helpers
-  , classField
-  , classFieldsWhere
-  , classMethod
-  , classMethodsWhere
 
   -- * Converters
   , fromClassFile
   , toClassFile
   , isoBinary
+
+  , mapAsList
+  , mapAsFieldList
+  , mapAsMethodList
 
   -- ** Wraped Types
   , CAccessFlag (..)
@@ -81,8 +90,9 @@ import           Control.DeepSeq
 import           Control.Lens
 import           Control.Monad
 import           Data.Aeson
-import           Data.Maybe
 import           Data.Aeson.TH
+import qualified Data.Map                                as Map
+import           Data.Maybe
 import qualified Data.Set                                as Set
 import qualified Data.Text                               as Text
 import           Data.Word
@@ -94,12 +104,11 @@ import qualified Language.JVM                            as B
 import qualified Language.JVM.Attribute.BootstrapMethods as B
 import qualified Language.JVM.Attribute.ConstantValue    as B
 import qualified Language.JVM.Attribute.Exceptions       as B
-import qualified Language.JVM.Attribute.Signature       as B
+import qualified Language.JVM.Attribute.Signature        as B
 
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
-import           Jvmhs.LensHelpers
 
 -- | This is the class
 data Class = Class
@@ -109,11 +118,11 @@ data Class = Class
   -- ^ the name of the super class
   , _classAccessFlags      :: Set.Set CAccessFlag
   -- ^ access flags of the class
-  , _classInterfaces       :: [ ClassName ]
+  , _classInterfaces       :: Set.Set ClassName
   -- ^ a list of interfaces implemented by the class
-  , _classFields           :: [ Field ]
+  , _classFields           :: Map.Map FieldId FieldContent
   -- ^ a list of fields
-  , _classMethods          :: [ Method ]
+  , _classMethods          :: Map.Map MethodId MethodContent
   -- ^ a list of methods
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
@@ -122,45 +131,96 @@ data Class = Class
   -- ^ the version of the class file
   } deriving (Eq, Show, Generic, NFData)
 
+-- | A Field is an id and some content
+newtype Field = Field (FieldId, FieldContent)
+
+mkField :: FieldId -> FieldContent -> Field
+mkField fid fc = Field (fid, fc)
+
 -- | This is the field
-data Field = Field
-  { _fieldAccessFlags :: Set.Set FAccessFlag
+data FieldContent = FieldContent
+  { _fieldCAccessFlags :: Set.Set FAccessFlag
   -- ^ the set of access flags
-  , _fieldName        :: Text.Text
-  -- ^ the name of the field
-  , _fieldDescriptor  :: FieldDescriptor
-  -- ^ the field type descriptor
-  , _fieldValue       :: Maybe JValue
+  , _fieldCValue       :: Maybe JValue
   -- ^ an optional value
-  , _fieldSignature   :: Maybe Text.Text
+  , _fieldCSignature   :: Maybe Text.Text
   } deriving (Eq, Show, Generic, NFData)
 
+-- | A method is an id and some content
+newtype Method = Method (MethodId, MethodContent)
+
+mkMethod :: MethodId -> MethodContent -> Method
+mkMethod mid mc = Method (mid, mc)
+
 -- | This is the method
-data Method = Method
-  { _methodAccessFlags :: Set.Set MAccessFlag
+data MethodContent = MethodContent
+  { _methodCAccessFlags :: Set.Set MAccessFlag
   -- ^ the set of access flags
-  , _methodName        :: Text.Text
-  -- ^ the name of the method
-  , _methodDescriptor  :: MethodDescriptor
-  -- ^ the method type descriptor
-  , _methodCode        :: Maybe Code
+  , _methodCCode        :: Maybe Code
   -- ^ optionally the method can contain code
-  , _methodExceptions  :: [ ClassName ]
+  , _methodCExceptions  :: [ ClassName ]
   -- ^ the method can have one or more exceptions
-  , _methodSignature   :: Maybe Text.Text
+  , _methodCSignature   :: Maybe Text.Text
   } deriving (Eq, Show, Generic, NFData)
 
 makeLenses ''Class
-makeLenses ''Field
-makeLenses ''Method
+makeLenses ''FieldContent
+makeLenses ''MethodContent
+makeWrapped ''Field
+makeWrapped ''Method
+
+fieldId :: Lens' Field FieldId
+fieldId = _Wrapped . _1
+
+fieldContent :: Lens' Field FieldContent
+fieldContent = _Wrapped . _2
+
+fieldName :: Lens' Field Text.Text
+fieldName = fieldId . fieldIdName
+
+fieldDescriptor :: Lens' Field FieldDescriptor
+fieldDescriptor = fieldId . fieldIdDescriptor
+
+fieldAccessFlags :: Lens' Field (Set.Set FAccessFlag)
+fieldAccessFlags = fieldContent . fieldCAccessFlags
+
+fieldValue :: Lens' Field (Maybe JValue)
+fieldValue = fieldContent . fieldCValue
+
+fieldSignature :: Lens' Field (Maybe Text.Text)
+fieldSignature = fieldContent . fieldCSignature
+
+methodId :: Lens' Method MethodId
+methodId = _Wrapped . _1
+
+methodContent :: Lens' Method MethodContent
+methodContent = _Wrapped . _2
+
+methodName :: Lens' Method Text.Text
+methodName = methodId . methodIdName
+
+methodDescriptor :: Lens' Method MethodDescriptor
+methodDescriptor = methodId . methodIdDescriptor
+
+methodAccessFlags :: Lens' Method (Set.Set MAccessFlag)
+methodAccessFlags = methodContent . methodCAccessFlags
+
+methodCode :: Lens' Method (Maybe Code)
+methodCode = methodContent . methodCCode
+
+methodExceptions :: Lens' Method [ClassName]
+methodExceptions = methodContent . methodCExceptions
+
+methodSignature :: Lens' Method (Maybe Text.Text)
+methodSignature = methodContent . methodCSignature
 
 traverseClass ::
   (Traversal' ClassName a)
   -> (Traversal' ClassName a)
   -> (Traversal' (Set.Set CAccessFlag) a)
-  -> (Traversal' [ ClassName ] a)
-  -> (Traversal' [ Field ] a)
-  -> (Traversal' [ Method ] a)
+  -> (Traversal' (Set.Set ClassName) a)
+  -> (Traversal' (Map.Map FieldId FieldContent) a)
+  -> (Traversal' (Map.Map MethodId MethodContent) a)
   -> (Traversal' [ BootstrapMethod ] a)
   -> (Traversal' (Maybe Text.Text) a)
   -> (Traversal' Class a)
@@ -178,62 +238,72 @@ traverseClass tcn tsn taf tis tfs tms tbs tss g s =
 {-# INLINE traverseClass #-}
 
 traverseField ::
-  (Traversal' (Set.Set FAccessFlag) a)
-  -> (Traversal' Text.Text a)
+     (Traversal' Text.Text a)
   -> (Traversal' FieldDescriptor a)
+  -> (Traversal' (Set.Set FAccessFlag) a)
   -> (Traversal' (Maybe JValue) a)
   -> (Traversal' (Maybe Text.Text) a)
   -> Traversal' Field a
-traverseField taf tfn tfd tjv ts g s =
-  Field
-  <$> (taf g . _fieldAccessFlags $ s)
-  <*> (tfn g . _fieldName $ s)
-  <*> (tfd g . _fieldDescriptor $ s)
-  <*> (tjv g . _fieldValue $ s)
-  <*> (ts g . _fieldSignature $ s)
+traverseField tfn tfd taf tjv ts g s =
+  mkField
+  <$> (
+  mkFieldId
+    <$> (tfn g . view fieldName $ s)
+    <*> (tfd g . view fieldDescriptor $ s)
+  ) <*> (
+  FieldContent
+    <$> (taf g . view fieldAccessFlags $ s)
+    <*> (tjv g . view fieldValue $ s)
+    <*> (ts g .  view fieldSignature $ s)
+  )
 {-# INLINE traverseField #-}
 
 traverseMethod ::
-  (Traversal' (Set.Set MAccessFlag) a)
-  -> (Traversal' Text.Text a)
+     (Traversal' Text.Text a)
   -> (Traversal' MethodDescriptor a)
+  -> (Traversal' (Set.Set MAccessFlag) a)
   -> (Traversal' (Maybe Code) a)
   -> (Traversal' [ClassName] a)
   -> (Traversal' (Maybe Text.Text) a)
   -> Traversal' Method a
-traverseMethod taf tfn tfd tc tex ts g s =
-  Method
-  <$> (taf g . _methodAccessFlags $ s)
-  <*> (tfn g . _methodName $ s)
-  <*> (tfd g . _methodDescriptor $ s)
-  <*> (tc  g . _methodCode $ s)
-  <*> (tex g . _methodExceptions $ s)
-  <*> (ts  g . _methodSignature $ s)
+traverseMethod tfn tfd taf tc tex ts g s =
+  mkMethod
+  <$> (
+    mkMethodId
+    <$> (tfn g . view methodName $ s)
+    <*> (tfd g . view methodDescriptor $ s)
+  ) <*> (
+    MethodContent
+      <$> (taf g . view methodAccessFlags $ s)
+      <*> (tc  g . view methodCode $ s)
+      <*> (tex g . view methodExceptions $ s)
+      <*> (ts  g . view methodSignature $ s)
+    )
 {-# INLINE traverseMethod #-}
 
--- | get the 'FieldId' from a 'Field'.
-toFieldId :: Getter Field FieldId
-toFieldId = to (\f -> B.FieldId $ B.NameAndType (f^.fieldName) (f^.fieldDescriptor))
+-- | Not a true iso morphism.
+mapAsList :: Ord a => Iso' (Map.Map a b) [(a,b)]
+mapAsList = iso Map.toList Map.fromList
 
--- | A traversal of all Fields that uphold some getter.
-classFieldsWhere :: (Getter Field Bool) -> Traversal' Class Field
-classFieldsWhere f = classFields.traverse.which f
+mapAsFieldList :: Lens' (Map.Map FieldId FieldContent) [Field]
+mapAsFieldList = mapAsList.coerced
 
--- | Get a Field where
-classField :: FieldId -> Traversal' Class Field
-classField fd = classFieldsWhere (toFieldId . to (==fd))
+mapAsMethodList :: Lens' (Map.Map MethodId MethodContent) [Method]
+mapAsMethodList = mapAsList.coerced
 
--- | get the 'MethodId' from a 'Method'.
-toMethodId :: Getter Method MethodId
-toMethodId = to (\f -> B.MethodId $ B.NameAndType (f^.methodName) (f^.methodDescriptor))
+classMethodList :: Lens' Class [Method]
+classMethodList = classMethods . mapAsMethodList
 
--- | A traversal of all Methods that uphold some getter.
-classMethodsWhere :: (Getter Method Bool) -> Traversal' Class Method
-classMethodsWhere f = classMethods.traverse.which f
+classFieldList :: Lens' Class [Field]
+classFieldList = classFields . mapAsFieldList
 
--- | Get a Method where
-classMethod :: MethodId -> Traversal' Class Method
-classMethod fd = classMethodsWhere (toMethodId . to (==fd))
+classField :: FieldId -> Getter Class (Maybe Field)
+classField fid = classFields . at fid . to (fmap $ mkField fid)
+
+classMethod :: MethodId -> Getter Class (Maybe Method)
+classMethod mid = classMethods . at mid . to (fmap $ mkMethod mid)
+
+
 
 -- | Get the type of field
 fieldType :: Lens' Field JType
@@ -253,7 +323,7 @@ methodReturnType =
 -- | The dependencies of a class
 dependencies :: Class -> [ ClassName ]
 dependencies cls =
-  cls ^. classSuper : cls ^. classInterfaces
+  cls ^. classSuper : cls ^.. classInterfaces . folded
 
 -- | Check if a class is an interface
 isInterface :: Class -> Bool
@@ -266,44 +336,53 @@ fromClassFile =
   <$> B.cThisClass
   <*> B.cSuperClass
   <*> B.cAccessFlags
-  <*> B.unSizedList . B.cInterfaces
-  <*> map fromBField . B.cFields
-  <*> map fromBMethod . B.cMethods
+  <*> Set.fromList . B.unSizedList . B.cInterfaces
+  <*> Map.fromList . map fromBField . B.cFields
+  <*> Map.fromList . map fromBMethod . B.cMethods
   <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
   <*> fmap B.signatureToText . B.cSignature
   <*> (Just <$> ((,) <$> B.cMajorVersion <*> B.cMinorVersion))
   where
     fromBField =
-      Field
-      <$> B.fAccessFlags
-      <*> B.fName
-      <*> B.fDescriptor
-      <*> (Just . B.constantValue <=< B.fConstantValue)
-      <*> fmap B.signatureToText . B.fSignature
+      (,)
+      <$> ( mkFieldId
+            <$> B.fName
+            <*> B.fDescriptor
+          )
+      <*> ( FieldContent
+        <$> B.fAccessFlags
+        <*> (Just . B.constantValue <=< B.fConstantValue)
+        <*> fmap B.signatureToText . B.fSignature
+      )
 
     fromBMethod =
-      Method
-      <$> B.mAccessFlags
-      <*> B.mName
-      <*> B.mDescriptor
-      <*> fmap fromBinaryCode . B.mCode
-      <*> B.mExceptions
-      <*> fmap B.signatureToText . B.mSignature
+      (,)
+      <$> (
+        mkMethodId
+        <$> B.mName
+        <*> B.mDescriptor
+      ) <*> (
+        MethodContent
+        <$> B.mAccessFlags
+        <*> fmap fromBinaryCode . B.mCode
+        <*> B.mExceptions
+        <*> fmap B.signatureToText . B.mSignature
+          )
 
 toClassFile :: Class -> B.ClassFile B.High
 toClassFile =
   B.ClassFile 0xCAFEBABE
-    <$> fromMaybe 0 . fmap snd . _classVersion
-    <*> fromMaybe 52 . fmap fst . _classVersion
+    <$> fromMaybe (0 :: Word16). fmap snd . _classVersion
+    <*> fromMaybe (52 :: Word16) . fmap fst . _classVersion
     <*> (pure ())
     <*> B.BitSet . _classAccessFlags
 
     <*> _className
     <*> _classSuper
 
-    <*> B.SizedList . _classInterfaces
-    <*> B.SizedList . map toBField . _classFields
-    <*> B.SizedList . map toBMethod . _classMethods
+    <*> B.SizedList . Set.toList . _classInterfaces
+    <*> B.SizedList . map toBField . view classFieldList
+    <*> B.SizedList . map toBMethod . view classMethodList
     <*> ( B.ClassAttributes
             <$> compress (B.BootstrapMethods . B.SizedList)
                 . map toBinaryBootstrapMethod
@@ -314,25 +393,25 @@ toClassFile =
   where
     toBField =
       B.Field
-        <$> B.BitSet . _fieldAccessFlags
-        <*> _fieldName
-        <*> _fieldDescriptor
+        <$> B.BitSet . view fieldAccessFlags
+        <*> view fieldName
+        <*> view fieldDescriptor
         <*> ( B.FieldAttributes
                 <$> maybe [] (:[])
-                    . fmap B.ConstantValue . _fieldValue
-                <*> maybe [] (:[]) . fmap B.signatureFromText . _fieldSignature
+                    . fmap B.ConstantValue . view fieldValue
+                <*> maybe [] (:[]) . fmap B.signatureFromText . view fieldSignature
                 <*> pure [] )
 
     toBMethod =
       B.Method
-        <$> unsafeCoerce . _methodAccessFlags
-        <*> _methodName
-        <*> _methodDescriptor
+        <$> unsafeCoerce . (view methodAccessFlags)
+        <*> (view methodName)
+        <*> (view methodDescriptor)
         <*> ( B.MethodAttributes
-                <$> maybe [] (:[]) . fmap toBinaryCode . _methodCode
+                <$> maybe [] (:[]) . fmap toBinaryCode . (view methodCode)
                 <*> compress (B.Exceptions . B.SizedList)
-                    . _methodExceptions
-                <*> maybe [] (:[]) . fmap B.signatureFromText. _methodSignature
+                    . view methodExceptions
+                <*> maybe [] (:[]) . fmap B.signatureFromText. (view methodSignature)
                 <*> pure [] )
 
     compress :: ([a] -> b) -> [a] -> [b]
@@ -343,6 +422,8 @@ toClassFile =
 isoBinary :: Iso' (B.ClassFile B.High) Class
 isoBinary = iso fromClassFile toClassFile
 
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 8} ''MethodContent)
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''FieldContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
+-- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
+-- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
