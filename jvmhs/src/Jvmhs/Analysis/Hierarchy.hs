@@ -110,21 +110,20 @@ implementations hry@(Hierarchy _ graph) cln =
 -- This is delegates to 'fieldFromId'.
 classNameOfFieldId ::
   MonadClassPool m
-  => FieldId
-  -> ClassName
+  => AbsFieldId
   -> m (Maybe ClassName)
-classNameOfFieldId fid cn =
-  fmap (view (_1.className)) <$> fieldFromId fid cn
+classNameOfFieldId fid =
+  fmap (view (_1.className)) <$> fieldFromId fid
 
 -- | Get the class in which the field resides. The function searches from an
 -- initial class.
 fieldFromId ::
   MonadClassPool m
-  => FieldId
-  -> ClassName
+  => AbsFieldId
   -> m (Maybe (Class, Field))
-fieldFromId fid = go
+fieldFromId afid = go (afid ^. inClassName)
   where
+    fid = afid ^. inId
     go "java.lang.Object" =
       return Nothing
     go cn = do
@@ -141,52 +140,52 @@ fieldFromId fid = go
 -- This is delegates to 'methodFromId'.
 classNameOfMethodId ::
   MonadClassPool m
-  => MethodId
-  -> ClassName
+  => AbsMethodId
   -> m (Maybe ClassName)
-classNameOfMethodId fid cn =
-  fmap (view (_1.className)) <$> methodFromId fid cn
+classNameOfMethodId mid =
+  fmap (view (_1.className)) <$> methodFromId mid
 
 -- | Get the class name and the method of the method id. Starting
 -- the search from a class, and proceeds through.
 methodFromId ::
   MonadClassPool m
-  => MethodId
-  -> ClassName
+  => AbsMethodId
   -> m (Maybe (Class, Method))
-methodFromId fid cn = do
-  mc <- getClass cn
-  case mc of
-    Nothing -> return Nothing
-    Just cls ->
-      case cls ^. classMethod fid of
-        Nothing
-          | cn /= "java.lang.Object"
-            -> methodFromId fid (cls^.classSuper)
-          | otherwise
-            -> return Nothing
-        a -> return . fmap (cls,) $ a
+methodFromId amid = do
+  go $ amid ^. inClassName
+  where
+    mid = amid ^. inId
+    go cn = do
+      mc <- getClass cn
+      case mc of
+        Nothing -> return Nothing
+        Just cls ->
+          case cls ^. classMethod mid of
+            Nothing
+              | cn /= "java.lang.Object" ->
+                go $ cls^.classSuper
+              | otherwise ->
+                return Nothing
+            a -> return . fmap (cls,) $ a
 
 -- | Returns all list of pairs of classes and methods that has
 -- the same id as the method id.
--- Note: To check if the method actually has an implementation then use 'methodImpl'
+-- Note: To check if the met
 methodImpls' ::
   MonadClassPool m
   => Hierarchy
-  -> MethodId
-  -> ClassName
+  -> AbsMethodId
   -> m [(Class, Method)]
-methodImpls' hry mid cn = do
-  implementations hry cn ^!! traverse.pool._Just.to mpair._Just
-  where mpair cls = (cls ^? classMethod mid . _Just . to (cls,))
+methodImpls' hry mn = do
+  implementations hry (mn ^. inClassName) ^!! traverse.pool._Just.to mpair._Just
+  where mpair cls = (cls ^? classMethod (mn ^. inId) . _Just . to (cls,))
 
 -- | Like 'methodImpls'' with the extra check that all the methods has code
 -- executable.
 methodImpls ::
   MonadClassPool m
   => Hierarchy
-  -> MethodId
-  -> ClassName
+  -> AbsMethodId
   -> m [(Class, Method)]
-methodImpls hry mid cn =
-  toListOf (folded.filtered(has $ _2.methodCode._Just)) <$> methodImpls' hry mid cn
+methodImpls hry mn =
+  toListOf (folded.filtered(has $ _2.methodCode._Just)) <$> methodImpls' hry mn

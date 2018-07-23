@@ -71,7 +71,7 @@ spec_inlineInterfaces =
       iMap  <- findUnusedInterfaces
       Just cls <- getClass "SimpleI"
       let newCls = inlineInterfaces iMap cls
-      return $ newCls ^. classInterfaces
+      return $ newCls ^.. classInterfaces . folded
     x `shouldMatchList` ["Itfc", "ItfcParent"]
 
 spec_reduceInterfaces :: Spec
@@ -79,9 +79,9 @@ spec_reduceInterfaces = do
   it "should not change the interfaces when not run" $ do
     Just x <- runTestClassPool' $ do
       getClass "SimpleI"
-    (x^.classInterfaces) `shouldMatchList` ["Itfc2", "Itfc"]
+    (x^..classInterfaces.folded) `shouldMatchList` ["Itfc2", "Itfc"]
   it "should remove an interface" $ do
     Just x <- runTestClassPool' $ do
       reduceInterfaces -- ["ItfcParent", "Itfc", "Itfc2", "SimpleI"]
       getClass "SimpleI"
-    (x^.classInterfaces) `shouldMatchList` ["ItfcParent", "Itfc"]
+    (x^..classInterfaces.folded) `shouldMatchList` ["ItfcParent", "Itfc"]

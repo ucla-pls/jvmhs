@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns         #-}
-{-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-|
 Module      : Jvmhs.Analysis.Closure
@@ -15,20 +16,26 @@ closures adds items until everything that needs to be added have been added.
 
 module Jvmhs.Analysis.Closure
   ( computeClassClosure
+  , computeMethodClosure
   , mkClassGraph
   ) where
 
-import Data.Either (partitionEithers)
+import           Data.Either              (partitionEithers)
 
-import Control.Lens
 
-import qualified Data.Set as S
+import           Control.Lens
+import           Control.Lens.Action
 
-import Jvmhs.Inspection
-import Jvmhs.Data.Class
-import Jvmhs.Data.Graph
-import Jvmhs.Data.Type
-import Jvmhs.ClassPool
+import qualified Data.Set                 as S
+
+import           Data.Set.Lens            (setOf)
+
+import           Jvmhs.Analysis.Hierarchy
+import           Jvmhs.ClassPool
+import           Jvmhs.Data.Class
+import           Jvmhs.Data.Graph
+import           Jvmhs.Data.Type
+import           Jvmhs.Inspection
 
 type ClassGraph = Graph ClassName ()
 
@@ -60,29 +67,33 @@ computeClassClosure =
         -- List of all the classes that exists
         (notexists, exists) <- partitionEithers <$> wave ^!! folded . pool'
         let
-          found = S.fromList $ exists^..folded.className
-          missed = S.fromList $ notexists^..folded
+          found = setOf (folded.className) exists
+          missed = S.fromList notexists
           known' = known `S.union` found
           unknown' = unknown `S.union` missed
-          front = S.fromList $ exists^..folded.classNames
+          front = setOf (folded.classNames) exists
         go (known', unknown') (front S.\\ known')
 
 
--- -- | Computes the method closure
--- computeMethodClosure ::
---   MonadClassPool m
---   => S.Set MethodId
---   -> m (S.Set MethodId, S.Set MethodId)
--- computeMethodClosure =
---   go (S.empty, S.empty)
---   where
---     go (!known, !unknown) !wave
---       | S.null wave = do
---           return (known, unknown)
---       | otherwise = do
---           -- First get classes of the wave
---           (notexists, exists) <- partitionEithers <$> wave ^!! folded . getMethod
-
---   where
---     getMethod :: Action m MethodName (Either MethodName Method)
---     getMethod f mn = (mnClassName . pool' . to ())
+-- | Computes the method closure
+computeMethodClosure ::
+  forall m. MonadClassPool m
+  => Hierarchy
+  -> S.Set AbsMethodId
+  -> m (S.Set AbsMethodId)
+computeMethodClosure hier =
+  go S.empty
+  where
+    go !known !wave
+      | S.null wave = do
+          return known
+      | otherwise = do
+          -- First get all possible implementation
+          impls <- wave ^!! folded . act (methodImpls hier) . folded
+          let
+            found = setOf
+              (folded . to (\(c, m) -> inClass (c ^. className) (m ^. methodId)))
+              impls
+            known' = known `S.union` found
+            front = setOf (folded . _2 . methodNames) impls
+          go known' (front S.\\ known')

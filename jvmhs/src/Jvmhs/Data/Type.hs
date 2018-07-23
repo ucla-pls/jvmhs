@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE StandaloneDeriving          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -39,10 +40,6 @@ module Jvmhs.Data.Type
   , methodIdDescriptor
   -- , methodIdToText
 
-  , MethodName (..)
-  , mnClassName
-  , mnId
-
   , FieldDescriptor (..)
   , fieldDType
 
@@ -51,6 +48,13 @@ module Jvmhs.Data.Type
   , fieldIdName
   , fieldIdDescriptor
   -- , fieldIdToText
+
+  , InClass
+  , inClass
+  , inClassName
+  , inId
+  , AbsMethodId
+  , AbsFieldId
 
   , JType (..)
   , JValue (..)
@@ -69,7 +73,7 @@ import           Data.Char
 import qualified Data.Text as Text
 
 import           Language.JVM.AccessFlag
-import           Language.JVM.Constant hiding (FieldId, MethodId, MethodHandle)
+import           Language.JVM.Constant hiding (FieldId, MethodId, MethodHandle, InClass(..), AbsMethodId, AbsFieldId)
 import qualified Language.JVM.Constant as B
 import           Language.JVM.Type
 -- import           Language.JVM.Utils
@@ -171,13 +175,23 @@ instance ToJSONKey FieldId where
 instance ToJSONKey MethodId where
   -- toJSON (B.MethodId m) = String . toText $ m
 
+type InClass a = B.InClass a B.High
 
-data MethodName = MethodName
-  { _mnClassName :: !ClassName
-  , _mnId :: ! MethodId
-  } deriving (Show, Eq)
+inClass :: ClassName -> a -> InClass a
+inClass = B.InClass
 
-makeLenses ''MethodName
+type AbsFieldId = B.AbsFieldId B.High
+type AbsMethodId = B.AbsMethodId B.High
+
+inClassName :: Lens' (InClass a) ClassName
+inClassName = lens (\(B.InClass cn _) -> cn) (\(B.InClass _ i) cn -> inClass cn i)
+
+inId :: Lens' (InClass a) a
+inId = lens (\(B.InClass _ i) -> i) (\(B.InClass cn _) i -> inClass cn i)
+
+deriving instance Eq a => Eq (InClass a)
+deriving instance Ord a => Ord (InClass a)
+deriving instance Show a => Show (InClass a)
 
 -- * Instances
 

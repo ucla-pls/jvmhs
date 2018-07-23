@@ -26,48 +26,48 @@ spec_superclasses = withHierarchy $ do
 
 spec_fieldFromId :: Spec
 spec_fieldFromId = do
-  let runClassNameOf fid cl = runTestClassPool' $ classNameOfFieldId fid cl
+  let runClassNameOf = runTestClassPool' . classNameOfFieldId
 
   it "can find 'extField' in 'Extended'" $ do
-    x <- runClassNameOf "extField:I" "Extended"
+    x <- runClassNameOf (inClass "Extended" "extField:I")
     x `shouldBe` Just "Extended"
 
   it "should not find 'extField' in 'Simple'" $ do
-    x <- runClassNameOf "extField:I" "Simple"
+    x <- runClassNameOf (inClass "Simple" "extField:I")
     x `shouldBe` Nothing
 
   it "can find 'field' in 'Simple'" $ do
-    x <- runClassNameOf "field:LSimple;"  "Simple"
+    x <- runClassNameOf (inClass "Simple" "field:LSimple;")
     x `shouldBe` Just "Simple"
 
 
 spec_methodFromId :: Spec
 spec_methodFromId = do
-  let runClassNameOf mid cl = runTestClassPool' $ classNameOfMethodId mid cl
+  let runClassNameOf = runTestClassPool' . classNameOfMethodId
 
   it "can find 'method1' in 'Extended'" $ do
-    x <- runClassNameOf "method1:()V" "Extended"
+    x <- runClassNameOf (inClass "Extended" "method1:()V")
     x `shouldBe` Just "Extended"
 
   it "can handle inheritance" $ do
-    x <- runClassNameOf "method2:()V" "Extended"
+    x <- runClassNameOf (inClass "Extended" "method2:()V")
     x `shouldBe` Just "Simple"
 
   it "can handle overriding methods" $ do
-    x <- runClassNameOf "method3:(I)I" "Extended"
+    x <- runClassNameOf (inClass "Extended" "method3:(I)I")
     x `shouldBe` Just "Extended"
 
   it "will not find unknown methods" $ do
-    x <- runClassNameOf "undefined:()V" "Extended"
+    x <- runClassNameOf (inClass "Extended" "undefined:()V")
     x `shouldBe` Nothing
 
 spec_methodImpls :: Spec
 spec_methodImpls = withHierarchy $ do
-  let runMethodImpls hry mid cl = runTestClassPool' $ methodImpls hry mid cl
+  let runMethodImpls hry = runTestClassPool' . methodImpls hry
   it "finds two implementations of method3:(I)I" $ \hry -> do
-    x <- runMethodImpls hry "method3:(I)I" "Simple"
+    x <- runMethodImpls hry (inClass "Simple" "method3:(I)I")
     x `shouldSatisfy` (== 2) . length
 
   it "finds two implementations from interface" $ \hry -> do
-    x <- runMethodImpls hry "method4:()V" "Interface"
+    x <- runMethodImpls hry (inClass "Interface" "method4:()V")
     x `shouldSatisfy` (== 1) . length

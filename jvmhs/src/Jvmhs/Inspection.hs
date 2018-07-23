@@ -13,8 +13,10 @@ This module inspects the bytecode data structure.
 module Jvmhs.Inspection
   where
 
+
+import qualified Data.Set                             as Set
+
 import           Control.Lens
-import qualified Data.Set as Set
 
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
@@ -26,6 +28,9 @@ import qualified Language.JVM.Attribute.StackMapTable as B
 class Inspectable a where
   classNames :: Traversal' a ClassName
   classNames _ = pure
+
+  methodNames :: Traversal' a AbsMethodId
+  methodNames _ = pure
 
 nothing :: Traversal' a b
 nothing = const pure
@@ -61,6 +66,15 @@ instance Inspectable Method where
       traverse
       nothing
 
+  methodNames =
+    traverseMethod
+      nothing
+      nothing
+      nothing
+      (traverse.methodNames)
+      nothing
+      nothing
+
 instance Inspectable BootstrapMethod where
 
 instance Inspectable Code where
@@ -71,6 +85,14 @@ instance Inspectable Code where
       (traverse.classNames)
       (traverse.classNames)
       (traverse.classNames)
+
+  methodNames =
+    traverseCode
+      nothing
+      nothing
+      (traverse.methodNames)
+      nothing
+      nothing
 
 instance Inspectable ByteCodeOpr where
   classNames g o =
@@ -85,6 +107,11 @@ instance Inspectable ByteCodeOpr where
       B.CheckCast c       -> B.CheckCast <$> g c
       B.InstanceOf c      -> B.InstanceOf <$> g c
       _                   -> pure o
+
+  methodNames g o =
+    case o of
+      B.Invoke r -> B.Invoke <$> methodNames g r
+      _          -> pure o
 
 instance Inspectable ExceptionHandler where
   classNames =
@@ -119,6 +146,14 @@ instance Inspectable (B.Invocation B.High) where
       B.InvkInterface w r -> B.InvkInterface w <$> classNames g r
       B.InvkDynamic r     -> B.InvkDynamic <$> classNames g r
 
+  methodNames g o =
+    case o of
+      B.InvkSpecial r     -> B.InvkSpecial <$> methodNames g r
+      B.InvkVirtual r     -> B.InvkVirtual <$> methodNames g r
+      B.InvkStatic r      -> B.InvkStatic <$> methodNames g r
+      B.InvkInterface w r -> B.InvkInterface w <$> methodNames g r
+      B.InvkDynamic r     -> B.InvkDynamic <$> methodNames g r
+
 instance Inspectable (B.ExactArrayType B.High) where
   classNames g a =
     case a of
@@ -145,25 +180,37 @@ instance Inspectable (B.FieldId) where
   classNames g (B.FieldId d) = B.FieldId <$> classNames g d
 
 instance Inspectable (B.MethodId) where
-  classNames g (B.MethodId d) = B.MethodId <$> classNames g d
+  classNames g (B.MethodId d) =
+    B.MethodId <$> classNames g d
 
 instance Inspectable a => Inspectable (B.NameAndType a) where
   classNames g (B.NameAndType n d) =
     B.NameAndType n <$> classNames g d
 
 instance Inspectable (B.AbsInterfaceMethodId B.High) where
-  classNames g (B.AbsInterfaceMethodId (B.InClass cn ci)) =
-    B.AbsInterfaceMethodId <$> (B.InClass <$> g cn <*> classNames g ci)
+  classNames g (B.AbsInterfaceMethodId x) =
+    B.AbsInterfaceMethodId <$> classNames g x
+
+  methodNames g (B.AbsInterfaceMethodId x) =
+    B.AbsInterfaceMethodId <$> methodNames g x
 
 instance Inspectable (B.AbsMethodId B.High) where
   classNames g (B.InClass cn ci) =
     B.InClass <$> g cn <*> classNames g ci
+
+  methodNames g a =
+    g a
 
 instance Inspectable (B.AbsVariableMethodId B.High) where
   classNames g o =
     case o of
       B.VInterfaceMethodId s -> B.VInterfaceMethodId <$> classNames g s
       B.VMethodId s          -> B.VMethodId <$> classNames g s
+
+  methodNames g o =
+    case o of
+      B.VInterfaceMethodId s -> B.VInterfaceMethodId <$> methodNames g s
+      B.VMethodId s          -> B.VMethodId <$> methodNames g s
 
 instance Inspectable (B.InvokeDynamic B.High) where
   classNames g (B.InvokeDynamic i dr) =
