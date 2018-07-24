@@ -34,13 +34,16 @@ module Jvmhs.Data.Class
   , classVersion
   , traverseClass
 
+
   -- *** Helpers
   , isInterface
   , dependencies
   , classField
-  , classMethod
   , classFieldList
+  , classFieldIds
+  , classMethod
   , classMethodList
+  , classMethodIds
 
   -- ** Field
 
@@ -53,8 +56,7 @@ module Jvmhs.Data.Class
   , fieldType
   , fieldId
   , traverseField
-
-  -- ** Method
+  , asFieldId
 
   , Method (..)
   , MethodContent (..)
@@ -132,6 +134,7 @@ data Class = Class
   -- ^ the version of the class file
   } deriving (Eq, Show, Generic, NFData)
 
+
 -- | A Field is an id and some content
 newtype Field = Field (FieldId, FieldContent)
   deriving (Show, Eq, Generic, NFData)
@@ -172,6 +175,15 @@ makeLenses ''MethodContent
 makeWrapped ''Field
 makeWrapped ''Method
 
+classMethodIds :: Fold Class AbsMethodId
+classMethodIds =
+  (selfIndex <. classMethodList.folded).withIndex.to asMethodId
+
+classFieldIds :: Fold Class AbsFieldId
+classFieldIds =
+  (selfIndex <. classFieldList.folded).withIndex.to asFieldId
+
+
 fieldId :: Lens' Field FieldId
 fieldId = _Wrapped . _1
 
@@ -192,6 +204,9 @@ fieldValue = fieldContent . fieldCValue
 
 fieldSignature :: Lens' Field (Maybe Text.Text)
 fieldSignature = fieldContent . fieldCSignature
+
+asFieldId :: (Class, Field) -> AbsFieldId
+asFieldId (cls, m) = inClass (cls ^.className) (m ^.fieldId)
 
 methodId :: Lens' Method MethodId
 methodId = _Wrapped . _1

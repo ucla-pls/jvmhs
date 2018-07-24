@@ -36,6 +36,7 @@ module Jvmhs.Analysis.Hierarchy
   , callSites
   , methodImpls'
   , methodImpls
+  , isMethodRequired
 
   ) where
 
@@ -209,3 +210,11 @@ methodImpls ::
   -> m [(Class, Method)]
 methodImpls hry mn =
   toListOf (folded.filtered(has $ _2.methodCode._Just)) <$> methodImpls' hry mn
+
+isMethodRequired ::
+  MonadClassPool m
+  => Hierarchy
+  -> AbsMethodId
+  -> m Bool
+isMethodRequired _ _ =
+  return $ False

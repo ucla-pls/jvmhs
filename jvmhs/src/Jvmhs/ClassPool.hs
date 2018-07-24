@@ -142,6 +142,10 @@ class Monad m => MonadClassPool m where
   saveClasses fp cns = do
     void . liftIO . writeClasses fp =<< (cns ^!! folded . pool . _Just)
 
+  -- | Run a command in a local environment
+  cplocal ::
+    m a
+    -> m a
 
 -- | Get a class from a class pool.
 getClass :: MonadClassPool m => ClassName -> m (Maybe Class)
@@ -269,6 +273,9 @@ instance MonadClassPool m => MonadClassPool (ReaderT r m) where
   allClassNames = lift allClassNames
   traverseClasses f =
     lift $ fmap (fmap lift) $ traverseClasses f
+  cplocal m = do
+    r <- ask
+    lift . cplocal $ runReaderT m r
 
 
 -- | The class pool state is just a map from class to class names
@@ -311,6 +318,10 @@ instance Monad m => MonadClassPool (ClassPoolT m) where
   allClassNames =
      M.keys <$> get
 
+  cplocal m = do
+    cp <- get
+    lift $ fst <$> runClassPoolT m cp
+
 type ClassPool = ClassPoolT Identity
 
 -- | Run a `ClassPoolT` given a class pool
@@ -352,6 +363,9 @@ newtype CachedClassPoolT r m a = CachedClassPoolT
     , MonadReader r
     , MonadState CachedClassPoolState
     , MonadIO )
+
+instance MonadTrans (CachedClassPoolT r) where
+  lift m = CachedClassPoolT (lift $ lift m)
 
 cacheClass ::
   (ClassReader r, MonadIO m)
@@ -448,6 +462,12 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
         (Just bs, this)
       helper (Just CSUnread) =
         error "Should have been read"
+
+  cplocal (CachedClassPoolT m) = do
+    cp <- get
+    r <- ask
+    lift $ fst <$>
+      (flip runReaderT r . flip runStateT cp $ m)
 
 runCachedClassPoolT ::
      (ClassReader r, MonadIO m)
