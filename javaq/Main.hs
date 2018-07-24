@@ -64,12 +64,23 @@ Output Formats:
     Output a csv file correspondin to the content of json-counted
 
   dot:
-    Output a dot graph.
+    Output a dot graph. The default is the class graph.
+
+    dot-call:
+      A call graph.
+
+    dot-class:
+      A class dependecy graph.
 |]
 
+data GraphForm
+  = GFSCC
+  | GFFull
+  deriving (Show, Eq)
+
 data GraphType
-  = GTSCC
-  | GTFull
+  = GTClass
+  | GTCall
   deriving (Show, Eq)
 
 data DTOType
@@ -82,7 +93,7 @@ data OutputFormat
   = OutputJSON DTOType
   | OutputJSONs DTOType
   | OutputCSV
-  | OutputDot GraphType
+  | OutputDot GraphType GraphForm
   deriving (Show)
 
 -- | The config file dictates the execution of the program
@@ -139,8 +150,11 @@ parseOutputFormat str =
 
     "csv"           -> Just $ OutputCSV
 
-    "dot"           -> Just $ OutputDot GTFull
-    "dot-scc"       -> Just $ OutputDot GTSCC
+    "dot"           -> Just $ OutputDot GTClass GFFull
+    "dot-scc"       -> Just $ OutputDot GTClass GFSCC
+
+    "dot-call"      -> Just $ OutputDot GTCall GFFull
+    "dot-call-scc"  -> Just $ OutputDot GTCall GFSCC
 
     _               -> Nothing
 
@@ -239,13 +253,17 @@ decompile cfg = do
                 ])
             Left msg -> return $ Left msg
         ) (const $ return ())
-    OutputDot GTSCC -> do
-      (graph, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
-        snd . sccGraph <$> mkClassGraph classnames
-      putStrLn $ graphToDot graph
-    OutputDot GTFull -> do
+    OutputDot GTClass gf -> do
       (graph, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
         mkClassGraph classnames
+      putStrLn $ graphToDot graph
+    OutputDot GTCall gf -> do
+      (graph, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+        hry <- calculateHierarchy classnames
+        methods <- classnames ^!!
+          (ifolded . selfIndex <. pool . ifolded . classMethods . ifolded . asIndex)
+          . withIndex . to (uncurry inClass)
+        mkCallGraph hry methods
       putStrLn $ graphToDot graph
    where
      encode' :: ToJSON e => Either a e -> IO (Either a ())

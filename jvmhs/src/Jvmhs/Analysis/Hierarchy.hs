@@ -32,6 +32,8 @@ module Jvmhs.Analysis.Hierarchy
   -- ** Methods
   , classNameOfMethodId
   , methodFromId
+  , canonicalMethodId
+  , callSites
   , methodImpls'
   , methodImpls
 
@@ -39,6 +41,7 @@ module Jvmhs.Analysis.Hierarchy
 
 
 import           Control.Lens
+import           Control.Lens.Action
 
 import           Data.Monoid
 -- import           Data.Set
@@ -167,6 +170,23 @@ methodFromId amid = do
               | otherwise ->
                 return Nothing
             a -> return . fmap (cls,) $ a
+
+canonicalMethodId ::
+  MonadClassPool m
+  => AbsMethodId
+  -> m (Maybe AbsMethodId)
+canonicalMethodId amid = do
+  x <- methodFromId amid
+  return $ asMethodId <$> x
+
+-- | Returns a list of possible call sites.
+callSites ::
+  MonadClassPool m
+  => Hierarchy
+  -> AbsMethodId
+  -> m [(Class, Method)]
+callSites hry mid =
+  mid ^!! act canonicalMethodId . _Just . act (methodImpls hry) . folded
 
 -- | Returns all list of pairs of classes and methods that has
 -- the same id as the method id.

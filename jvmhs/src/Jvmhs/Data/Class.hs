@@ -67,6 +67,7 @@ module Jvmhs.Data.Class
   , methodArgumentTypes
   , methodId
   , traverseMethod
+  , asMethodId
 
   -- * Converters
   , fromClassFile
@@ -215,6 +216,9 @@ methodExceptions = methodContent . methodCExceptions
 
 methodSignature :: Lens' Method (Maybe Text.Text)
 methodSignature = methodContent . methodCSignature
+
+asMethodId :: (Class, Method) -> AbsMethodId
+asMethodId (cls, m) = inClass (cls ^.className) (m ^.methodId)
 
 traverseClass ::
   (Traversal' ClassName a)

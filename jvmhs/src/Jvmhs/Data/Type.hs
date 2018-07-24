@@ -119,7 +119,6 @@ methodDReturnType =
   lens methodDescriptorReturnType
     (\md a -> md { methodDescriptorReturnType = a})
 
-
 -- * FieldDescriptor
 
 -- | Get the type from a field descriptor
@@ -157,11 +156,16 @@ mkFieldId t d = B.FieldId $ B.NameAndType t d
 
 fieldIdName :: Lens' FieldId Text.Text
 fieldIdName =
-  lens (\(B.FieldId nt) -> B.ntName nt) (\(B.FieldId nt) a -> mkFieldId a (B.ntDescriptor nt))
+  lens
+    (\(B.FieldId nt) -> B.ntName nt)
+    (\(B.FieldId nt) a -> mkFieldId a (B.ntDescriptor nt))
 
 fieldIdDescriptor :: Lens' FieldId FieldDescriptor
 fieldIdDescriptor =
-  lens (\(B.FieldId nt) -> B.ntDescriptor nt) (\(B.FieldId nt) a -> mkFieldId (B.ntName nt) a)
+  lens
+    (\(B.FieldId nt) -> B.ntDescriptor nt)
+    (\(B.FieldId nt) a -> mkFieldId (B.ntName nt) a)
+
 
 instance ToJSON FieldId where
   toJSON (B.FieldId f) = String . toText $ f
@@ -189,9 +193,8 @@ inClassName = lens (\(B.InClass cn _) -> cn) (\(B.InClass _ i) cn -> inClass cn 
 inId :: Lens' (InClass a) a
 inId = lens (\(B.InClass _ i) -> i) (\(B.InClass cn _) i -> inClass cn i)
 
-deriving instance Eq a => Eq (InClass a)
-deriving instance Ord a => Ord (InClass a)
-deriving instance Show a => Show (InClass a)
+deriving instance Ord AbsMethodId
+deriving instance Ord AbsFieldId
 
 -- * Instances
 

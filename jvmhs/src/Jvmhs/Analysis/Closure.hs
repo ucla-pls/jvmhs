@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -17,7 +18,13 @@ closures adds items until everything that needs to be added have been added.
 module Jvmhs.Analysis.Closure
   ( computeClassClosure
   , computeMethodClosure
+
+  , ClassGraph
   , mkClassGraph
+
+  , CallGraph
+  , mkCallGraph
+
   ) where
 
 import           Data.Either              (partitionEithers)
@@ -36,6 +43,8 @@ import           Jvmhs.Data.Class
 import           Jvmhs.Data.Graph
 import           Jvmhs.Data.Type
 import           Jvmhs.Inspection
+
+import Debug.Trace
 
 type ClassGraph = Graph ClassName ()
 
@@ -74,6 +83,26 @@ computeClassClosure =
           front = setOf (folded.classNames) exists
         go (known', unknown') (front S.\\ known')
 
+type CallGraph = Graph AbsMethodId ()
+
+-- | Given a foldable structure over 'AbsMethodId's compute a CallGraph.
+mkCallGraph ::
+  forall t m. (Foldable t, MonadClassPool m)
+  => Hierarchy
+  -> t AbsMethodId
+  -> m CallGraph
+mkCallGraph hry mids = do
+  calls <-
+    mids ^! folded
+      . ( selfIndex
+          <. act methodFromId
+           . ifolded . _2 . methodNames
+           . act (callSites hry)
+           . ifolded )
+      . to asMethodId
+      . withIndex
+      . to (\(a,b) -> S.singleton (a, b, ()))
+  return $ mkGraph mids calls
 
 -- | Computes the method closure
 computeMethodClosure ::
@@ -81,7 +110,7 @@ computeMethodClosure ::
   => Hierarchy
   -> S.Set AbsMethodId
   -> m (S.Set AbsMethodId)
-computeMethodClosure hier =
+computeMethodClosure hry =
   go S.empty
   where
     go !known !wave
@@ -89,11 +118,9 @@ computeMethodClosure hier =
           return known
       | otherwise = do
           -- First get all possible implementation
-          impls <- wave ^!! folded . act (methodImpls hier) . folded
+          impls <- wave ^!! folded . act (callSites hry) . folded
           let
-            found = setOf
-              (folded . to (\(c, m) -> inClass (c ^. className) (m ^. methodId)))
-              impls
+            found = setOf (folded . to asMethodId) impls
             known' = known `S.union` found
             front = setOf (folded . _2 . methodNames) impls
           go known' (front S.\\ known')
