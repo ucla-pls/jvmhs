@@ -147,6 +147,10 @@ class Monad m => MonadClassPool m where
     m a
     -> m a
 
+  restrictTo ::
+       S.Set ClassName
+    -> m ()
+
 -- | Get a class from a class pool.
 getClass :: MonadClassPool m => ClassName -> m (Maybe Class)
 getClass cn =
@@ -188,8 +192,8 @@ onlyClasses cns = do
 
 -- | Deletes all classes not in the set
 onlyClasses' :: (MonadClassPool m) => S.Set ClassName -> m ()
-onlyClasses' keep = do
-  modifyClasses (\cls -> if (cls^.className) `S.member` keep then Just cls else Nothing)
+onlyClasses' =
+  restrictTo
 
 -- | Get all the classes from the class pool
 allClasses :: MonadClassPool m => m [Class]
@@ -277,6 +281,8 @@ instance MonadClassPool m => MonadClassPool (ReaderT r m) where
     r <- ask
     lift . cplocal $ runReaderT m r
 
+  restrictTo = lift . restrictTo
+
 
 -- | The class pool state is just a map from class to class names
 type ClassPoolState = M.Map ClassName Class
@@ -321,6 +327,9 @@ instance Monad m => MonadClassPool (ClassPoolT m) where
   cplocal m = do
     cp <- get
     lift $ fst <$> runClassPoolT m cp
+
+  restrictTo s =
+    modify (flip M.restrictKeys s)
 
 type ClassPool = ClassPoolT Identity
 
@@ -468,6 +477,9 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
     r <- ask
     lift $ fst <$>
       (flip runReaderT r . flip runStateT cp $ m)
+
+  restrictTo s =
+    modify (flip M.restrictKeys s)
 
 runCachedClassPoolT ::
      (ClassReader r, MonadIO m)

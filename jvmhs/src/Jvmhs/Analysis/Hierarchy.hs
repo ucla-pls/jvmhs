@@ -44,6 +44,9 @@ module Jvmhs.Analysis.Hierarchy
 import           Control.Lens
 import           Control.Lens.Action
 
+import           Control.Monad.Trans.Maybe
+import           Control.Monad.Trans
+import           Control.Monad
 import           Data.Monoid
 -- import           Data.Set
 import           Data.Graph.Inductive.Basic
@@ -90,6 +93,16 @@ calculateHierarchy clss = do
 
 nodeOf :: Hierarchy -> ClassName -> Node
 nodeOf hry = fst . mkNode_ (_hryNodes hry)
+
+-- | Given a Hierarchy, determine the parrents of a class.
+-- The returned list is in order as they appear in the class hierarchy.
+parrents ::
+     Hierarchy
+  -> ClassName
+  -> [ClassName]
+parrents hry@(Hierarchy _ graph) cln =
+  let search = dfs [nodeOf hry cln] graph
+  in tail $ search ^.. folded . to (lab graph) . _Just
 
 -- | Given a Hierarchy, determine the superclasses of a class.
 -- The returned list is in order as they appear in the class hierarchy.
@@ -211,10 +224,33 @@ methodImpls ::
 methodImpls hry mn =
   toListOf (folded.filtered(has $ _2.methodCode._Just)) <$> methodImpls' hry mn
 
+
+isImplementation ::
+  MonadClassPool m
+  => Hierarchy
+  -> AbsMethodId
+  -> m Bool
+isImplementation hry mid = do
+  mm <- mid ^!? inClassName.pool._Just. classMethod (mid ^. inId) . _Just
+  case mm of
+    Just method
+      | has (methodCode._Just) method -> do
+        let clss = parrents hry (mid ^. inClassName)
+        Any res <- clss ^! folded . pool
+          . to (maybe (Any True)
+               (view $ classMethod (mid ^. inId) . like (Any True)))
+        return res
+    _ ->
+      return False
+
 isMethodRequired ::
   MonadClassPool m
   => Hierarchy
   -> AbsMethodId
   -> m Bool
-isMethodRequired _ _ =
-  return $ False
+isMethodRequired hry mid =
+  fmap (maybe False (const True)) . runMaybeT $
+    msum
+      [ guard (mid ^. inId . methodIdName == "<clinit>")
+      , guard =<< lift (isImplementation hry mid)
+      ]
