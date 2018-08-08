@@ -62,6 +62,7 @@ module Jvmhs.Data.Type
   , MAccessFlag (..)
   , FAccessFlag (..)
   , CAccessFlag (..)
+  , ICAccessFlag (..)
   ) where
 
 import           Control.Lens
@@ -220,6 +221,7 @@ instance ToJSON MethodHandle where
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''CAccessFlag)
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''FAccessFlag)
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''MAccessFlag)
+$(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''ICAccessFlag)
 $(deriveToJSON (defaultOptions
                  { sumEncoding             = ObjectWithSingleField
                  , constructorTagModifier  = map toLower . drop 1

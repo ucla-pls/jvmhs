@@ -31,6 +31,8 @@ module Jvmhs.Data.Class
   , classMethods
   , classBootstrapMethods
   , classSignature
+  , classEnclosingMethod
+  , classInnerClasses
   , classVersion
   , traverseClass
 
@@ -71,6 +73,12 @@ module Jvmhs.Data.Class
   , traverseMethod
   , asMethodId
 
+  , InnerClass (..)
+  , innerClass
+  , innerOuterClass
+  , innerName
+  , innerAccessFlags
+
   -- * Converters
   , fromClassFile
   , toClassFile
@@ -84,6 +92,7 @@ module Jvmhs.Data.Class
   , CAccessFlag (..)
   , MAccessFlag (..)
   , FAccessFlag (..)
+  , ICAccessFlag (..)
 
   , BootstrapMethod (..)
   , Code (..)
@@ -105,6 +114,8 @@ import           Unsafe.Coerce
 
 import qualified Language.JVM                            as B
 import qualified Language.JVM.Attribute.BootstrapMethods as B
+import qualified Language.JVM.Attribute.EnclosingMethod  as B
+import qualified Language.JVM.Attribute.InnerClasses     as B
 import qualified Language.JVM.Attribute.ConstantValue    as B
 import qualified Language.JVM.Attribute.Exceptions       as B
 import qualified Language.JVM.Attribute.Signature        as B
@@ -112,6 +123,13 @@ import qualified Language.JVM.Attribute.Signature        as B
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
+
+data InnerClass = InnerClass
+  { _innerClass :: ClassName
+  , _innerOuterClass :: Maybe ClassName
+  , _innerName :: Maybe Text.Text
+  , _innerAccessFlags :: Set.Set ICAccessFlag
+  } deriving (Eq, Show, Generic, NFData)
 
 -- | This is the class
 data Class = Class
@@ -130,6 +148,11 @@ data Class = Class
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
   , _classSignature        :: Maybe Text.Text
+  -- ^ the class signature
+  , _classEnclosingMethod  :: Maybe (ClassName, Maybe MethodId)
+  -- ^ maybe an enclosing class and method
+  , _classInnerClasses     :: [InnerClass]
+  -- ^ a list of inner classes
   , _classVersion          :: Maybe (Word16, Word16)
   -- ^ the version of the class file
   } deriving (Eq, Show, Generic, NFData)
@@ -155,6 +178,7 @@ data FieldContent = FieldContent
 newtype Method = Method (MethodId, MethodContent)
   deriving (Show, Eq, Generic, NFData)
 
+
 mkMethod :: MethodId -> MethodContent -> Method
 mkMethod mid mc = Method (mid, mc)
 
@@ -172,6 +196,7 @@ data MethodContent = MethodContent
 makeLenses ''Class
 makeLenses ''FieldContent
 makeLenses ''MethodContent
+makeLenses ''InnerClass
 makeWrapped ''Field
 makeWrapped ''Method
 
@@ -244,8 +269,10 @@ traverseClass ::
   -> (Traversal' (Map.Map MethodId MethodContent) a)
   -> (Traversal' [ BootstrapMethod ] a)
   -> (Traversal' (Maybe Text.Text) a)
+  -> (Traversal' (Maybe (ClassName, Maybe MethodId)) a)
+  -> (Traversal' [ InnerClass ] a)
   -> (Traversal' Class a)
-traverseClass tcn tsn taf tis tfs tms tbs tss g s =
+traverseClass tcn tsn taf tis tfs tms tbs tss tem tin g s =
   Class
   <$> (tcn g . _className $ s)
   <*> (tsn g . _classSuper $ s)
@@ -255,6 +282,8 @@ traverseClass tcn tsn taf tis tfs tms tbs tss g s =
   <*> (tms g . _classMethods $ s)
   <*> (tbs g . _classBootstrapMethods $ s)
   <*> (tss g . _classSignature $ s)
+  <*> (tem g . _classEnclosingMethod $ s)
+  <*> (tin g . _classInnerClasses $ s)
   <*> (pure $ _classVersion s)
 {-# INLINE traverseClass #-}
 
@@ -324,8 +353,6 @@ classField fid = classFields . at fid . to (fmap $ mkField fid)
 classMethod :: MethodId -> Getter Class (Maybe Method)
 classMethod mid = classMethods . at mid . to (fmap $ mkMethod mid)
 
-
-
 -- | Get the type of field
 fieldType :: Lens' Field JType
 fieldType =
@@ -362,6 +389,8 @@ fromClassFile =
   <*> Map.fromList . map fromBMethod . B.cMethods
   <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
   <*> fmap B.signatureToText . B.cSignature
+  <*> fmap (\e -> (B.enclosingClassName e, B.enclosingMethodName e)) . B.cEnclosingMethod
+  <*> map fromBInnerClass . B.cInnerClasses
   <*> (Just <$> ((,) <$> B.cMajorVersion <*> B.cMinorVersion))
   where
     fromBField =
@@ -390,6 +419,13 @@ fromClassFile =
         <*> fmap B.signatureToText . B.mSignature
           )
 
+    fromBInnerClass =
+      InnerClass
+        <$> B.icClassName
+        <*> B.icOuterClassName
+        <*> B.icInnerName
+        <*> B.toSet . B.icInnerAccessFlags
+
 toClassFile :: Class -> B.ClassFile B.High
 toClassFile =
   B.ClassFile 0xCAFEBABE
@@ -409,6 +445,11 @@ toClassFile =
                 . map toBinaryBootstrapMethod
                 . _classBootstrapMethods
             <*> maybe [] (:[]) . fmap B.signatureFromText . _classSignature
+            <*> maybe [] (:[]) . fmap (\(cn, em) -> B.EnclosingMethod cn em)
+                               . _classEnclosingMethod
+            <*> compress B.InnerClasses
+                 . map toBInnerClass
+                 . _classInnerClasses
             <*> pure [])
 
   where
@@ -435,6 +476,14 @@ toClassFile =
                 <*> maybe [] (:[]) . fmap B.signatureFromText. (view methodSignature)
                 <*> pure [] )
 
+    toBInnerClass :: InnerClass -> B.InnerClass B.High
+    toBInnerClass =
+      B.InnerClass
+        <$> _innerClass
+        <*> _innerOuterClass
+        <*> _innerName
+        <*> B.BitSet . _innerAccessFlags
+
     compress :: ([a] -> b) -> [a] -> [b]
     compress _ [] = []
     compress f as = [f as]
@@ -446,5 +495,7 @@ isoBinary = iso fromClassFile toClassFile
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 8} ''MethodContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''FieldContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''InnerClass)
+
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)

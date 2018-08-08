@@ -85,7 +85,7 @@ module Jvmhs.ClassPool
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Class
-import           Control.Monad.State.Strict (StateT, mapStateT, runStateT)
+import           Control.Monad.State.Strict (StateT(..), mapStateT)
 
 import           Control.Lens
 import           Control.Lens.Action
@@ -369,12 +369,17 @@ newtype CachedClassPoolT r m a = CachedClassPoolT
     ( Functor
     , Applicative
     , Monad
-    , MonadReader r
     , MonadState CachedClassPoolState
     , MonadIO )
 
 instance MonadTrans (CachedClassPoolT r) where
   lift m = CachedClassPoolT (lift $ lift m)
+
+instance (MonadReader r m) => MonadReader r (CachedClassPoolT r' m) where
+  reader f = lift (reader f)
+  local f m =
+    CachedClassPoolT . StateT $ \s ->
+      ReaderT (local f . runReaderT (runStateT (runCachedClassPoolT' m) s))
 
 cacheClass ::
   (ClassReader r, MonadIO m)
@@ -386,8 +391,7 @@ cacheClass n = do
   return cpp
   where
     cache (Just CSUnread) = do
-      traceM $ "Caching.. " ++ show n
-      ec <- liftIO . readClass n =<< ask
+      ec <- liftIO . readClass n =<< CachedClassPoolT ask
       return $ case ec of
         Left _ -> Nothing
         Right cls -> Just (CSPure cls)
@@ -474,7 +478,7 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
 
   cplocal (CachedClassPoolT m) = do
     cp <- get
-    r <- ask
+    r <- CachedClassPoolT ask
     lift $ fst <$>
       (flip runReaderT r . flip runStateT cp $ m)
 

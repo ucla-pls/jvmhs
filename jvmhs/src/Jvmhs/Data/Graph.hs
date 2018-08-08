@@ -27,11 +27,13 @@ module Jvmhs.Data.Graph
   -- * Lenses
   , toLabel
   , grNodes
+  , grNode
 
   -- * Algorithms
   , isClosedIn
   , partition
   , partition'
+  , closures
 
   -- * Re-exports
   , F.order
@@ -89,6 +91,9 @@ grNodes = innerGraph . ifolding F.labNodes
 
 toLabel :: Graph v e -> Getter Int (Maybe v)
 toLabel gr = to (F.lab $ view innerGraph gr)
+
+grNode :: Int -> Getter (Graph v e) (Maybe v)
+grNode i = innerGraph . to (flip F.lab i)
 
 fromLabel :: Ord v => Graph v e -> Getter v (Maybe Int)
 fromLabel gr = to (`M.lookup` view nodeMap gr)
@@ -160,6 +165,9 @@ partition gr =
   where
     asLabels =
       toListOf (to (IS.toList) . folded . toLabel gr. _Just)
+
+closures :: Graph v e -> [ IS.IntSet ]
+closures = map snd . partition'
 
 partition' :: Graph v e -> [ (IS.IntSet, IS.IntSet) ]
 partition' graph =

@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE RankNTypes    #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-|
 Module      : Jvmhs.Inspection
@@ -12,7 +13,6 @@ This module inspects the bytecode data structure.
 
 module Jvmhs.Inspection
   where
-
 
 import qualified Data.Set                             as Set
 
@@ -36,7 +36,6 @@ nothing :: Traversal' a b
 nothing = const pure
 {-# INLINE nothing #-}
 
-
 instance Inspectable Class where
   classNames =
     traverseClass
@@ -46,6 +45,11 @@ instance Inspectable Class where
       (mapAsMethodList.traverse.classNames)
       (traverse.classNames)
       nothing
+      (traverse.tuple id (_Just.classNames))
+      (traverse.classNames)
+
+tuple :: Traversal' a b -> Traversal' c b -> Traversal' (a,c) b
+tuple fl fr g s = (,) <$> (fl g . fst $ s) <*> (fr g . snd $ s)
 
 instance Inspectable Field where
   classNames =
@@ -55,6 +59,14 @@ instance Inspectable Field where
       nothing
       (traverse.classNames)
       nothing
+
+instance Inspectable InnerClass where
+  classNames g s =
+    InnerClass
+      <$> (g . _innerClass $ s)
+      <*> (traverse g . _innerOuterClass $ s)
+      <*> (pure . _innerName $ s)
+      <*> (pure . _innerAccessFlags $ s)
 
 instance Inspectable Method where
   classNames =

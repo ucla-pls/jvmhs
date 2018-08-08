@@ -90,5 +90,6 @@ findUsedClasses  =
           (mapAsFieldList.traverse.classNames)
           (mapAsMethodList.traverse.classNames)
           (traverse.classNames)
-          nothing) cls
-
+          nothing
+          (traverse.tuple id (traverse.classNames))
+          (traverse.classNames)) cls
