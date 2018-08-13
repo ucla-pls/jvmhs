@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE RankNTypes    #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-|
 Module      : Jvmhs.Inspection
@@ -15,11 +16,13 @@ module Jvmhs.Inspection
   where
 
 import qualified Data.Set                             as Set
+import qualified Data.Text                            as Text
 
 import           Control.Lens
 
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
+import           Jvmhs.Data.Signature
 import           Jvmhs.Data.Type
 
 import qualified Language.JVM                         as B
@@ -44,7 +47,7 @@ instance Inspectable Class where
       (mapAsFieldList.traverse.classNames)
       (mapAsMethodList.traverse.classNames)
       (traverse.classNames)
-      nothing
+      (traverse.classNames)
       (traverse.tuple id (_Just.classNames))
       (traverse.classNames)
 
@@ -58,7 +61,7 @@ instance Inspectable Field where
       classNames
       nothing
       (traverse.classNames)
-      nothing
+      (traverse.classNames)
 
 instance Inspectable InnerClass where
   classNames g s =
@@ -76,7 +79,7 @@ instance Inspectable Method where
       nothing
       (traverse.classNames)
       traverse
-      nothing
+      (traverse.classNames)
 
   methodNames =
     traverseMethod
@@ -250,3 +253,73 @@ instance Inspectable JType where
       JTClass cn -> JTClass <$> g cn
       JTArray t' -> JTArray <$> classNames g t'
       a          -> pure a
+
+instance Inspectable ClassSignature where
+  classNames g t =
+    ClassSignature
+      <$> (inspectAllClassNames g . csTypeParameters) t
+      <*> (classNames g . csSuperclassSignature) t
+      <*> (inspectAllClassNames g . csInterfaceSignatures) t
+
+instance Inspectable MethodSignature where
+  classNames g (MethodSignature a b c d) =
+    MethodSignature
+      <$> inspectAllClassNames g a
+      <*> inspectAllClassNames g b
+      <*> inspectAllClassNames g c
+      <*> inspectAllClassNames g d
+
+instance Inspectable ThrowsSignature where
+  classNames g t =
+    case t of
+      ThrowsClass c -> ThrowsClass <$> classNames g c
+      _             -> pure t
+
+instance Inspectable FieldSignature where
+  classNames g (FieldSignature ref) =
+    FieldSignature <$> classNames g ref
+
+instance Inspectable ClassType where
+  classNames g t =
+    case t of
+      ClassType cn ta ->
+        ClassType <$> g cn <*> (traverse . traverse . classNames) g ta
+      InnerClassType _ cn ta ->
+        InnerClassType
+           <$> (snd . Text.breakOnEnd "$" . B.classNameAsText <$> g (getClassName t))
+           <*> classNames g cn
+           <*> (traverse . traverse . classNames) g ta
+
+    where
+      getClassName (ClassType cn _) = cn
+      getClassName (InnerClassType i oc _) =
+        B.ClassName $ Text.intercalate "$" [B.classNameAsText (getClassName oc), i]
+
+instance Inspectable TypeArgument where
+  classNames g (TypeArgument i p) =
+    TypeArgument i <$> classNames g p
+
+instance Inspectable TypeParameter where
+  classNames g t =
+    TypeParameter
+      <$> pure (tpIndentifier t)
+      <*> (inspectAllClassNames g . tpClassBound) t
+      <*> (inspectAllClassNames g . tpInterfaceBound) t
+
+instance Inspectable ReferenceType where
+  classNames g t =
+    case t of
+      RefClassType ct -> RefClassType <$> classNames g ct
+      RefArrayType ct -> RefArrayType <$> classNames g ct
+      _               -> pure t
+
+instance Inspectable TypeSignature where
+  classNames g t =
+    case t of
+      ReferenceType ct -> ReferenceType <$> classNames g ct
+      _                -> pure t
+
+inspectAllClassNames ::
+  (Traversable f, Inspectable b)
+  => Traversal' (f b) ClassName
+inspectAllClassNames = traverse . classNames

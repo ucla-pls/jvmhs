@@ -96,6 +96,7 @@ module Jvmhs.Data.Class
 
   , BootstrapMethod (..)
   , Code (..)
+
   ) where
 
 import           Control.DeepSeq
@@ -104,6 +105,7 @@ import           Control.Monad
 import           Data.Aeson
 import           Data.Aeson.TH
 import qualified Data.Map                                as Map
+import Data.Either
 import           Data.Maybe
 import qualified Data.Set                                as Set
 import qualified Data.Text                               as Text
@@ -118,11 +120,11 @@ import qualified Language.JVM.Attribute.EnclosingMethod  as B
 import qualified Language.JVM.Attribute.InnerClasses     as B
 import qualified Language.JVM.Attribute.ConstantValue    as B
 import qualified Language.JVM.Attribute.Exceptions       as B
-import qualified Language.JVM.Attribute.Signature        as B
 
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
+import           Jvmhs.Data.Signature
 
 data InnerClass = InnerClass
   { _innerClass :: ClassName
@@ -147,7 +149,7 @@ data Class = Class
   -- ^ a list of methods
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
-  , _classSignature        :: Maybe Text.Text
+  , _classSignature        :: Maybe ClassSignature
   -- ^ the class signature
   , _classEnclosingMethod  :: Maybe (ClassName, Maybe MethodId)
   -- ^ maybe an enclosing class and method
@@ -171,7 +173,7 @@ data FieldContent = FieldContent
   -- ^ the set of access flags
   , _fieldCValue       :: Maybe JValue
   -- ^ an optional value
-  , _fieldCSignature   :: Maybe Text.Text
+  , _fieldCSignature   :: Maybe FieldSignature
   } deriving (Eq, Show, Generic, NFData)
 
 -- | A method is an id and some content
@@ -190,7 +192,7 @@ data MethodContent = MethodContent
   -- ^ optionally the method can contain code
   , _methodCExceptions  :: [ ClassName ]
   -- ^ the method can have one or more exceptions
-  , _methodCSignature   :: Maybe Text.Text
+  , _methodCSignature   :: Maybe MethodSignature
   } deriving (Eq, Show, Generic, NFData)
 
 makeLenses ''Class
@@ -227,7 +229,7 @@ fieldAccessFlags = fieldContent . fieldCAccessFlags
 fieldValue :: Lens' Field (Maybe JValue)
 fieldValue = fieldContent . fieldCValue
 
-fieldSignature :: Lens' Field (Maybe Text.Text)
+fieldSignature :: Lens' Field (Maybe FieldSignature)
 fieldSignature = fieldContent . fieldCSignature
 
 asFieldId :: (Class, Field) -> AbsFieldId
@@ -254,7 +256,7 @@ methodCode = methodContent . methodCCode
 methodExceptions :: Lens' Method [ClassName]
 methodExceptions = methodContent . methodCExceptions
 
-methodSignature :: Lens' Method (Maybe Text.Text)
+methodSignature :: Lens' Method (Maybe MethodSignature)
 methodSignature = methodContent . methodCSignature
 
 asMethodId :: (Class, Method) -> AbsMethodId
@@ -268,7 +270,7 @@ traverseClass ::
   -> (Traversal' (Map.Map FieldId FieldContent) a)
   -> (Traversal' (Map.Map MethodId MethodContent) a)
   -> (Traversal' [ BootstrapMethod ] a)
-  -> (Traversal' (Maybe Text.Text) a)
+  -> (Traversal' (Maybe ClassSignature) a)
   -> (Traversal' (Maybe (ClassName, Maybe MethodId)) a)
   -> (Traversal' [ InnerClass ] a)
   -> (Traversal' Class a)
@@ -292,7 +294,7 @@ traverseField ::
   -> (Traversal' FieldDescriptor a)
   -> (Traversal' (Set.Set FAccessFlag) a)
   -> (Traversal' (Maybe JValue) a)
-  -> (Traversal' (Maybe Text.Text) a)
+  -> (Traversal' (Maybe FieldSignature) a)
   -> Traversal' Field a
 traverseField tfn tfd taf tjv ts g s =
   mkField
@@ -314,7 +316,7 @@ traverseMethod ::
   -> (Traversal' (Set.Set MAccessFlag) a)
   -> (Traversal' (Maybe Code) a)
   -> (Traversal' [ClassName] a)
-  -> (Traversal' (Maybe Text.Text) a)
+  -> (Traversal' (Maybe MethodSignature) a)
   -> Traversal' Method a
 traverseMethod tfn tfd taf tc tex ts g s =
   mkMethod
@@ -388,7 +390,7 @@ fromClassFile =
   <*> Map.fromList . map fromBField . B.cFields
   <*> Map.fromList . map fromBMethod . B.cMethods
   <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
-  <*> fmap B.signatureToText . B.cSignature
+  <*> fmap (\(Signature a) -> fromRight (error $ "could not read " ++ show a) $ classSignatureFromText a) . B.cSignature
   <*> fmap (\e -> (B.enclosingClassName e, B.enclosingMethodName e)) . B.cEnclosingMethod
   <*> map fromBInnerClass . B.cInnerClasses
   <*> (Just <$> ((,) <$> B.cMajorVersion <*> B.cMinorVersion))
@@ -402,7 +404,7 @@ fromClassFile =
       <*> ( FieldContent
         <$> B.fAccessFlags
         <*> (Just . B.constantValue <=< B.fConstantValue)
-        <*> fmap B.signatureToText . B.fSignature
+        <*> fmap (\(Signature a) -> fromRight (error $ "could not read " ++ show a)$ fieldSignatureFromText a) . B.fSignature
       )
 
     fromBMethod =
@@ -416,7 +418,7 @@ fromClassFile =
         <$> B.mAccessFlags
         <*> fmap fromBinaryCode . B.mCode
         <*> B.mExceptions
-        <*> fmap B.signatureToText . B.mSignature
+        <*> fmap (\(Signature a) -> fromRight (error $ "could not read " ++ show a) $ methodSignatureFromText a) . B.mSignature
           )
 
     fromBInnerClass =
@@ -444,7 +446,7 @@ toClassFile =
             <$> compress (B.BootstrapMethods . B.SizedList)
                 . map toBinaryBootstrapMethod
                 . _classBootstrapMethods
-            <*> maybe [] (:[]) . fmap B.signatureFromText . _classSignature
+            <*> maybe [] (:[]) . fmap (Signature . classSignatureToText) . _classSignature
             <*> maybe [] (:[]) . fmap (\(cn, em) -> B.EnclosingMethod cn em)
                                . _classEnclosingMethod
             <*> compress B.InnerClasses
@@ -461,7 +463,7 @@ toClassFile =
         <*> ( B.FieldAttributes
                 <$> maybe [] (:[])
                     . fmap B.ConstantValue . view fieldValue
-                <*> maybe [] (:[]) . fmap B.signatureFromText . view fieldSignature
+                <*> maybe [] (:[]) . fmap (Signature . fieldSignatureToText) . view fieldSignature
                 <*> pure [] )
 
     toBMethod =
@@ -473,7 +475,7 @@ toClassFile =
                 <$> maybe [] (:[]) . fmap toBinaryCode . (view methodCode)
                 <*> compress (B.Exceptions . B.SizedList)
                     . view methodExceptions
-                <*> maybe [] (:[]) . fmap B.signatureFromText. (view methodSignature)
+                <*> maybe [] (:[]) . fmap (Signature . methodSignatureToText) . (view methodSignature)
                 <*> pure [] )
 
     toBInnerClass :: InnerClass -> B.InnerClass B.High
@@ -496,6 +498,7 @@ $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 8} ''Meth
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''FieldContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''InnerClass)
+
 
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)

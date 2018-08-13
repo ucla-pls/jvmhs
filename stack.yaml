@@ -5,11 +5,11 @@ packages:
 - jreduce
 - location:
     git: git@bitbucket.org:ucla-pls/reduce.git
-    commit: f6c332a219be3c91817d17d72ee76cec61d760c9 
+    commit: e6157901f843631760b3ad5418e7ace66eeb28a5 
   extra-dep: true
 - location:
     git: git@github.com:ucla-pls/jvm-binary.git
-    commit: 5e0be595fc40c7f37680d401d0836647cc0060e8 
+    commit: a21fdf3b8ed9c23f5b287747683b0fe24fc0d277 
   extra-dep: true
 extra-deps: 
   - fgl-visualize-0.1.0.1
