@@ -5,7 +5,7 @@ packages:
 - jreduce
 - location:
     git: git@bitbucket.org:ucla-pls/reduce.git
-    commit: e6157901f843631760b3ad5418e7ace66eeb28a5 
+    commit: d74c8853aee45e86f0dc7e1113f2cc47a4ec23c4 
   extra-dep: true
 - location:
     git: git@github.com:ucla-pls/jvm-binary.git
