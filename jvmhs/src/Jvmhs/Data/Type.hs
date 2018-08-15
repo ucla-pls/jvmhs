@@ -67,6 +67,7 @@ module Jvmhs.Data.Type
 
 import           Control.Lens
 import           Data.Aeson
+import           Data.Aeson.Encoding (text)
 import           Data.Aeson.TH
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C
@@ -174,11 +175,17 @@ instance ToJSON FieldId where
 instance ToJSON MethodId where
   toJSON (B.MethodId m) = String . toText $ m
 
+instance ToJSONKey ClassName where
+  toJSONKey = ToJSONKeyText f (text . f)
+    where f = view fullyQualifiedName
+
 instance ToJSONKey FieldId where
-  -- toJSON (B.FieldId f) = String . toText $ f
+  toJSONKey = ToJSONKeyText f (text . f)
+    where f (B.FieldId g)= toText g
 
 instance ToJSONKey MethodId where
-  -- toJSON (B.MethodId m) = String . toText $ m
+  toJSONKey = ToJSONKeyText f (text . f)
+    where f (B.MethodId g)= toText g
 
 type InClass a = B.InClass a B.High
 
