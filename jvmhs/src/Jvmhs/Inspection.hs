@@ -42,7 +42,7 @@ nothing = const pure
 instance Inspectable Class where
   classNames =
     traverseClass
-      id id nothing
+      id (traverse.id) nothing
       (iso Set.toList Set.fromList . traverse)
       (mapAsFieldList.traverse.classNames)
       (mapAsMethodList.traverse.classNames)

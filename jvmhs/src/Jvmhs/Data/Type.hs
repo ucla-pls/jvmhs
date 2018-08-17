@@ -1,11 +1,11 @@
-{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE StandaloneDeriving          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -38,7 +38,7 @@ module Jvmhs.Data.Type
   , mkMethodId
   , methodIdName
   , methodIdDescriptor
-  -- , methodIdToText
+  , methodIdToText
 
   , FieldDescriptor (..)
   , fieldDType
@@ -47,12 +47,14 @@ module Jvmhs.Data.Type
   , mkFieldId
   , fieldIdName
   , fieldIdDescriptor
-  -- , fieldIdToText
+  , fieldIdToText
 
   , InClass
   , inClass
   , inClassName
   , inId
+  , inClassToText
+
   , AbsMethodId
   , AbsFieldId
 
@@ -63,20 +65,26 @@ module Jvmhs.Data.Type
   , FAccessFlag (..)
   , CAccessFlag (..)
   , ICAccessFlag (..)
+
+  , toText
   ) where
 
 import           Control.Lens
 import           Data.Aeson
-import           Data.Aeson.Encoding (text)
+import           Data.Aeson.Encoding     (text)
 import           Data.Aeson.TH
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as C
+import           Data.Aeson.Types        (Parser)
+import qualified Data.ByteString         as BS
+import qualified Data.ByteString.Char8   as C
 import           Data.Char
-import qualified Data.Text as Text
+import           Data.Monoid
+import qualified Data.Text               as Text
 
 import           Language.JVM.AccessFlag
-import           Language.JVM.Constant hiding (FieldId, MethodId, MethodHandle, InClass(..), AbsMethodId, AbsFieldId)
-import qualified Language.JVM.Constant as B
+import           Language.JVM.Constant   hiding (AbsFieldId, AbsMethodId,
+                                          FieldId, InClass (..), MethodHandle,
+                                          MethodId)
+import qualified Language.JVM.Constant   as B
 import           Language.JVM.Type
 -- import           Language.JVM.Utils
 
@@ -169,24 +177,15 @@ fieldIdDescriptor =
     (\(B.FieldId nt) a -> mkFieldId (B.ntName nt) a)
 
 
-instance ToJSON FieldId where
-  toJSON (B.FieldId f) = String . toText $ f
+parseFieldId :: Text.Text -> Parser FieldId
+parseFieldId e = do
+  let Right x = fromText e
+  return $ B.FieldId x
 
-instance ToJSON MethodId where
-  toJSON (B.MethodId m) = String . toText $ m
-
-instance ToJSONKey ClassName where
-  toJSONKey = ToJSONKeyText f (text . f)
-    where f = view fullyQualifiedName
-
-instance ToJSONKey FieldId where
-  toJSONKey = ToJSONKeyText f (text . f)
-    where f (B.FieldId g)= toText g
-
-instance ToJSONKey MethodId where
-  toJSONKey = ToJSONKeyText f (text . f)
-    where f (B.MethodId g)= toText g
-
+parseMethodId :: Text.Text -> Parser MethodId
+parseMethodId e = do
+  let Right x = fromText e
+  return $ B.MethodId x
 type InClass a = B.InClass a B.High
 
 inClass :: ClassName -> a -> InClass a
@@ -204,7 +203,49 @@ inId = lens (\(B.InClass _ i) -> i) (\(B.InClass cn _) i -> inClass cn i)
 deriving instance Ord AbsMethodId
 deriving instance Ord AbsFieldId
 
+inClassToText :: (a -> Text.Text) -> Getter (InClass a) Text.Text
+inClassToText f = to (\x -> x^.inClassName.fullyQualifiedName <> "." <> f (x^.inId))
+
+methodIdToText :: B.MethodId -> Text.Text
+methodIdToText (B.MethodId nt) =
+  toText nt
+
+fieldIdToText :: B.FieldId -> Text.Text
+fieldIdToText (B.FieldId nt) =
+  toText nt
+
 -- * Instances
+
+instance ToJSON FieldId where
+  toJSON (B.FieldId f) = String . toText $ f
+
+instance ToJSON MethodId where
+  toJSON (B.MethodId m) = String . toText $ m
+
+instance FromJSON FieldId where
+  parseJSON = withText "FieldId" parseFieldId
+
+instance FromJSON MethodId where
+  parseJSON = withText "MethodId" parseMethodId
+
+instance ToJSONKey ClassName where
+  toJSONKey = ToJSONKeyText f (text . f)
+    where f = view fullyQualifiedName
+
+instance FromJSONKey ClassName where
+  fromJSONKey = FromJSONKeyText (view $ from fullyQualifiedName)
+
+instance ToJSONKey FieldId where
+  toJSONKey = ToJSONKeyText fieldIdToText (text . fieldIdToText)
+
+instance FromJSONKey FieldId where
+  fromJSONKey = FromJSONKeyTextParser parseFieldId
+
+instance ToJSONKey MethodId where
+  toJSONKey = ToJSONKeyText methodIdToText (text . methodIdToText)
+
+instance FromJSONKey MethodId where
+  fromJSONKey = FromJSONKeyTextParser parseMethodId
 
 instance ToJSON ClassName where
   toJSON = String . view fullyQualifiedName

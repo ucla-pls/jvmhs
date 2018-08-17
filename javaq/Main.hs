@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveAnyClass  #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE DeriveGeneric   #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -21,7 +23,9 @@ import qualified Data.Text.Encoding as Text
 import           GHC.Generics (Generic)
 import           System.Console.Docopt
 import           System.Environment (getArgs)
-import           System.IO (hPrint, stderr)
+import           System.IO (hPrint, stderr, hPutStrLn)
+
+import           Data.Maybe
 
 import           Jvmhs
 
@@ -36,6 +40,7 @@ Options:
   --cp=<classpath>         The classpath to search for classes.
   --stdlib                 Also analyse the stdlib.
   --jre=<jre>              The location of the stdlib.
+  --stub=<stub>            Precalcualated stubs of libraries, to use in hierarcy analysis
   -f, --format=<format>    The Output format, see Output formats.
   -h, --help               Display this help page.
 
@@ -71,6 +76,15 @@ Output Formats:
 
     dot-class:
       A class dependecy graph.
+
+    dot-hierarchy:
+      A class hierarchy graph.
+
+  stub:
+    Produce stubs to use in a hierarchy analysis
+
+  defs:
+    Output definitions of all methods.
 |]
 
 data GraphForm
@@ -81,6 +95,7 @@ data GraphForm
 data GraphType
   = GTClass
   | GTCall
+  | GTHierarchy
   deriving (Show, Eq)
 
 data DTOType
@@ -94,6 +109,8 @@ data OutputFormat
   | OutputJSONs DTOType
   | OutputCSV
   | OutputDot GraphType GraphForm
+  | OutputStubs
+  | OutputDefinitions
   deriving (Show)
 
 -- | The config file dictates the execution of the program
@@ -103,6 +120,7 @@ data Config = Config
   , _cfgUseStdlib  :: Bool
   , _cfgClassNames :: [ ClassName ]
   , _cfgFormat     :: OutputFormat
+  , _cfgStubs      :: HierarchyStubs
   } deriving (Show)
 
 makeLenses ''Config
@@ -111,7 +129,7 @@ data ClassOverview = ClassOverview
   { _coName       :: ! ClassName
   , _coSha256     :: ! Text.Text
   , _coSize       :: ! Int
-  , _coSuper      :: ! ClassName
+  , _coSuper      :: ! (Maybe ClassName)
   , _coInterfaces :: ! ([ ClassName ])
   , _coFields     :: ! ([ FieldId ])
   , _coMethods    :: ! ([ MethodId ])
@@ -121,7 +139,7 @@ data ClassCount = ClassCount
   { _ccName       :: ! ClassName
   , _ccSha256     :: ! Text.Text
   , _ccSize       :: ! Int
-  , _ccSuper      :: ! ClassName
+  , _ccSuper      :: ! (Maybe ClassName)
   , _ccInterfaces :: ! Int
   , _ccFields     :: ! Int
   , _ccMethods    :: ! Int
@@ -156,6 +174,12 @@ parseOutputFormat str =
     "dot-call"      -> Just $ OutputDot GTCall GFFull
     "dot-call-scc"  -> Just $ OutputDot GTCall GFSCC
 
+    "dot-hierarchy"      -> Just $ OutputDot GTHierarchy GFFull
+
+    "stub"          -> Just $ OutputStubs
+
+    "defs"          -> Just $ OutputDefinitions
+
     _               -> Nothing
 
 
@@ -168,6 +192,17 @@ parseConfig args = do
 
   classnames <- readClassNames
 
+  stubs :: HierarchyStubs <-
+    case getArg args (longOption "stub") of
+      Just fn -> do
+        x <- decode <$> BS.readFile fn
+        case x of
+          Just x -> do
+            hPutStrLn stderr "Loaded stub-file"
+            return x
+          Nothing -> fail $ "Could not decode " ++ fn
+      Nothing -> return $ mempty
+
   return $ Config
     { _cfgClassPath =
         case concatMap splitClassPath $ getAllArgs args (longOption "cp") of
@@ -177,6 +212,7 @@ parseConfig args = do
     , _cfgJre = getArg args (longOption "jre")
     , _cfgClassNames = classnames
     , _cfgFormat = oformat
+    , _cfgStubs = stubs
     }
 
   where
@@ -246,7 +282,7 @@ decompile cfg = do
                 [ Text.unpack (cc^.ccName.fullyQualifiedName)
                 , Text.unpack (cc^.ccSha256)
                 , show (cc^.ccSize)
-                , Text.unpack (cc^.ccSuper.fullyQualifiedName)
+                , Text.unpack (fromMaybe "java/lang/Object" (cc^?ccSuper._Just.fullyQualifiedName))
                 , show (cc^.ccInterfaces)
                 , show (cc^.ccFields)
                 , show (cc^.ccMethods)
@@ -255,17 +291,36 @@ decompile cfg = do
         ) (const $ return ())
     OutputDot GTClass gf -> do
       (graph, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
-        mkClassGraph classnames
-      putStrLn $ graphToDot graph
+        mkClassGraph
+      putStrLn $ graphToDot' graph (Text.unpack . view fullyQualifiedName) (const "")
     OutputDot GTCall gf -> do
-      (graph, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
-        hry <- calculateHierarchy classnames
-        methods <- classnames ^!!
-          (ifolded . selfIndex <. pool . ifolded . classMethods . ifolded . asIndex)
-          . withIndex . to (uncurry inClass)
-        mkCallGraph hry methods
-      putStrLn $ graphToDot graph
-   where
+      ((missing, graph), _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+        (_, hry) <- getHierarchyWithStubs (cfg ^. cfgStubs)
+        mkCallGraph hry
+      putStrLn $ graphToDot' graph (Text.unpack . view (inClassToText methodIdToText)) (const "")
+      forM_ missing $ \mn -> do
+        hPutStrLn stderr $ "WARN: missing " ++ Text.unpack (mn ^. inClassToText methodIdToText)
+    OutputDot GTHierarchy gf -> do
+      ((missing, graph), _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+        (missing, hry) <- getHierarchyWithStubs (cfg ^. cfgStubs)
+        return (missing, hry ^. hryGraph)
+      putStrLn $ graphToDot' graph (Text.unpack . view fullyQualifiedName) show
+      forM_ missing $ \cn -> do
+        hPutStrLn stderr $ "WARN: missing " ++ show cn
+    OutputStubs -> do
+      (results, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+        expandStubs (cfg ^. cfgStubs)
+      BS.putStrLn $ encode results
+    -- OutputDefinitions -> do
+    --   (results, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+    --     (_, hry) <- getHierarchyWithStubs (cfg ^. cfgStubs)
+    --     -- methods <- classnames ^!!
+    --     --   (ifolded . selfIndex <. pool . ifolded . classMethods . ifolded . asIndex)
+    --     --   . withIndex . to (uncurry inClass)
+    --     -- return [ (m ^. inClassToText methodIdToText, callSites hry m ^.. folded . inClassToText methodIdToText) | m <- methods ]
+    --   BS.putStrLn $ encode results
+
+  where
      encode' :: ToJSON e => Either a e -> IO (Either a ())
      encode' =
        either (return . Left) (fmap Right . BS.putStrLn . encode)

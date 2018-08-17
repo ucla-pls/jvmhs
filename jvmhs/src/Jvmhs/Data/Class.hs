@@ -63,10 +63,13 @@ module Jvmhs.Data.Class
   , Method (..)
   , MethodContent (..)
   , methodAccessFlags
+  , methodCAccessFlags
   , methodName
   , methodDescriptor
   , methodCode
+  , methodCCode
   , methodExceptions
+  , methodCExceptions
   , methodReturnType
   , methodArgumentTypes
   , methodId
@@ -137,7 +140,7 @@ data InnerClass = InnerClass
 data Class = Class
   { _className             :: ClassName
   -- ^ the name of the class
-  , _classSuper            :: ClassName
+  , _classSuper            :: Maybe ClassName
   -- ^ the name of the super class
   , _classAccessFlags      :: Set.Set CAccessFlag
   -- ^ access flags of the class
@@ -264,7 +267,7 @@ asMethodId (cls, m) = inClass (cls ^.className) (m ^.methodId)
 
 traverseClass ::
   (Traversal' ClassName a)
-  -> (Traversal' ClassName a)
+  -> (Traversal' (Maybe ClassName) a)
   -> (Traversal' (Set.Set CAccessFlag) a)
   -> (Traversal' (Set.Set ClassName) a)
   -> (Traversal' (Map.Map FieldId FieldContent) a)
@@ -373,7 +376,7 @@ methodReturnType =
 -- | The dependencies of a class
 dependencies :: Class -> [ ClassName ]
 dependencies cls =
-  cls ^. classSuper : cls ^.. classInterfaces . folded
+  cls ^.. classSuper ._Just ++ cls ^.. classInterfaces . folded
 
 -- | Check if a class is an interface
 isInterface :: Class -> Bool
@@ -384,7 +387,7 @@ fromClassFile :: B.ClassFile B.High -> Class
 fromClassFile =
   Class
   <$> B.cThisClass
-  <*> B.cSuperClass
+  <*> (\x -> if B.cThisClass x == "java/lang/Object" then Nothing else Just (B.cSuperClass x))
   <*> B.cAccessFlags
   <*> Set.fromList . B.unSizedList . B.cInterfaces
   <*> Map.fromList . map fromBField . B.cFields
@@ -437,7 +440,7 @@ toClassFile =
     <*> B.BitSet . _classAccessFlags
 
     <*> _className
-    <*> _classSuper
+    <*> fromMaybe "java/lang/Object" . _classSuper
 
     <*> B.SizedList . Set.toList . _classInterfaces
     <*> B.SizedList . map toBField . view classFieldList

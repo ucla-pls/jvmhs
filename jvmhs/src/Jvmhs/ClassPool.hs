@@ -36,6 +36,11 @@ module Jvmhs.ClassPool
   , modifyClass
   , modifyClasses
 
+  , mapClasses
+  , collectClasses
+
+  -- ** Access Methods and Fields
+  , getMethod
 
   -- ** Lens helpers
   , pool
@@ -198,7 +203,18 @@ onlyClasses' =
 -- | Get all the classes from the class pool
 allClasses :: MonadClassPool m => m [Class]
 allClasses =
-  flip appEndo [] . getConst <$> traverseClasses (Const . Endo . (:))
+  mapClasses id
+
+-- | Get all the classes from the class pool
+collectClasses :: Monoid r => MonadClassPool m => (Class -> r) -> m r
+collectClasses f =
+  getConst <$> traverseClasses (Const . f)
+
+-- | Get all the classes from the class pool
+mapClasses :: MonadClassPool m => (Class -> r) -> m [r]
+mapClasses f =
+  flip appEndo [] <$> collectClasses (\c -> Endo (f c:))
+
 
 -- | A pool action can be used as part of a lens to access a class.
 -- >>> "java.lang.Object" ^! pool.className
@@ -271,6 +287,14 @@ saveClass ::
 saveClass fp cn = do
   saveClasses fp [cn]
 
+
+getMethod ::
+  (MonadClassPool m )
+  => AbsMethodId
+  -> m (Maybe Method)
+getMethod mid = do
+  cls <- getClass (mid^.inClassName)
+  return $ cls^?_Just.classMethod(mid^.inId)._Just
 
 instance MonadClassPool m => MonadClassPool (ReaderT r m) where
   alterClass f cn = lift $ fmap (fmap lift) $ alterClass f cn

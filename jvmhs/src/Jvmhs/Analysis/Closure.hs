@@ -50,11 +50,11 @@ type ClassGraph = Graph ClassName ()
 
 -- | Given a foldable structure over 'ClassName's compute a ClassGraph.
 mkClassGraph ::
-  (Foldable t, MonadClassPool m)
-  => t ClassName
-  -> m ClassGraph
-mkClassGraph clss = do
-  mkGraph clss <$> clss ^! folded.pool._Just.to outEdges
+  MonadClassPool m
+  => m ClassGraph
+mkClassGraph = do
+  clss <- allClassNames
+  mkGraph clss <$> collectClasses outEdges
   where
     outEdges cls =
       let cn = cls^.className
@@ -87,22 +87,23 @@ type CallGraph = Graph AbsMethodId ()
 
 -- | Given a foldable structure over 'AbsMethodId's compute a CallGraph.
 mkCallGraph ::
-  forall t m. (Foldable t, MonadClassPool m)
+  forall m. (MonadClassPool m)
   => Hierarchy
-  -> t AbsMethodId
-  -> m CallGraph
-mkCallGraph hry mids = do
-  calls <-
-    mids ^! folded
-      . ( selfIndex
-          <. act methodFromId
-           . ifolded . _2 . methodNames
-           . act (callSites hry)
-           . ifolded )
-      . to asMethodId
-      . withIndex
-      . to (\(a,b) -> S.singleton (a, b, ()))
-  return $ mkGraph mids calls
+  -> m ([AbsMethodId], CallGraph)
+mkCallGraph hry = do
+  methods <- concat <$>
+    mapClasses (\c -> [(asMethodId (c, m), setOf methodNames m) | m <- c^.classMethodList])
+  let (missing, edges) = partitionEithers $
+          methods ^.. folded
+                    . to (\(mid, m) -> [(mid,,()) <$> getDeclartion mid' | mid' <- S.toList m ])
+                    . folded
+  return (missing, mkGraph (methods^..folded._1) edges)
+  where
+    getDeclartion mid =
+      case declaration hry mid of
+        Just x -> Right x
+        Nothing -> Left mid
+
 
 -- | Computes the method closure
 computeMethodClosure ::
@@ -118,9 +119,10 @@ computeMethodClosure hry =
           return known
       | otherwise = do
           -- First get all possible implementation
-          impls <- wave ^!! folded . act (callSites hry) . folded
+          let mths = setOf (folded . to (callSites hry) . folded) wave
+          impls <- mths ^!! folded.(selfIndex <. act getMethod . folded) . withIndex
           let
-            found = setOf (folded . to asMethodId) impls
+            found = setOf (folded . _1) impls
             known' = known `S.union` found
             front = setOf (folded . _2 . methodNames) impls
           go known' (front S.\\ known')
