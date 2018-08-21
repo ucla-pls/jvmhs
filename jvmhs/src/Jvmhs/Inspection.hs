@@ -231,8 +231,28 @@ instance Inspectable (B.InvokeDynamic B.High) where
   classNames g (B.InvokeDynamic i dr) =
     B.InvokeDynamic i <$> classNames g dr
 
--- TODO: Implement method handle
 instance Inspectable (B.MethodHandle B.High) where
+  classNames g c =
+    case c of
+      B.MHField x     -> B.MHField <$> classNames g x
+      B.MHMethod x    -> B.MHMethod <$> classNames g x
+      B.MHInterface x -> B.MHInterface <$> classNames g x
+
+instance Inspectable (B.MethodHandleField B.High) where
+  classNames g (B.MethodHandleField k ab) =
+    B.MethodHandleField k <$> classNames g ab
+
+instance Inspectable (B.MethodHandleInterface B.High) where
+  classNames g (B.MethodHandleInterface ab) =
+    B.MethodHandleInterface <$> classNames g ab
+
+instance Inspectable (B.MethodHandleMethod B.High) where
+  classNames g c =
+    case c of
+      B.MHInvokeVirtual r     -> B.MHInvokeVirtual <$> classNames g r
+      B.MHInvokeStatic  r     -> B.MHInvokeStatic  <$> classNames g r
+      B.MHInvokeSpecial  r    -> B.MHInvokeSpecial  <$> classNames g r
+      B.MHNewInvokeSpecial  r -> B.MHNewInvokeSpecial  <$> classNames g r
 
 instance Inspectable FieldDescriptor where
   classNames g fd =
@@ -246,6 +266,12 @@ instance Inspectable MethodDescriptor where
       <*> traverse (classNames g) (methodDescriptorReturnType md)
 
 instance Inspectable JValue where
+  classNames g t =
+    case t of
+      VClass cn        -> VClass <$> g cn
+      VMethodType md   -> VMethodType <$> classNames g md
+      VMethodHandle md -> VMethodHandle <$> classNames g md
+      a                -> pure a
 
 instance Inspectable JType where
   classNames g t =
