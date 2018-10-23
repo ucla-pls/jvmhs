@@ -86,7 +86,6 @@ module Jvmhs.ClassPool
 
   ) where
 
--- import           Control.Monad          (foldM)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Class
@@ -103,10 +102,8 @@ import           Data.Monoid
 import           Data.Foldable as F
 
 import qualified Data.ByteString.Lazy as BL
---import qualified Data.ByteString as BS
 
-import           Debug.Trace
-
+-- jvmhs
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Type
@@ -263,7 +260,7 @@ loadClasses = do
 -- | Load all the classes from a class reader into the class reader
 loadClassesFromReader ::
   (ClassReader r, MonadIO m, MonadClassPool m)
-  => r -> m [ClassPoolReadError]
+  => ReaderOptions r -> m [ClassPoolReadError]
 loadClassesFromReader =
   runClassReaderT loadClasses
 
@@ -314,7 +311,7 @@ type ClassPoolState = M.Map ClassName Class
 -- | Load the class pool state upfront
 loadClassPoolState ::
   (ClassReader r, MonadIO m)
-  => r
+  => ReaderOptions r
   -> m ([ClassPoolReadError], ClassPoolState)
 loadClassPoolState =
   runClassPoolTWithReader return
@@ -375,7 +372,7 @@ runClassPool m = runIdentity . runClassPoolT m
 runClassPoolTWithReader ::
      (ClassReader r, MonadIO m)
   => ([ClassPoolReadError] -> ClassPoolT m a)
-  -> r
+  -> ReaderOptions r
   -> m (a, ClassPoolState)
 runClassPoolTWithReader fm r =
   runClassPoolT (loadClassesFromReader r >>= fm) mempty
@@ -388,7 +385,7 @@ data ClassState
 type CachedClassPoolState = M.Map ClassName ClassState
 
 newtype CachedClassPoolT r m a = CachedClassPoolT
-  { runCachedClassPoolT' :: StateT CachedClassPoolState (ReaderT r m) a }
+  { runCachedClassPoolT' :: StateT CachedClassPoolState (ReaderT (ReaderOptions r) m) a }
   deriving
     ( Functor
     , Applicative
@@ -512,18 +509,22 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
 runCachedClassPoolT ::
      (ClassReader r, MonadIO m)
   => CachedClassPoolT r m a
-  -> r
+  -> ReaderOptions r
   -> m (a, CachedClassPoolState)
 runCachedClassPoolT (CachedClassPoolT m) r = do
-  cns <- liftIO $ classes r
-  flip runReaderT r . flip runStateT (M.fromList [ (cn,CSUnread) | (cn,_) <- cns ]) $ m
+  cns <- liftIO $ classes (classReader r)
+  runReaderT
+   ( runStateT
+     m
+     (M.fromList [ (fst c,CSUnread) | c <- cns ])
+   ) r
 
 type CachedClassPool = CachedClassPoolT ClassPreloader IO
 
 -- | Run a `CachedClassPool` given a class pool
 runCachedClassPool ::
   CachedClassPool a
-  -> ClassPreloader
+  -> ReaderOptions ClassPreloader
   -> IO (a, CachedClassPoolState)
 runCachedClassPool =
   runCachedClassPoolT

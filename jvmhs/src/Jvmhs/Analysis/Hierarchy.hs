@@ -1,7 +1,7 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
 {-
 Module      : Jvmhs.Analysis.Hierarchy
 Copyright   : (c) Christian Gram Kalhauge, 2017
@@ -13,7 +13,7 @@ this module expects a type checking hierarchy.
 -}
 module Jvmhs.Analysis.Hierarchy
   (
-  -- * Hierachy
+  -- * Hierarchy
     Hierarchy (..)
   , hryStubs
   , hryGraph
@@ -31,11 +31,9 @@ module Jvmhs.Analysis.Hierarchy
   , expandStubs
 
   -- ** Creation
-
   , getHierarchy
   , getHierarchyWithStubs
   , calculateHierarchy
-
 
   -- ** Classes
   , implementations
@@ -45,30 +43,6 @@ module Jvmhs.Analysis.Hierarchy
   , declaration
   , callSites
   , requiredMethods
-
-  -- , hryNodes
-  -- , hryImplements
-  -- , hryExtends
-  -- , calculateHierarchy
-  -- , expandHierarchy
-
-  -- -- ** Classes
-  -- , superclasses
-  -- , implementations
-
-  -- -- ** Fields
-  -- , classNameOfFieldId
-  -- , fieldFromId
-
-  -- ** Methods
-  -- , classNameOfMethodId
-  -- , methodFromId
-  -- , canonicalMethodId
-  -- , callSites
-  -- , methodImpls'
-  -- , methodImpls
-  -- , isMethodRequired
-
   ) where
 
 
@@ -78,39 +52,25 @@ import           Control.Monad
 import           Data.Monoid
 
 import           Data.Aeson
-import           Data.Maybe
 import           Data.Aeson.TH
--- import           Data.Set
--- import           Data.Graph.Inductive.Basic
--- import           Data.Graph.Inductive.Graph
--- import           Data.Graph.Inductive.PatriciaTree
--- import           Data.Graph.Inductive.NodeMap
--- import           Data.Graph.Inductive.Query.DFS
+import           Data.Maybe
 
 import           Jvmhs.ClassPool
-import           Jvmhs.Data.Type
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Graph
+import           Jvmhs.Data.Type
 
-import qualified Data.Set as S
-import qualified Data.Set.Lens as S
-import qualified Data.Map as M
-
-
--- -- | The class hierarchy analysis results in two graphs, a implements graph and
--- -- an extends graph.
--- data Hierarchy = Hierarchy
---   { _hryNodes      :: NodeMap ClassName
---   , _hryGraph      :: Gr ClassName HEdge
---   } deriving (Show, Eq)
+import qualified Data.Map         as M
+import qualified Data.Set         as S
+import qualified Data.Set.Lens    as S
 
 -- | A hierarchy stub, is the only information needed to calculate the
 -- hierarchy. The benifit is that this can be loaded up front.
 data HierarchyStub = HierarchyStub
-  { _hrySuper :: Maybe ClassName
+  { _hrySuper      :: Maybe ClassName
   , _hryInterfaces :: S.Set ClassName
-  , _hryMethods :: M.Map MethodId Bool
-  , _hryFields :: S.Set FieldId
+  , _hryMethods    :: M.Map MethodId Bool
+  , _hryFields     :: S.Set FieldId
   } deriving (Show, Eq)
 
 makeLenses ''HierarchyStub

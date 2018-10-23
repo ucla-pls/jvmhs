@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -43,8 +43,6 @@ import           Jvmhs.Data.Class
 import           Jvmhs.Data.Graph
 import           Jvmhs.Data.Type
 import           Jvmhs.Inspection
-
-import Debug.Trace
 
 type ClassGraph = Graph ClassName ()
 
@@ -101,7 +99,7 @@ mkCallGraph hry = do
   where
     getDeclartion mid =
       case declaration hry mid of
-        Just x -> Right x
+        Just x  -> Right x
         Nothing -> Left mid
 
 

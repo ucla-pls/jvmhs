@@ -77,7 +77,6 @@ import           Data.Aeson.Types        (Parser)
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Char8   as C
 import           Data.Char
-import           Data.Monoid
 import qualified Data.Text               as Text
 
 import           Language.JVM.AccessFlag

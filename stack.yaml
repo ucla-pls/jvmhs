@@ -7,14 +7,11 @@ packages:
     git: git@bitbucket.org:ucla-pls/reduce.git
     commit: d74c8853aee45e86f0dc7e1113f2cc47a4ec23c4 
   extra-dep: true
-- location:
-    git: git@github.com:ucla-pls/jvm-binary.git
-    commit: 1180eb89365fcac7d7a0a71fa906cea3c63a05de
-  extra-dep: true
 extra-deps: 
   - fgl-visualize-0.1.0.1
   - dotgen-0.4.2
   - mtl-2.2.2
+  - jvm-binary-0.2.0
 flags: {}
 extra-package-dbs:
 build:

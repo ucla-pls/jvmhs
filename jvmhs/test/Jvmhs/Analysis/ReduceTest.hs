@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 module Jvmhs.Analysis.ReduceTest where
 
 import SpecHelper
@@ -7,7 +8,6 @@ import Jvmhs.Analysis.Reduce
 
 import qualified Data.Set     as S
 import qualified Data.Map     as M
-import qualified Data.Vector  as V
 --outputPath :: FilePath
 --outputPath = "test/output/interface"
 --
@@ -67,11 +67,14 @@ spec_inlineInterfaces =
   it "should replace unused interfaces with its parents recursively" $ do
     x <- runTestClassPool' $ do
       -- (found, _) <- computeClassClosure (S.singleton  ("SimpleI"))
-
       iMap  <- findUnusedInterfaces
-      Just cls <- getClass "SimpleI"
-      let newCls = inlineInterfaces iMap cls
-      return $ newCls ^.. classInterfaces . folded
+      getClass "SimpleI" >>= \case
+        Just cls -> do
+          let newCls = inlineInterfaces iMap cls
+          return $ newCls ^.. classInterfaces . folded
+        Nothing -> do
+          return []
+
     x `shouldMatchList` ["Itfc", "ItfcParent"]
 
 spec_reduceInterfaces :: Spec

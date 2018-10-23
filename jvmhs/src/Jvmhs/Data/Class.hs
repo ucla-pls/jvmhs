@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DerivingStrategies        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -165,7 +166,9 @@ data Class = Class
 
 -- | A Field is an id and some content
 newtype Field = Field (FieldId, FieldContent)
-  deriving (Show, Eq, Generic, NFData)
+  deriving (Show, Eq, Generic)
+  deriving anyclass (NFData)
+
 
 mkField :: FieldId -> FieldContent -> Field
 mkField fid fc = Field (fid, fc)
@@ -181,7 +184,8 @@ data FieldContent = FieldContent
 
 -- | A method is an id and some content
 newtype Method = Method (MethodId, MethodContent)
-  deriving (Show, Eq, Generic, NFData)
+  deriving (Show, Eq, Generic)
+  deriving anyclass (NFData)
 
 
 mkMethod :: MethodId -> MethodContent -> Method

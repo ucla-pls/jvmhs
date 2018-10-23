@@ -38,7 +38,7 @@ runTestClassPool ::
   -> IO ([ClassPoolReadError], a)
 runTestClassPool a = do
   r <- preload $ fromClassPathOnly classpath
-  (errs, st) <- loadClassPoolState r
+  (errs, st) <- loadClassPoolState (defaultFromReader r)
   return $ (errs, fst $ runClassPool a st)
 
 runTestClassPool' ::

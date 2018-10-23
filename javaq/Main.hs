@@ -1,29 +1,29 @@
-{-# LANGUAGE DeriveAnyClass  #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE DeriveGeneric   #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE QuasiQuotes     #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections   #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE TupleSections       #-}
 module Main where
 
-import           Control.DeepSeq (NFData, force)
-import           Control.Lens hiding (argument)
+import           Control.DeepSeq            (NFData, force)
+import           Control.Lens               hiding (argument)
 import           Control.Monad
-import           Crypto.Hash.SHA256 (hashlazyAndLength)
+import           Crypto.Hash.SHA256         (hashlazyAndLength)
 import           Data.Aeson
 import           Data.Aeson.TH
-import qualified Data.ByteString.Base16 as B16
+import qualified Data.ByteString.Base16     as B16
 import qualified Data.ByteString.Lazy.Char8 as BS
 import           Data.Either
-import           Data.List as List
-import qualified Data.Text as Text
-import qualified Data.Text.Encoding as Text
-import           GHC.Generics (Generic)
+import           Data.List                  as List
+import qualified Data.Text                  as Text
+import qualified Data.Text.Encoding         as Text
+import           GHC.Generics               (Generic)
 import           System.Console.Docopt
-import           System.Environment (getArgs)
-import           System.IO (hPrint, stderr, hPutStrLn)
+import           System.Environment         (getArgs)
+import           System.IO                  (hPrint, hPutStrLn, stderr)
 
 import           Data.Maybe
 
@@ -41,6 +41,7 @@ Options:
   --stdlib                 Also analyse the stdlib.
   --jre=<jre>              The location of the stdlib.
   --stub=<stub>            Precalcualated stubs of libraries, to use in hierarcy analysis
+  --remove-attr            Remove all attributes
   -f, --format=<format>    The Output format, see Output formats.
   -h, --help               Display this help page.
 
@@ -115,12 +116,13 @@ data OutputFormat
 
 -- | The config file dictates the execution of the program
 data Config = Config
-  { _cfgClassPath  :: ClassPath
-  , _cfgJre        :: Maybe FilePath
-  , _cfgUseStdlib  :: Bool
-  , _cfgClassNames :: [ ClassName ]
-  , _cfgFormat     :: OutputFormat
-  , _cfgStubs      :: HierarchyStubs
+  { _cfgClassPath      :: ClassPath
+  , _cfgJre            :: Maybe FilePath
+  , _cfgUseStdlib      :: Bool
+  , _cfgClassNames     :: [ ClassName ]
+  , _cfgFormat         :: OutputFormat
+  , _cfgStubs          :: HierarchyStubs
+  , _cfgKeepAttributes :: Bool
   } deriving (Show)
 
 makeLenses ''Config
@@ -174,7 +176,7 @@ parseOutputFormat str =
     "dot-call"      -> Just $ OutputDot GTCall GFFull
     "dot-call-scc"  -> Just $ OutputDot GTCall GFSCC
 
-    "dot-hierarchy"      -> Just $ OutputDot GTHierarchy GFFull
+    "dot-hierarchy" -> Just $ OutputDot GTHierarchy GFFull
 
     "stub"          -> Just $ OutputStubs
 
@@ -213,6 +215,7 @@ parseConfig args = do
     , _cfgClassNames = classnames
     , _cfgFormat = oformat
     , _cfgStubs = stubs
+    , _cfgKeepAttributes = not (isPresent args (longOption "remove-attr"))
     }
 
   where
@@ -242,12 +245,13 @@ main = do
 -- | Decompile and print a classfile to stdout
 decompile :: Config -> IO ()
 decompile cfg = do
-  classReader <- preload =<< createClassLoader cfg
+  r <- preload =<< createClassLoader cfg
   classnames <-
     case cfg ^. cfgClassNames of
-      [] -> map fst <$> classes classReader
+      [] -> map fst <$> classes r
       a  -> return a
   let
+    readerOpt = ( defaultFromReader r ) { keepAttributes = _cfgKeepAttributes cfg }
     onEachClass doeach dofinal = do
       (fails,succs) <- partitionEithers <$> forM classnames (
         \cn -> force (over _Left (cn,)) <$> doeach cn
@@ -258,24 +262,24 @@ decompile cfg = do
     OutputJSON dto ->
       case dto of
         FullDTO ->
-          onEachClass (flip readClass classReader) $ BS.putStrLn . encode
+          onEachClass (flip readClass readerOpt) $ BS.putStrLn . encode
         ListedDTO ->
-          onEachClass (readClassOverview classReader) $ BS.putStrLn . encode
+          onEachClass (readClassOverview readerOpt) $ BS.putStrLn . encode
         CountDTO ->
-          onEachClass (readClassCount classReader) $ BS.putStrLn . encode
+          onEachClass (readClassCount readerOpt) $ BS.putStrLn . encode
     OutputJSONs dto ->
       case dto of
         FullDTO ->
-          onEachClass (flip readClass classReader >=> encode') (const $ return ())
+          onEachClass (flip readClass readerOpt >=> encode') (const $ return ())
         ListedDTO ->
-          onEachClass (readClassOverview classReader >=> encode') (const $ return ())
+          onEachClass (readClassOverview readerOpt >=> encode') (const $ return ())
         CountDTO ->
-          onEachClass (readClassCount classReader >=> encode') (const $ return ())
+          onEachClass (readClassCount readerOpt >=> encode') (const $ return ())
     OutputCSV -> do
       putStrLn "class,sha256,size,super,interfaces,fields,methods"
       onEachClass
         (\cn -> do
-          cc' <- readClassCount classReader cn
+          cc' <- readClassCount readerOpt cn
           case cc' of
             Right cc ->
               Right <$> (putStrLn . List.intercalate "," $
@@ -290,29 +294,29 @@ decompile cfg = do
             Left msg -> return $ Left msg
         ) (const $ return ())
     OutputDot GTClass gf -> do
-      (graph, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+      (graph, _) <- flip runClassPoolTWithReader readerOpt $ \_ -> do
         mkClassGraph
       putStrLn $ graphToDot' graph (Text.unpack . view fullyQualifiedName) (const "")
     OutputDot GTCall gf -> do
-      ((missing, graph), _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+      ((missing, graph), _) <- flip runClassPoolTWithReader readerOpt $ \_ -> do
         (_, hry) <- getHierarchyWithStubs (cfg ^. cfgStubs)
         mkCallGraph hry
       putStrLn $ graphToDot' graph (Text.unpack . view (inClassToText methodIdToText)) (const "")
       forM_ missing $ \mn -> do
         hPutStrLn stderr $ "WARN: missing " ++ Text.unpack (mn ^. inClassToText methodIdToText)
     OutputDot GTHierarchy gf -> do
-      ((missing, graph), _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+      ((missing, graph), _) <- flip runClassPoolTWithReader readerOpt $ \_ -> do
         (missing, hry) <- getHierarchyWithStubs (cfg ^. cfgStubs)
         return (missing, hry ^. hryGraph)
       putStrLn $ graphToDot' graph (Text.unpack . view fullyQualifiedName) show
       forM_ missing $ \cn -> do
         hPutStrLn stderr $ "WARN: missing " ++ show cn
     OutputStubs -> do
-      (results, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+      (results, _) <- flip runClassPoolTWithReader readerOpt $ \_ -> do
         expandStubs (cfg ^. cfgStubs)
       BS.putStrLn $ encode results
     -- OutputDefinitions -> do
-    --   (results, _) <- flip runClassPoolTWithReader classReader $ \_ -> do
+    --   (results, _) <- flip runClassPoolTWithReader readerOpt $ \_ -> do
     --     (_, hry) <- getHierarchyWithStubs (cfg ^. cfgStubs)
     --     -- methods <- classnames ^!!
     --     --   (ifolded . selfIndex <. pool . ifolded . classMethods . ifolded . asIndex)
@@ -326,15 +330,15 @@ decompile cfg = do
        either (return . Left) (fmap Right . BS.putStrLn . encode)
 
 readClassOverview ::
-  ClassReader m
-  => m
+  ClassReader r
+  => ReaderOptions r
   -> ClassName
   -> IO (Either ClassReadError ClassOverview)
-readClassOverview classReader cn = do
-  bytes <- getClassBytes classReader cn
+readClassOverview readerOpt cn = do
+  bytes <- getClassBytes (classReader readerOpt) cn
   return $ do
     b <- bytes
-    clsf <- readClassFile' b
+    clsf <- readClassBytes readerOpt b
     let
       cls = convertClass clsf
       (hsh, lth) = hashlazyAndLength b
@@ -349,11 +353,11 @@ readClassOverview classReader cn = do
 
 readClassCount ::
   ClassReader m
-  => m
+  => ReaderOptions m
   -> ClassName
   -> IO (Either ClassReadError ClassCount)
-readClassCount classReader cn = do
-  co' <- readClassOverview classReader cn
+readClassCount readerOpt cn = do
+  co' <- readClassOverview readerOpt cn
   return $ do
     co <- co'
     return $! ClassCount

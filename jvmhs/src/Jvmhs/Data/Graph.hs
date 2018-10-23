@@ -58,31 +58,27 @@ module Jvmhs.Data.Graph
 
 import           Control.DeepSeq
 import           Control.Lens
+import           Data.Foldable                     (toList)
 import qualified Data.Map                          as M
 import           Data.Maybe
 import           Data.Monoid                       ((<>))
 import           Data.Tuple                        (swap)
-import           Data.Foldable (toList)
 
 import qualified Data.IntMap                       as IM
 import qualified Data.IntSet                       as IS
 import qualified Data.List                         as L
-import qualified Data.Vector                       as V
 import qualified Data.Set.Lens                     as S
+import qualified Data.Vector                       as V
 
 import qualified Data.ByteString                   as BS
 import           System.IO
 
 import qualified Data.Attoparsec.ByteString.Char8  as P
 
-import           Debug.Trace
-
 import           Data.Graph.Inductive.Dot          (fglToDot, fglToDotGeneric,
                                                     showDot)
 
---import           Data.Graph.Inductive.Basic
 import qualified Data.Graph.Inductive.Graph        as F
--- import           Data.Graph.Inductive.NodeMap
 import           Data.Graph.Inductive.PatriciaTree
 import           Data.Graph.Inductive.Query.DFS
 
