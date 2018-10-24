@@ -2,6 +2,10 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE LambdaCase              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-
 Module      : Jvmhs.ClassPool
@@ -13,9 +17,6 @@ This module defines the 'MonadClassPool' type class, and multiple
 implementations.
 
 -}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TemplateHaskell            #-}
 module Jvmhs.ClassPool
   (
   -- * MonadClassPool
@@ -84,16 +85,26 @@ module Jvmhs.ClassPool
   , runCachedClassPool
   , runCachedClassPoolT
 
+  , streamClasses
+
   ) where
 
+-- import           Control.Monad          (foldM)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Class
 import           Control.Monad.State.Strict (StateT(..), mapStateT)
 
+-- transformers
+import Data.Functor.Compose
+
+-- lens
 import           Control.Lens
+
+-- lens-action
 import           Control.Lens.Action
 
+-- base
 import           Data.Either                (partitionEithers)
 import qualified Data.Map                   as M
 import qualified Data.Set                   as S
@@ -101,6 +112,7 @@ import           Data.Maybe
 import           Data.Monoid
 import           Data.Foldable as F
 
+-- bytestring
 import qualified Data.ByteString.Lazy as BL
 
 -- jvmhs
@@ -405,67 +417,82 @@ instance (MonadReader r m) => MonadReader r (CachedClassPoolT r' m) where
 cacheClass ::
   (ClassReader r, MonadIO m)
   => ClassName
-  -> CachedClassPoolT r m CachedClassPoolState
+  -> CachedClassPoolT r m ()
 cacheClass n = do
-  cpp <- M.alterF cache n =<< get
-  put cpp
-  return cpp
-  where
-    cache (Just CSUnread) = do
-      ec <- liftIO . readClass n =<< CachedClassPoolT ask
-      return $ case ec of
-        Left _ -> Nothing
-        Right cls -> Just (CSPure cls)
-    cache mc =
-      return mc
+  opt <- CachedClassPoolT ask
+  put =<< M.alterF (traverseState' $ readClassCache opt n) n =<< get
 
--- cachedOnlyClasses' ::
---   (ClassReader r, MonadIO m)
---   => S.Set ClassName
---   -> CachedClassPoolT r m ()
--- cachedOnlyClasses' keep = do
---   cns <- allClassNames
---   modify $
---     \s -> M.fromList . (fmap $
---     \cn -> (cn,
---             if cn `S.member` keep
---             then fromMaybe Nothing $ cn `M.lookup` s
---             else Nothing)) $ cns
-
-inMaybeClassState ::
+traverseState ::
   (Functor f)
   => (Maybe Class -> f (Maybe Class))
-  -> Maybe ClassState
-  -> f (Maybe ClassState)
-inMaybeClassState f x =
-  case x of
-    Nothing -> fmap CSPure <$> f Nothing
-    Just x' -> inClassState (f . Just) x'
-
-inClassState ::
-  (Functor f)
-  => (Class -> f (Maybe Class))
-  -> ClassState
-  -> f (Maybe ClassState)
-inClassState f x =
+  -> ClassState -> f (Maybe ClassState)
+traverseState fn x =
   fmap CSPure <$> case x of
-    CSPure cs -> f cs
-    CSSaved cs _ -> f cs
-    CSUnread -> error "Should not happen!"
+    CSPure cs -> fn (Just cs)
+    CSSaved cs _ -> fn (Just cs)
+    CSUnread -> fn (Nothing)
+
+traverseState' ::
+  (Functor f)
+  => (Maybe Class -> f (Maybe Class))
+  -> (Maybe ClassState -> f (Maybe ClassState))
+traverseState' fn =
+  maybe (fmap CSPure <$> fn Nothing) (traverseState fn)
+
+readClassCache ::
+  (ClassReader r, MonadIO m)
+  => ReaderOptions r
+  -> ClassName
+  -> Maybe Class -> m (Maybe Class)
+readClassCache opt n =
+  maybe (
+    liftIO (readClass n opt) >>= \case
+      Left _ -> return $ Nothing
+      Right cls -> return $ Just cls
+  ) (return . Just . id)
+
+
+-- | Iterate through the classes, does not cache anything.
+streamClasses :: (ClassReader r, MonadIO m)
+  => (Class -> m ())
+  -> CachedClassPoolT r m ()
+streamClasses fn = do
+  lst <- fmap M.toList get
+  opt <- CachedClassPoolT ask
+  lift $ mapM_ (
+    \(cn,cs) ->
+      traverseState
+      ( readClassCache opt cn
+        >=> maybe (return Nothing) (\c -> fn c >> return Nothing)
+      ) cs
+    ) lst
 
 instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) where
-  -- alterClass ::
-  --   forall f. (Functor f) =>
-  --   (Maybe Class -> f (Maybe Class))
-  --   -> ClassName
-  --   -> m (f (m ()))
   alterClass f n = do
-    fmap put . M.alterF (inMaybeClassState f) n <$> cacheClass n
+    cacheClass n
+    fmap put . M.alterF (traverseState' f) n <$> get
 
-  -- | Perform an action over all the classes in the ClassPool
+  -- traverseMaybeWithKey :: Applicative f => (k -> a -> f (Maybe b)) -> Map k a -> f (Map k b)
+  -- traverseClasses :: (Applicative f) => (Class -> f (Maybe Class)) -> m (f (m ()))
+  -- | Perform an action over all the classes in the ClassPool, will read anything that
+  -- is loaded, but only cache the values that are saved.
   traverseClasses f = do
-    mapM_ cacheClass =<< allClassNames
-    fmap put . M.traverseMaybeWithKey (\_ -> inClassState f) <$> get
+    opt <- CachedClassPoolT ask
+    fmap put <$> (getCompose . M.traverseMaybeWithKey (trav f opt) =<< get)
+    where
+      trav ::
+        (ClassReader r, Applicative f)
+        => (Class -> f (Maybe Class))
+        -> ReaderOptions r
+        -> ClassName
+        -> ClassState
+        -> Compose (CachedClassPoolT r m) f (Maybe ClassState)
+      trav fn opt cn = do
+        traverseState $ \cs -> Compose $ do
+          cls <- readClassCache opt cn cs
+          case cls of
+            Just x -> return (fn x)
+            Nothing -> return (pure Nothing)
 
   allClassNames =
     M.keys <$> get
@@ -482,7 +509,8 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
   --   -> m ()
   saveClasses fp cns = do
     bs <- forM cns $ \cn -> do
-      cs <- cacheClass cn
+      cacheClass cn
+      cs <- get
       let (bs, mp) = M.alterF helper cn cs
       put mp
       return ((cn,) <$> bs)
@@ -528,3 +556,24 @@ runCachedClassPool ::
   -> IO (a, CachedClassPoolState)
 runCachedClassPool =
   runCachedClassPoolT
+
+-- inMaybeClassState ::
+--   (Functor f)
+--   => (Maybe Class -> f (Maybe Class))
+--   -> Maybe ClassState
+--   -> f (Maybe ClassState)
+-- inMaybeClassState f x =
+--   case x of
+--     Nothing -> fmap CSPure <$> f Nothing
+--     Just x' -> inClassState (f . Just) x'
+
+-- inClassState ::
+--   (Functor f)
+--   => (Class -> f (Maybe Class))
+--   -> ClassState
+--   -> f (Maybe ClassState)
+-- inClassState f x =
+--   fmap CSPure <$> case x of
+--     CSPure cs -> f cs
+--     CSSaved cs _ -> f cs
+--     CSUnread -> error "Should not happen!"

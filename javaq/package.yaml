@@ -13,7 +13,6 @@ github: ucla-pls/jvmhs
 
 dependencies:
   - base >= 4.10 && < 4.12
-  - docopt
   - lens
   - lens-action
   - aeson
@@ -25,6 +24,9 @@ dependencies:
   - cryptohash-sha256
   - base16-bytestring
   - deepseq
+  - optparse-applicative
+  - ansi-wl-pprint
+  - mtl
 
 executables:
   javaq:

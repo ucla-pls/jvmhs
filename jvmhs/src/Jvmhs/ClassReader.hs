@@ -38,12 +38,16 @@ module Jvmhs.ClassReader
   , readClassFile'
   , convertClass
 
-  , CFolder
+  , ClassContainer (..)
+
+  , CFolder (..)
   , toFilePath
 
-  , CJar
+  , CJar (..)
   , jarArchive
   , jarPath
+
+  , CEntry (..)
 
   , ClassLoader (..)
   , fromClassPath
@@ -55,6 +59,8 @@ module Jvmhs.ClassReader
   , classMap
   , preload
   , preloadClassPath
+
+  , guessJre
   ) where
 
 import           Control.DeepSeq
@@ -72,6 +78,7 @@ import           System.Directory
 import           System.FilePath
 import           System.Process
 
+-- zip-archive
 import           Codec.Archive.Zip
 
 -- jvm-binary
@@ -331,22 +338,22 @@ instance ClassReader CJar where
       Nothing ->
         return $ Left ClassNotFound
 
-  classes (CJar _ arch) =
+  classes jar@(CJar _ arch) =
     return . flip mapMaybe (zEntries arch) $
-      \e -> (,CCEntry (CEntry e)) <$> (asClassName . eRelativePath $ e)
+      \e -> (,CCEntry (CEntry (jar, e))) <$> (asClassName . eRelativePath $ e)
 
-newtype CEntry = CEntry Entry
+newtype CEntry = CEntry (CJar, Entry)
   deriving (Show)
 
 instance ClassReader CEntry where
-  getClassBytes (CEntry entry) cn =
+  getClassBytes (CEntry (_, entry)) cn =
     if asClassName (eRelativePath entry) == Just cn
     then
         return $ Right (fromEntry entry)
     else
         return $ Left ClassNotFound
 
-  classes this@(CEntry entry) =
+  classes this@(CEntry (_, entry)) =
     case asClassName . eRelativePath $ entry of
       Just cn -> return [(cn, CCEntry this)]
       Nothing -> return []
@@ -439,7 +446,8 @@ fromClassPathOnly =
 guessJre :: IO FilePath
 guessJre = do
   java <- readProcess "which" ["java"] ""
-  return $ takeDirectory (takeDirectory java) </> "jre"
+  canon <- canonicalizePath java
+  return $ takeDirectory (takeDirectory canon) </> "jre"
 
 -- | Creates a 'ClassLoader' from a classpath and the jre folder
 fromJreFolder :: [ FilePath ] -> FilePath -> IO ClassLoader
@@ -496,10 +504,9 @@ preload
   -> IO ClassPreloader
 preload r = do
   cls <- classes r
-  return
-    . ClassPreloader
-    . Map.fromListWith (++)
-    $ map (_2 %~ (:[])) cls
+  return . ClassPreloader $
+    flip appEndo []
+    <$> ( Map.fromListWith (<>) $ map (_2 %~ (\e -> Endo (e:))) cls )
 
 -- | Creates a 'ClassPreloader' from a class path, automatically predicts
 -- the java version used using the 'which' command.
