@@ -49,7 +49,7 @@ module Jvmhs.Analysis.Hierarchy
 import           Control.Lens
 
 import           Control.Monad
-import           Data.Monoid
+--import           Data.Monoid
 
 import           Data.Aeson
 import           Data.Aeson.TH
@@ -89,8 +89,7 @@ allStubs ::
   MonadClassPool m
   => m HierarchyStubs
 allStubs =
-   M.fromList . flip appEndo [] . getConst <$>
-     traverseClasses (\c -> Const (Endo ((c^.className, toStub c):)))
+   M.fromList <$> mapClasses (\c -> (c^.className, toStub c))
 
 expandStubs ::
   MonadClassPool m

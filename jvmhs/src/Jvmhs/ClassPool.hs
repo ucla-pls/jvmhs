@@ -39,9 +39,12 @@ module Jvmhs.ClassPool
 
   , mapClasses
   , collectClasses
+  , modifyClassesM
+  , destroyClassesM
 
   -- ** Access Methods and Fields
   , getMethod
+
 
   -- ** Lens helpers
   , pool
@@ -86,6 +89,7 @@ module Jvmhs.ClassPool
   , runCachedClassPoolT
 
   , streamClasses
+  -- , streamClasses'
 
   ) where
 
@@ -98,6 +102,10 @@ import           Control.Monad.State.Strict (StateT(..), mapStateT)
 -- transformers
 import Data.Functor.Compose
 
+-- mtl
+import Control.Monad.Writer
+import Control.Monad.Identity
+
 -- lens
 import           Control.Lens
 
@@ -109,7 +117,7 @@ import           Data.Either                (partitionEithers)
 import qualified Data.Map                   as M
 import qualified Data.Set                   as S
 import           Data.Maybe
-import           Data.Monoid
+-- import           Data.Monoid
 import           Data.Foldable as F
 
 -- bytestring
@@ -132,11 +140,11 @@ class Monad m => MonadClassPool m where
     -> ClassName
     -> m (f (m ()))
 
-  -- | Perform an action over all the classes in the ClassPool
-  traverseClasses ::
-    (Applicative f) =>
-    (Class -> f (Maybe Class))
-    -> m (f (m ()))
+  -- | Alter all classes
+  alterClasses ::
+    (MonadTrans t, Monad (t m))
+    => (Class -> t m (Maybe Class))
+    -> t m ()
 
   -- | Returns a list of class names, each class name is guaranteed to only
   -- appear once in the
@@ -157,13 +165,10 @@ class Monad m => MonadClassPool m where
     void . liftIO . writeClasses fp =<< (cns ^!! folded . pool . _Just)
 
   -- | Run a command in a local environment
-  cplocal ::
-    m a
-    -> m a
+  cplocal :: m a -> m a
 
-  restrictTo ::
-       S.Set ClassName
-    -> m ()
+  restrictTo :: S.Set ClassName -> m ()
+
 
 -- | Get a class from a class pool.
 getClass :: MonadClassPool m => ClassName -> m (Maybe Class)
@@ -183,7 +188,7 @@ modifyClass cn fn =
 -- | Map classes, map over the classes in the class pool
 modifyClasses :: MonadClassPool m => (Class -> Maybe Class) -> m ()
 modifyClasses fn =
-  join $ runIdentity <$> traverseClasses (Identity . fn)
+  runIdentityT $ alterClasses (IdentityT . return . fn)
 
 -- | Check if class exist in class pool.
 hasClass :: MonadClassPool m => ClassName -> m Bool
@@ -215,15 +220,31 @@ allClasses =
   mapClasses id
 
 -- | Get all the classes from the class pool
-collectClasses :: Monoid r => MonadClassPool m => (Class -> r) -> m r
+collectClasses :: forall r m. ( Monoid r, MonadClassPool m ) => (Class -> r) -> m r
 collectClasses f =
-  getConst <$> traverseClasses (Const . f)
+  execWriterT . alterClasses
+  $ \c -> tell (f c) >> return (Just c)
 
 -- | Get all the classes from the class pool
 mapClasses :: MonadClassPool m => (Class -> r) -> m [r]
 mapClasses f =
   flip appEndo [] <$> collectClasses (\c -> Endo (f c:))
 
+-- | Modify all the classes but keep side-effects
+modifyClassesM ::
+  MonadClassPool m
+  => (Class -> m (Maybe Class))
+  -> m ()
+modifyClassesM fn =
+  runIdentityT $ alterClasses (lift . fn)
+
+-- | Destroy all classes in the class pool, but not before loading all of them
+destroyClassesM ::
+  MonadClassPool m
+  => (Class -> m ())
+  -> m ()
+destroyClassesM fn =
+  modifyClassesM (fn >=> const (return Nothing))
 
 -- | A pool action can be used as part of a lens to access a class.
 -- >>> "java.lang.Object" ^! pool.className
@@ -307,9 +328,10 @@ getMethod mid = do
 
 instance MonadClassPool m => MonadClassPool (ReaderT r m) where
   alterClass f cn = lift $ fmap (fmap lift) $ alterClass f cn
+  alterClasses f = alterClasses f
   allClassNames = lift allClassNames
-  traverseClasses f =
-    lift $ fmap (fmap lift) $ traverseClasses f
+  -- traverseClasses f =
+  --   lift $ fmap (fmap lift) $ traverseClasses f
   cplocal m = do
     r <- ask
     lift . cplocal $ runReaderT m r
@@ -350,9 +372,11 @@ instance Monad m => MonadClassPool (ClassPoolT m) where
   alterClass f n = do
     fmap put . M.alterF f n <$> get
 
-  -- | Perform an action over all the classes in the ClassPool
-  traverseClasses f = do
-    fmap put . M.traverseMaybeWithKey (\_ cls -> f cls) <$> get
+  alterClasses f =
+    lift get >>= M.traverseMaybeWithKey (\_ cls -> f cls) >>= lift . put
+  -- -- | Perform an action over all the classes in the ClassPool
+  -- traverseClasses f = do
+  --   fmap put . M.traverseMaybeWithKey (\_ cls -> f cls) <$> get
 
   allClassNames =
      M.keys <$> get
@@ -406,7 +430,7 @@ newtype CachedClassPoolT r m a = CachedClassPoolT
     , MonadIO )
 
 instance MonadTrans (CachedClassPoolT r) where
-  lift m = CachedClassPoolT (lift $ lift m)
+  lift = CachedClassPoolT . lift . lift
 
 instance (MonadReader r m) => MonadReader r (CachedClassPoolT r' m) where
   reader f = lift (reader f)
@@ -414,13 +438,6 @@ instance (MonadReader r m) => MonadReader r (CachedClassPoolT r' m) where
     CachedClassPoolT . StateT $ \s ->
       ReaderT (local f . runReaderT (runStateT (runCachedClassPoolT' m) s))
 
-cacheClass ::
-  (ClassReader r, MonadIO m)
-  => ClassName
-  -> CachedClassPoolT r m ()
-cacheClass n = do
-  opt <- CachedClassPoolT ask
-  put =<< M.alterF (traverseState' $ readClassCache opt n) n =<< get
 
 traverseState ::
   (Functor f)
@@ -432,84 +449,52 @@ traverseState fn x =
     CSSaved cs _ -> fn (Just cs)
     CSUnread -> fn (Nothing)
 
-traverseState' ::
-  (Functor f)
-  => (Maybe Class -> f (Maybe Class))
-  -> (Maybe ClassState -> f (Maybe ClassState))
-traverseState' fn =
-  maybe (fmap CSPure <$> fn Nothing) (traverseState fn)
 
-readClassCache ::
+tryEnsureClass ::
   (ClassReader r, MonadIO m)
-  => ReaderOptions r
-  -> ClassName
+  => ClassName
+  -> ReaderOptions r
   -> Maybe Class -> m (Maybe Class)
-readClassCache opt n =
-  maybe (
-    liftIO (readClass n opt) >>= \case
-      Left _ -> return $ Nothing
-      Right cls -> return $ Just cls
-  ) (return . Just . id)
+tryEnsureClass n opt = \case
+  Nothing -> liftIO (preview _Right <$> readClass n opt)
+  es -> return es
 
-
--- | Iterate through the classes, does not cache anything.
-streamClasses :: (ClassReader r, MonadIO m)
+-- | Iterate through all classes, but does not cache anything.
+streamClasses ::
+  (ClassReader r, MonadIO m)
   => (Class -> m ())
   -> CachedClassPoolT r m ()
 streamClasses fn = do
-  lst <- fmap M.toList get
-  opt <- CachedClassPoolT ask
-  lift $ mapM_ (
-    \(cn,cs) ->
-      traverseState
-      ( readClassCache opt cn
-        >=> maybe (return Nothing) (\c -> fn c >> return Nothing)
-      ) cs
-    ) lst
+  cplocal $ destroyClassesM (lift . fn)
 
 instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) where
-  alterClass f n = do
-    cacheClass n
-    fmap put . M.alterF (traverseState' f) n <$> get
 
-  -- traverseMaybeWithKey :: Applicative f => (k -> a -> f (Maybe b)) -> Map k a -> f (Map k b)
-  -- traverseClasses :: (Applicative f) => (Class -> f (Maybe Class)) -> m (f (m ()))
-  -- | Perform an action over all the classes in the ClassPool, will read anything that
-  -- is loaded, but only cache the values that are saved.
-  traverseClasses f = do
+  alterClass f n = do
     opt <- CachedClassPoolT ask
-    fmap put <$> (getCompose . M.traverseMaybeWithKey (trav f opt) =<< get)
+    m <- liftIO . getCompose . M.alterF (alterer opt) n =<< get
+    return (fmap put m)
     where
-      trav ::
-        (ClassReader r, Applicative f)
-        => (Class -> f (Maybe Class))
-        -> ReaderOptions r
-        -> ClassName
-        -> ClassState
-        -> Compose (CachedClassPoolT r m) f (Maybe ClassState)
-      trav fn opt cn = do
-        traverseState $ \cs -> Compose $ do
-          cls <- readClassCache opt cn cs
-          case cls of
-            Just x -> return (fn x)
-            Nothing -> return (pure Nothing)
+      alterer opt =
+        helper (Compose . fmap f . tryEnsureClass n opt )
+
+      helper fn =
+        maybe (fmap CSPure <$> fn Nothing) (traverseState fn)
+
+  alterClasses f = do
+    opt <- lift $ CachedClassPoolT ask
+    lift get
+      >>= M.traverseMaybeWithKey
+      (\n cls ->
+        traverseState (lift . tryEnsureClass n opt >=> maybe (return Nothing) f) cls
+      )
+      >>= lift . put
 
   allClassNames =
     M.keys <$> get
 
-  -- | Saves only the classes provided in the foldable list of classnames.
-  -- Names not found in the ClassPool are ignored.
-  -- @
-  -- saveClasses "out" ["java.util.ArrayList", "java.util.LinkedList"]
-  -- @
-  -- saveClasses ::
-  --     (MonadIO m, Foldable t)
-  --   => FilePath
-  --   -> t ClassName
-  --   -> m ()
   saveClasses fp cns = do
     bs <- forM cns $ \cn -> do
-      cacheClass cn
+      -- TODO cacheClass cn
       cs <- get
       let (bs, mp) = M.alterF helper cn cs
       put mp
@@ -540,14 +525,11 @@ runCachedClassPoolT ::
   -> ReaderOptions r
   -> m (a, CachedClassPoolState)
 runCachedClassPoolT (CachedClassPoolT m) r = do
-  cns <- liftIO $ classes (classReader r)
-  runReaderT
-   ( runStateT
-     m
-     (M.fromList [ (fst c,CSUnread) | c <- cns ])
-   ) r
+  cns <- liftIO . classes $ classReader r
+  runReaderT ( runStateT m (M.fromList [ (fst c,CSUnread) | c <- cns ])) r
 
-type CachedClassPool = CachedClassPoolT ClassPreloader IO
+type CachedClassPool =
+  CachedClassPoolT ClassPreloader IO
 
 -- | Run a `CachedClassPool` given a class pool
 runCachedClassPool ::
@@ -556,24 +538,3 @@ runCachedClassPool ::
   -> IO (a, CachedClassPoolState)
 runCachedClassPool =
   runCachedClassPoolT
-
--- inMaybeClassState ::
---   (Functor f)
---   => (Maybe Class -> f (Maybe Class))
---   -> Maybe ClassState
---   -> f (Maybe ClassState)
--- inMaybeClassState f x =
---   case x of
---     Nothing -> fmap CSPure <$> f Nothing
---     Just x' -> inClassState (f . Just) x'
-
--- inClassState ::
---   (Functor f)
---   => (Class -> f (Maybe Class))
---   -> ClassState
---   -> f (Maybe ClassState)
--- inClassState f x =
---   fmap CSPure <$> case x of
---     CSPure cs -> f cs
---     CSSaved cs _ -> f cs
---     CSUnread -> error "Should not happen!"

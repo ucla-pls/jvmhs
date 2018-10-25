@@ -276,14 +276,12 @@ createClassLoader :: (MonadReader Config m, MonadIO m) => m ClassLoader
 createClassLoader =
   view cfgUseStdlib >>= \case
     True ->
-      liftIO =<< (
-        fromJreFolder
+      ( fromJreFolder
         <$> view cfgClassPath
         <*> view cfgJre
-      )
+      ) >>= liftIO
     False ->
-      ClassLoader [] []
-      <$> view cfgClassPath
+      ClassLoader [] [] <$> view cfgClassPath
 
 -- import           Control.DeepSeq            (NFData, force)
 -- import           Control.Lens               hiding (argument)
