@@ -44,6 +44,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as D
 
 -- lens
 import           Control.Lens                 hiding (argument)
+import           Data.Set.Lens            (setOf)
 
 -- jvmhs
 import           Jvmhs
@@ -223,27 +224,36 @@ runFormat classloader = \case
 
     void . flip runCachedClassPoolT opts $ do
 
+      let
+        action =
+          case sfn of
+            StreamClassName fn -> do
+              mapM_ (lift . fn) =<< allClassNames
+            StreamContainer fn -> do
+              let cm = classReader opts  ^. classMap
+              set <- Set.fromList <$> allClassNames
+              mapM_ (\(cn, cl) -> lift $ fn (cn, cl))
+                . Map.toList
+                . fmap head
+                . Map.restrictKeys cm $ set
+            StreamClass fn -> do
+              streamClasses fn
+
       view cfgClassNames >>= \case
-        [] -> return ()
+        [] ->
+          action
         classNames -> do
           let classSet = Set.fromList classNames
-          classSet' <- view cfgComputeClosure >>= \case
-            True -> fst <$> computeClassClosure classSet
-            False -> return classSet
-          restrictTo classSet'
 
-      case sfn of
-        StreamClassName fn -> do
-          mapM_ (lift . fn) =<< allClassNames
-        StreamContainer fn -> do
-          let cm = classReader opts  ^. classMap
-          set <- Set.fromList <$> allClassNames
-          mapM_ (\(cn, cl) -> lift $ fn (cn, cl))
-            . Map.toList
-            . fmap head
-            . Map.restrictKeys cm $ set
-        StreamClass fn -> do
-          streamClasses fn
+          view cfgComputeClosure >>= \case
+            True -> do
+              void . computeClassClosureM classSet $ \(_, clss) ->
+                cplocal $ do
+                  restrictTo (setOf (folded.className) clss)
+                  action
+            False -> do
+              restrictTo classSet
+              action
 
   Group ( f:_ ) ->
     runFormat classloader (formatType f)

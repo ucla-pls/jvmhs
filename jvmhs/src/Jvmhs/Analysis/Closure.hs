@@ -17,6 +17,7 @@ closures adds items until everything that needs to be added have been added.
 
 module Jvmhs.Analysis.Closure
   ( computeClassClosure
+  , computeClassClosureM
   , computeMethodClosure
 
   , ClassGraph
@@ -80,6 +81,32 @@ computeClassClosure =
           unknown' = unknown `S.union` missed
           front = setOf (folded.classNames) exists
         go (known', unknown') (front S.\\ known')
+
+-- | Computes the class closure in the current space.
+-- It will only include classes known to the 'MonadClassPool'.
+computeClassClosureM ::
+  MonadClassPool m
+  => S.Set ClassName
+  -> (([ClassName], [Class]) -> m ())
+  -> m (S.Set ClassName, S.Set ClassName)
+computeClassClosureM cls fm =
+  go (S.empty, S.empty) cls
+  where
+    go (!known, !unknown) !wave
+      | S.null wave = do
+        return (known, unknown)
+      | otherwise = do
+        -- List of all the classes that exists
+        res@(notexists, exists) <- partitionEithers <$> wave ^!! folded . pool'
+        fm res
+        let
+          found = setOf (folded.className) exists
+          missed = S.fromList notexists
+          known' = known `S.union` found
+          unknown' = unknown `S.union` missed
+          front = setOf (folded.classNames) exists
+        go (known', unknown') (front S.\\ known')
+
 
 type CallGraph = Graph AbsMethodId ()
 
