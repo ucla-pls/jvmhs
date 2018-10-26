@@ -66,21 +66,7 @@ computeClassClosure ::
   => S.Set ClassName
   -> m (S.Set ClassName, S.Set ClassName)
 computeClassClosure =
-  go (S.empty, S.empty)
-  where
-    go (!known, !unknown) !wave
-      | S.null wave = do
-        return (known, unknown)
-      | otherwise = do
-        -- List of all the classes that exists
-        (notexists, exists) <- partitionEithers <$> wave ^!! folded . pool'
-        let
-          found = setOf (folded.className) exists
-          missed = S.fromList notexists
-          known' = known `S.union` found
-          unknown' = unknown `S.union` missed
-          front = setOf (folded.classNames) exists
-        go (known', unknown') (front S.\\ known')
+  flip computeClassClosureM (const $ return ())
 
 -- | Computes the class closure in the current space.
 -- It will only include classes known to the 'MonadClassPool'.

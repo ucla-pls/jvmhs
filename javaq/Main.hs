@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -220,25 +221,11 @@ runFormat classloader = \case
   Stream sfn -> do
     preloaded' <- liftIO ( preload classloader )
     isFast <- view $ cfgFast
-    let opts = (defaultFromReader preloaded') { keepAttributes = not isFast}
+    let
+      opts = (defaultFromReader preloaded') { keepAttributes = not isFast }
+      action = streamAll opts sfn
 
     void . flip runCachedClassPoolT opts $ do
-
-      let
-        action =
-          case sfn of
-            StreamClassName fn -> do
-              mapM_ (lift . fn) =<< allClassNames
-            StreamContainer fn -> do
-              let cm = classReader opts  ^. classMap
-              set <- Set.fromList <$> allClassNames
-              mapM_ (\(cn, cl) -> lift $ fn (cn, cl))
-                . Map.toList
-                . fmap head
-                . Map.restrictKeys cm $ set
-            StreamClass fn -> do
-              streamClasses fn
-
       view cfgClassNames >>= \case
         [] ->
           action
@@ -280,6 +267,24 @@ formats =
     $ Stream . StreamClass $ liftIO . BS.putStrLn . encode
     ]
   ]
+
+streamAll ::
+  (ClassReader r, MonadIO m, r ~ ClassPreloader)
+  => ReaderOptions r
+  -> StreamFunction m
+  -> CachedClassPoolT r m ()
+streamAll opts = \case
+  StreamClassName fn -> do
+    mapM_ (lift . fn) =<< allClassNames
+  StreamContainer fn -> do
+    let cm = classReader opts  ^. classMap
+    set <- Set.fromList <$> allClassNames
+    mapM_ (\(cn, cl) -> lift $ fn (cn, cl))
+      . Map.toList
+      . fmap head
+      . Map.restrictKeys cm $ set
+  StreamClass fn -> do
+    streamClasses fn
 
 -- | Create a class loader from the config
 createClassLoader :: (MonadReader Config m, MonadIO m) => m ClassLoader
