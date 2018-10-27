@@ -1,13 +1,15 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
 module Jvmhs.Analysis.ReduceTest where
 
-import SpecHelper
-import Jvmhs
-import Jvmhs.Analysis.Reduce
+import           Jvmhs
+import           Jvmhs.Analysis.Reduce
+import           SpecHelper
 
-import qualified Data.Set     as S
-import qualified Data.Map     as M
+import Data.Functor
+
+import qualified Data.HashMap.Strict   as M
+import qualified Data.HashSet          as S
 --outputPath :: FilePath
 --outputPath = "test/output/interface"
 --
@@ -26,7 +28,7 @@ prop_makeConsistent :: Property
 prop_makeConsistent =
   forAll genIFMappings $ \ m ->
     let x = toCannoicalIFMapping m in
-    S.unions (M.elems x) `S.intersection` M.keysSet x === S.empty
+    S.unions (M.elems x) `S.intersection` S.fromMap (x $> ()) === S.empty
 
 
 genIFMappings :: Gen IFMapping
@@ -49,7 +51,7 @@ spec_inlineReplaceMap = do
         , ("Itfc3", S.fromList  [])
         , ("ItfcParent2", S.fromList  ["ItfcParent3"])
         , ("ItfcParent3", S.fromList  ["ItfcParent4"])
-        ]) :: M.Map ClassName (S.Set ClassName)
+        ]) :: M.HashMap ClassName (S.HashSet ClassName)
 
   let mapAfterReplacement = (M.fromList
         [ ("Itfc1", S.fromList ["ItfcParent1", "ItfcParent4"])
@@ -57,7 +59,7 @@ spec_inlineReplaceMap = do
         , ("Itfc3", S.fromList [])
         , ("ItfcParent2", S.fromList ["ItfcParent4"])
         , ("ItfcParent3", S.fromList  ["ItfcParent4"])
-        ]) :: M.Map ClassName (S.Set ClassName)
+        ]) :: M.HashMap ClassName (S.HashSet ClassName)
   it "should resursively replace val if vals are contain in the keySet" $ do
     (M.toList $ toCannoicalIFMapping unusedMap)
       `shouldMatchList` (M.toList mapAfterReplacement)

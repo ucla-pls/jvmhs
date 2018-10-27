@@ -15,7 +15,8 @@ This module inspects the bytecode data structure.
 module Jvmhs.Inspection
   where
 
-import qualified Data.Set                             as Set
+-- import qualified Data.Set                             as Set
+import qualified Data.HashSet                         as HashSet
 import qualified Data.Text                            as Text
 
 import           Control.Lens
@@ -32,7 +33,7 @@ class Inspectable a where
   classNames :: Traversal' a ClassName
   classNames _ = pure
 
-  methodNames :: Traversal' a AbsMethodId
+  methodNames :: Traversal' a AbsMethodName
   methodNames _ = pure
 
 nothing :: Traversal' a b
@@ -43,7 +44,7 @@ instance Inspectable Class where
   classNames =
     traverseClass
       id (traverse.id) nothing
-      (iso Set.toList Set.fromList . traverse)
+      (iso HashSet.toList HashSet.fromList . traverse)
       (mapAsFieldList.traverse.classNames)
       (mapAsMethodList.traverse.classNames)
       (traverse.classNames)
@@ -68,7 +69,7 @@ instance Inspectable InnerClass where
     InnerClass
       <$> (g . _innerClass $ s)
       <*> (traverse g . _innerOuterClass $ s)
-      <*> (pure . _innerName $ s)
+      <*> (pure . _innerClassName $ s)
       <*> (pure . _innerAccessFlags $ s)
 
 instance Inspectable Method where
@@ -116,11 +117,11 @@ instance Inspectable ByteCodeOpr where
       B.Get fa c          -> B.Get fa <$> classNames g c
       B.Put fa c          -> B.Put fa <$> classNames g c
       B.Invoke r          -> B.Invoke <$> classNames g r
-      B.New c             -> B.New <$> g c
+      B.New c             -> B.New <$> classNames g c
       B.NewArray c        -> B.NewArray <$> classNames g c
-      B.MultiNewArray c v -> flip B.MultiNewArray v <$> g c
-      B.CheckCast c       -> B.CheckCast <$> g c
-      B.InstanceOf c      -> B.InstanceOf <$> g c
+      B.MultiNewArray c v -> flip B.MultiNewArray v <$> classNames g c
+      B.CheckCast c       -> B.CheckCast <$> classNames g c
+      B.InstanceOf c      -> B.InstanceOf <$> classNames g c
       _                   -> pure o
 
   methodNames g o =
@@ -143,7 +144,7 @@ instance Inspectable StackMapTable where
 instance Inspectable VerificationTypeInfo where
   classNames g c =
     case c of
-      B.VTObject r -> B.VTObject <$> g r
+      B.VTObject r -> B.VTObject <$> classNames g r
       _            -> pure c
 
 instance Inspectable (B.CConstant B.High) where
@@ -172,7 +173,7 @@ instance Inspectable (B.Invocation B.High) where
 instance Inspectable (B.ExactArrayType B.High) where
   classNames g a =
     case a of
-      B.EARef x -> B.EARef <$> g x
+      B.EARef x -> B.EARef <$> classNames g x
       _         -> pure a
 
 instance Inspectable (B.Constant B.High) where
@@ -189,7 +190,13 @@ instance Inspectable (B.Constant B.High) where
 
 instance Inspectable (B.AbsFieldId B.High) where
   classNames g (B.InClass cn ci) =
-    B.InClass <$> g cn <*> classNames g ci
+    B.InClass <$> classNames g cn <*> classNames g ci
+
+instance Inspectable (FieldName) where
+  classNames = _Binary . classNames
+
+instance Inspectable (MethodName) where
+  classNames = _Binary . classNames
 
 instance Inspectable (B.FieldId) where
   classNames g (B.FieldId d) = B.FieldId <$> classNames g d
@@ -197,6 +204,9 @@ instance Inspectable (B.FieldId) where
 instance Inspectable (B.MethodId) where
   classNames g (B.MethodId d) =
     B.MethodId <$> classNames g d
+
+instance Inspectable (B.ClassName) where
+  classNames = from _Binary
 
 instance Inspectable a => Inspectable (B.NameAndType a) where
   classNames g (B.NameAndType n d) =
@@ -211,10 +221,10 @@ instance Inspectable (B.AbsInterfaceMethodId B.High) where
 
 instance Inspectable (B.AbsMethodId B.High) where
   classNames g (B.InClass cn ci) =
-    B.InClass <$> g cn <*> classNames g ci
+    B.InClass <$> classNames g cn <*> classNames g ci
 
-  methodNames g a =
-    g a
+  methodNames g (B.InClass cn ci) =
+    (\(cn', ci') -> B.InClass (cn' ^. _Binary) ( ci' ^. _Binary)) <$> g (cn ^. from _Binary, ci ^. from _Binary)
 
 instance Inspectable (B.AbsVariableMethodId B.High) where
   classNames g o =
@@ -256,19 +266,19 @@ instance Inspectable (B.MethodHandleMethod B.High) where
 
 instance Inspectable FieldDescriptor where
   classNames g fd =
-    FieldDescriptor
-      <$> classNames g (fieldDescriptorType fd)
+    B.FieldDescriptor
+      <$> classNames g (B.fieldDescriptorType fd)
 
 instance Inspectable MethodDescriptor where
   classNames g md =
-    MethodDescriptor
-      <$> traverse (classNames g) (methodDescriptorArguments md)
-      <*> traverse (classNames g) (methodDescriptorReturnType md)
+    B.MethodDescriptor
+      <$> traverse (classNames g) (B.methodDescriptorArguments md)
+      <*> traverse (classNames g) (B.methodDescriptorReturnType md)
 
 instance Inspectable JValue where
   classNames g t =
     case t of
-      VClass cn        -> VClass <$> g cn
+      VClass cn        -> VClass <$> classNames g cn
       VMethodType md   -> VMethodType <$> classNames g md
       VMethodHandle md -> VMethodHandle <$> classNames g md
       a                -> pure a
@@ -276,7 +286,7 @@ instance Inspectable JValue where
 instance Inspectable JType where
   classNames g t =
     case t of
-      JTClass cn -> JTClass <$> g cn
+      JTClass cn -> JTClass <$> classNames g cn
       JTArray t' -> JTArray <$> classNames g t'
       a          -> pure a
 
@@ -309,10 +319,10 @@ instance Inspectable ClassType where
   classNames g t =
     case t of
       ClassType cn ta ->
-        ClassType <$> g cn <*> (traverse . traverse . classNames) g ta
+        ClassType <$> classNames g cn <*> (traverse . traverse . classNames) g ta
       InnerClassType _ cn ta ->
         InnerClassType
-           <$> (snd . Text.breakOnEnd "$" . B.classNameAsText <$> g (getClassName t))
+           <$> (snd . Text.breakOnEnd "$" . B.classNameAsText <$> classNames g (getClassName t))
            <*> classNames g cn
            <*> (traverse . traverse . classNames) g ta
 

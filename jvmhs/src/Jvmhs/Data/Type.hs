@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE FunctionalDependencies     #-}
@@ -80,8 +81,8 @@ module Jvmhs.Data.Type
   -- , inId
   -- , inClassToText
 
-  -- , AbsMethodId
-  -- , AbsFieldId
+  , AbsMethodName
+  , AbsFieldName
 
   , B.JType (..)
   , B.JValue (..)
@@ -132,13 +133,16 @@ class FromJVMBinary b n | n -> b where
   _Binary :: Iso' n b
 
 -- * ClassName
-
 newtype ClassName =
   ClassName (Name (B.ClassName))
-  deriving (Show, Eq, Ord, Generic, NFData)
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass NFData
 
 makeWrapped ''ClassName
 makeWrapped ''B.ClassName
+
+instance Hashable ClassName where
+  hashWithSalt i a = i `hashWithSalt` (view _Wrapped a)
 
 instance Hashable B.ClassName where
   hashWithSalt i a = i `hashWithSalt` (view _Wrapped a)
@@ -207,7 +211,8 @@ ntDescriptor = lens B.ntDescriptor (\a b -> a { B.ntDescriptor = b })
 
 newtype MethodName =
   MethodName (Name (B.MethodId))
-  deriving (Show, Eq, Ord, Generic, NFData)
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass NFData
 
 makeWrapped ''MethodName
 makeWrapped ''B.MethodId
@@ -273,14 +278,14 @@ instance IsString MethodName where
   fromString = view $ to fromString . from _Binary
 
 
--- -- * MethodDescriptor
-
+type AbsMethodName = (ClassName, MethodName)
 
 -- * FieldName
 
 newtype FieldName =
   FieldName (Name (B.FieldId))
-  deriving (Show, Eq, Ord, Generic, NFData)
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass NFData
 
 makeWrapped ''FieldName
 makeWrapped ''B.FieldId
@@ -331,6 +336,8 @@ instance IsString FieldName where
   fromString = view $ to fromString . from _Binary
 
 
+type AbsFieldName = (ClassName, FieldName)
+
 -- * JType
 
 instance Hashable B.JType where
@@ -379,15 +386,16 @@ instance Hashable B.JType where
 --     (\(B.FieldId nt) a -> mkFieldId (B.ntName nt) a)
 
 
--- parseFieldId :: Text.Text -> Parser FieldId
--- parseFieldId e = do
---   let Right x = fromText e
---   return $ B.FieldId x
+parseFieldName :: Text.Text -> Parser FieldName
+parseFieldName e = do
+  let Right x = B.fromText e
+  return $ ( B.FieldId x  ^. from _Binary)
 
--- parseMethodId :: Text.Text -> Parser MethodId
--- parseMethodId e = do
---   let Right x = fromText e
---   return $ B.MethodId x
+parseMethodName :: Text.Text -> Parser MethodName
+parseMethodName e = do
+  let Right x = B.fromText e
+  return $ ( B.MethodId x ^. from _Binary)
+
 -- type InClass a = B.InClass a B.High
 
 -- inClass :: ClassName -> a -> InClass a
@@ -424,26 +432,26 @@ instance ToJSON FieldName where
 instance ToJSON MethodName where
   toJSON = String . methodNameToText
 
--- instance FromJSON FieldId where
---   parseJSON = withText "FieldId" parseFieldId
+instance FromJSON FieldName where
+  parseJSON = withText "FieldName" parseFieldName
 
--- instance FromJSON MethodId where
---   parseJSON = withText "MethodId" parseMethodId
+instance FromJSON MethodName where
+  parseJSON = withText "MethodName" parseMethodName
 
 instance ToJSONKey FieldName where
   toJSONKey = ToJSONKeyText fieldNameToText (text . fieldNameToText)
 
--- instance FromJSONKey FieldName where
---   fromJSONKey = FromJSONKeyTextParser parseFieldName
+instance FromJSONKey FieldName where
+  fromJSONKey = FromJSONKeyTextParser parseFieldName
 
 instance ToJSONKey MethodName where
   toJSONKey = ToJSONKeyText methodNameToText (text . methodNameToText)
 
--- instance FromJSONKey MethodName where
---   fromJSONKey = FromJSONKeyTextParser parseMethodName
+instance FromJSONKey MethodName where
+  fromJSONKey = FromJSONKeyTextParser parseMethodName
 
--- instance FromJSON ClassName where
---   parseJSON = withText "ClassName" (return . ClassName)
+instance FromJSON ClassName where
+  parseJSON = withText "ClassName" (return . view (from fullyQualifiedName))
 
 instance ToJSON B.ClassName where
   toJSON = String . view _Wrapped

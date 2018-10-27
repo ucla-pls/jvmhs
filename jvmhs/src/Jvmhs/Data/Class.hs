@@ -1,8 +1,8 @@
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DerivingStrategies    #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RankNTypes            #-}
@@ -36,6 +36,10 @@ module Jvmhs.Data.Class
   , classEnclosingMethod
   , classInnerClasses
   , classVersion
+
+  , classAbsFieldNames
+  , classAbsMethodNames
+
   , traverseClass
 
 
@@ -62,6 +66,8 @@ module Jvmhs.Data.Class
   , traverseField
   -- , asFieldId
 
+  , mapAsFieldList
+
   , Method (..)
   , MethodContent (..)
   , methodAccessFlags
@@ -77,6 +83,8 @@ module Jvmhs.Data.Class
   -- , methodId
   , traverseMethod
   -- , asMethodId
+
+  , mapAsMethodList
 
   , InnerClass (..)
   , innerClass
@@ -107,7 +115,6 @@ module Jvmhs.Data.Class
 -- base
 import           Control.Monad
 import           Data.Either
-import qualified Data.Map                                as Map
 import           Data.Maybe
 import qualified Data.Set                                as Set
 
@@ -130,8 +137,10 @@ import           GHC.Generics                            (Generic)
 import           Unsafe.Coerce
 
 -- unordered-containers
-import qualified Data.HashMap.Strict as HashMap
+import qualified Data.HashMap.Strict                     as HashMap
+import qualified Data.HashSet                            as HashSet
 
+-- jvm-binary
 import qualified Language.JVM                            as B
 import qualified Language.JVM.Attribute.BootstrapMethods as B
 import qualified Language.JVM.Attribute.ConstantValue    as B
@@ -161,7 +170,7 @@ data Class = Class
   -- ^ the name of the super class
   , _classAccessFlags      :: Set.Set CAccessFlag
   -- ^ access flags of the class
-  , _classInterfaces       :: Set.Set ClassName
+  , _classInterfaces       :: HashSet.HashSet ClassName
   -- ^ a list of interfaces implemented by the class
   , _classFields           :: HashMap.HashMap FieldName FieldContent
   -- ^ a list of fields
@@ -231,19 +240,22 @@ makeClassy ''MethodContent
 makeWrapped ''Field
 makeWrapped ''Method
 
+instance HasName ClassName Class where
+  name = className
+
 instance HasFieldContent Field where
   fieldContent = _Wrapped . content
 
 instance HasMethodContent Method where
   methodContent = _Wrapped . content
 
--- classMethodIds :: Fold Class AbsMethodId
--- classMethodIds =
---   (selfIndex <. classMethodList.folded).withIndex.to asMethodId
+classAbsMethodNames :: Fold Class AbsMethodName
+classAbsMethodNames =
+  (selfIndex <. classMethodList.folded).withIndex.to (\(a, b) -> (a ^. name, b ^. name))
 
--- classFieldIds :: Fold Class AbsFieldId
--- classFieldIds =
---   (selfIndex <. classFieldList.folded).withIndex.to asFieldId
+classAbsFieldNames :: Fold Class AbsFieldName
+classAbsFieldNames =
+  (selfIndex <. classFieldList.folded).withIndex.to (\(a, b) -> (a ^. name, b ^. name))
 
 
 -- fieldId :: Lens' Field FieldId
@@ -301,7 +313,7 @@ traverseClass ::
   (Traversal' ClassName a)
   -> (Traversal' (Maybe ClassName) a)
   -> (Traversal' (Set.Set CAccessFlag) a)
-  -> (Traversal' (Set.Set ClassName) a)
+  -> (Traversal' (HashSet.HashSet ClassName) a)
   -> (Traversal' (HashMap.HashMap FieldName FieldContent) a)
   -> (Traversal' (HashMap.HashMap MethodName MethodContent) a)
   -> (Traversal' [ BootstrapMethod ] a)
@@ -372,17 +384,17 @@ traverseMethod tfn tfd taf tc tex ts g s =
 -- mapAsList :: Ord a => Iso' (Map.Map a b) [(a,b)]
 -- mapAsList = iso Map.toList Map.fromList
 
--- mapAsFieldList :: Lens' (Map.Map FieldId FieldContent) [Field]
--- mapAsFieldList = mapAsList.coerced
+mapAsFieldList :: Lens' (HashMap.HashMap FieldName FieldContent) [Field]
+mapAsFieldList = namedMapAsList . coerced
 
--- mapAsMethodList :: Lens' (Map.Map MethodId MethodContent) [Method]
--- mapAsMethodList = mapAsList.coerced
+mapAsMethodList :: Lens' (HashMap.HashMap MethodName MethodContent) [Method]
+mapAsMethodList = namedMapAsList . coerced
 
 classMethodList :: Lens' Class [Method]
-classMethodList = classMethods . namedMapAsList . coerced
+classMethodList = classMethods . mapAsMethodList
 
 classFieldList :: Lens' Class [Field]
-classFieldList = classFields . namedMapAsList . coerced
+classFieldList = classFields . mapAsFieldList
 
 classField :: FieldName -> Getter Class (Maybe Field)
 classField fid = classFields . at fid . to (fmap $ mkField fid)
@@ -488,7 +500,7 @@ fromClassFile =
   <$> view (from _Binary) . B.cThisClass
   <*> (\x -> if B.cThisClass x == "java/lang/Object" then Nothing else Just (view (from _Binary) $ B.cSuperClass x))
   <*> B.cAccessFlags
-  <*> Set.fromList . toListOf (folded.from _Binary) . B.cInterfaces
+  <*> HashSet.fromList . toListOf (folded.from _Binary) . B.cInterfaces
   <*> view asFieldMap . toListOf (folded.from _Binary) . B.cFields
   <*> view asMethodMap . toListOf (folded.from _Binary) . B.cMethods
   <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
@@ -536,7 +548,6 @@ $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 8} ''Meth
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''FieldContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''InnerClass)
-
 
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)

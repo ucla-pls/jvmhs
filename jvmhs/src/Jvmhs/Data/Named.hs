@@ -33,7 +33,7 @@ import Data.Aeson as A
 
 -- unordered-containers
 import qualified Data.HashMap.Strict as Map
-import qualified Data.HashSet as Set
+--import qualified Data.HashSet as Set
 
 -- hashable
 import Data.Hashable

@@ -34,7 +34,8 @@ import           Data.Either              (partitionEithers)
 import           Control.Lens
 import           Control.Lens.Action
 
-import qualified Data.Set                 as S
+-- unordered-collections
+import qualified Data.HashSet                 as S
 
 import           Data.Set.Lens            (setOf)
 
@@ -44,6 +45,7 @@ import           Jvmhs.Data.Class
 import           Jvmhs.Data.Graph
 import           Jvmhs.Data.Type
 import           Jvmhs.Inspection
+import           Jvmhs.Data.Named
 
 type ClassGraph = Graph ClassName ()
 
@@ -63,8 +65,8 @@ mkClassGraph = do
 -- It will only include classes known to the 'MonadClassPool'.
 computeClassClosure ::
   MonadClassPool m
-  => S.Set ClassName
-  -> m (S.Set ClassName, S.Set ClassName)
+  => S.HashSet ClassName
+  -> m (S.HashSet ClassName, S.HashSet ClassName)
 computeClassClosure =
   flip computeClassClosureM (const $ return ())
 
@@ -72,9 +74,9 @@ computeClassClosure =
 -- It will only include classes known to the 'MonadClassPool'.
 computeClassClosureM ::
   MonadClassPool m
-  => S.Set ClassName
+  => S.HashSet ClassName
   -> (([ClassName], [Class]) -> m ())
-  -> m (S.Set ClassName, S.Set ClassName)
+  -> m (S.HashSet ClassName, S.HashSet ClassName)
 computeClassClosureM cls fm =
   go (S.empty, S.empty) cls
   where
@@ -86,24 +88,24 @@ computeClassClosureM cls fm =
         res@(notexists, exists) <- partitionEithers <$> wave ^!! folded . pool'
         fm res
         let
-          found = setOf (folded.className) exists
+          found = S.fromList $ toListOf (folded.className) exists
           missed = S.fromList notexists
           known' = known `S.union` found
           unknown' = unknown `S.union` missed
-          front = setOf (folded.classNames) exists
-        go (known', unknown') (front S.\\ known')
+          front = S.fromList $ toListOf (folded.classNames) exists
+        go (known', unknown') (front `S.difference` known')
 
 
-type CallGraph = Graph AbsMethodId ()
+type CallGraph = Graph AbsMethodName ()
 
--- | Given a foldable structure over 'AbsMethodId's compute a CallGraph.
+-- | Given a foldable structure over 'AbsMethodName's compute a CallGraph.
 mkCallGraph ::
   forall m. (MonadClassPool m)
   => Hierarchy
-  -> m ([AbsMethodId], CallGraph)
+  -> m ([AbsMethodName], CallGraph)
 mkCallGraph hry = do
   methods <- concat <$>
-    mapClasses (\c -> [(asMethodId (c, m), setOf methodNames m) | m <- c^.classMethodList])
+    mapClasses (\c -> [((c ^. name, m ^. name), S.fromList $ toListOf methodNames m) | m <- c^.classMethodList])
   let (missing, edges) = partitionEithers $
           methods ^.. folded
                     . to (\(mid, m) -> [(mid,,()) <$> getDeclartion mid' | mid' <- S.toList m ])
@@ -120,8 +122,8 @@ mkCallGraph hry = do
 computeMethodClosure ::
   forall m. MonadClassPool m
   => Hierarchy
-  -> S.Set AbsMethodId
-  -> m (S.Set AbsMethodId)
+  -> S.HashSet AbsMethodName
+  -> m (S.HashSet AbsMethodName)
 computeMethodClosure hry =
   go S.empty
   where
@@ -133,7 +135,7 @@ computeMethodClosure hry =
           let mths = setOf (folded . to (callSites hry) . folded) wave
           impls <- mths ^!! folded.(selfIndex <. act getMethod . folded) . withIndex
           let
-            found = setOf (folded . _1) impls
+            found = S.fromList $ toListOf (folded . _1) impls
             known' = known `S.union` found
-            front = setOf (folded . _2 . methodNames) impls
-          go known' (front S.\\ known')
+            front = S.fromList $ toListOf (folded . _2 . methodNames) impls
+          go known' (front `S.difference` known')
