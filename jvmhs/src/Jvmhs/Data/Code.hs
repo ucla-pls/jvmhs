@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -87,7 +88,7 @@ fromBinaryCode =
     <$> B.codeMaxStack
     <*> B.codeMaxLocals
     <*> B.codeByteCodeOprs
-    <*> fmap fromBinaryExceptionTable . B.unSizedList . B.codeExceptionTable
+    <*> fmap (view $ from _Binary) . B.unSizedList . B.codeExceptionTable
     <*> B.codeStackMapTable
 
 toBinaryCode :: Code -> B.Code B.High
@@ -96,24 +97,25 @@ toBinaryCode c =
    (c^.codeMaxStack)
    (c^.codeMaxLocals)
    (B.ByteCode $ c^.codeByteCode)
-   (B.SizedList $ c^..codeExceptionTable.folded.to toBinaryExceptionTable)
+   (B.SizedList $ c^..codeExceptionTable.folded._Binary)
    (B.CodeAttributes (maybe [] (:[]) $ c^.codeStackMap) [] [])
 
-fromBinaryExceptionTable :: B.ExceptionTable B.High -> ExceptionHandler
-fromBinaryExceptionTable =
-  ExceptionHandler
-  <$> B.start
-  <*> B.end
-  <*> B.handler
-  <*> B.catchType
+instance FromJVMBinary (B.ExceptionTable B.High) ExceptionHandler where
+  _Binary = iso toBinaryExceptionTable fromBinaryExceptionTable
+    where
+      fromBinaryExceptionTable =
+        ExceptionHandler
+        <$> B.start
+        <*> B.end
+        <*> B.handler
+        <*> fmap (view $ from _Binary) . B.catchType
 
-toBinaryExceptionTable :: ExceptionHandler -> B.ExceptionTable B.High
-toBinaryExceptionTable =
-  B.ExceptionTable
-  <$> _ehStart
-  <*> _ehEnd
-  <*> _ehHandler
-  <*> _ehCatchType
+      toBinaryExceptionTable =
+        B.ExceptionTable
+        <$> _ehStart
+        <*> _ehEnd
+        <*> _ehHandler
+        <*> fmap (view _Binary) . _ehCatchType
 
 traverseCode ::
      (Traversal' Word16 a)

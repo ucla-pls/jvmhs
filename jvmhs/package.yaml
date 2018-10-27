@@ -36,6 +36,8 @@ dependencies:
   - mtl
   - transformers
   - deepseq
+  - unordered-containers
+  - hashable
   - fgl
   - fgl-visualize
   - attoparsec
@@ -60,13 +62,3 @@ tests:
       - text
       - generic-random
       - hspec-expectations-pretty-diff
-
-benchmarks:
-  delta-debug:
-    source-dirs: benchmark
-    main: DeltaDebug.hs
-    dependencies:
-      - jvmhs
-      - criterion
-      - lens
-      - vector

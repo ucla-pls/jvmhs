@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DerivingStrategies        #-}
 {-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RankNTypes            #-}
@@ -43,44 +44,44 @@ module Jvmhs.Data.Class
   , dependencies
   , classField
   , classFieldList
-  , classFieldIds
+  -- , classFieldIds
   , classMethod
   , classMethodList
-  , classMethodIds
+  -- , classMethodIds
 
   -- ** Field
 
   , Field (..)
   , FieldContent (..)
   , fieldAccessFlags
-  , fieldName
-  , fieldDescriptor
+  -- , fieldName
+  -- , fieldDescriptor
   , fieldValue
   , fieldType
-  , fieldId
+  -- , fieldId
   , traverseField
-  , asFieldId
+  -- , asFieldId
 
   , Method (..)
   , MethodContent (..)
   , methodAccessFlags
-  , methodCAccessFlags
-  , methodName
-  , methodDescriptor
+  -- , methodCAccessFlags
+  -- , methodName
+  -- , methodDescriptor
   , methodCode
-  , methodCCode
+  -- , methodCCode
   , methodExceptions
-  , methodCExceptions
+  -- , methodCExceptions
   , methodReturnType
   , methodArgumentTypes
-  , methodId
+  -- , methodId
   , traverseMethod
-  , asMethodId
+  -- , asMethodId
 
   , InnerClass (..)
   , innerClass
   , innerOuterClass
-  , innerName
+  , innerClassName
   , innerAccessFlags
 
   -- * Converters
@@ -88,9 +89,9 @@ module Jvmhs.Data.Class
   , toClassFile
   , isoBinary
 
-  , mapAsList
-  , mapAsFieldList
-  , mapAsMethodList
+  -- , mapAsList
+  -- , mapAsFieldList
+  -- , mapAsMethodList
 
   -- ** Wraped Types
   , CAccessFlag (..)
@@ -103,37 +104,52 @@ module Jvmhs.Data.Class
 
   ) where
 
-import           Control.DeepSeq
-import           Control.Lens
+-- base
 import           Control.Monad
-import           Data.Aeson
-import           Data.Aeson.TH
+import           Data.Either
 import qualified Data.Map                                as Map
-import Data.Either
 import           Data.Maybe
 import qualified Data.Set                                as Set
+
+-- deep-seq
+import           Control.DeepSeq
+
+-- lens
+import           Control.Lens
+
+-- aeson
+import           Data.Aeson
+import           Data.Aeson.TH
+
+-- text
 import qualified Data.Text                               as Text
+
+-- base
 import           Data.Word
 import           GHC.Generics                            (Generic)
 import           Unsafe.Coerce
--- import           Data.Aeson.Encoding
+
+-- unordered-containers
+import qualified Data.HashMap.Strict as HashMap
 
 import qualified Language.JVM                            as B
 import qualified Language.JVM.Attribute.BootstrapMethods as B
-import qualified Language.JVM.Attribute.EnclosingMethod  as B
-import qualified Language.JVM.Attribute.InnerClasses     as B
 import qualified Language.JVM.Attribute.ConstantValue    as B
+import qualified Language.JVM.Attribute.EnclosingMethod  as B
 import qualified Language.JVM.Attribute.Exceptions       as B
+import qualified Language.JVM.Attribute.InnerClasses     as B
 
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
-import           Jvmhs.Data.Type
 import           Jvmhs.Data.Signature
+import           Jvmhs.Data.Type
+
+import           Jvmhs.Data.Named
 
 data InnerClass = InnerClass
-  { _innerClass :: ClassName
-  , _innerOuterClass :: Maybe ClassName
-  , _innerName :: Maybe Text.Text
+  { _innerClass       :: ClassName
+  , _innerOuterClass  :: Maybe ClassName
+  , _innerClassName   :: Maybe Text.Text
   , _innerAccessFlags :: Set.Set ICAccessFlag
   } deriving (Eq, Show, Generic, NFData)
 
@@ -147,15 +163,15 @@ data Class = Class
   -- ^ access flags of the class
   , _classInterfaces       :: Set.Set ClassName
   -- ^ a list of interfaces implemented by the class
-  , _classFields           :: Map.Map FieldId FieldContent
+  , _classFields           :: HashMap.HashMap FieldName FieldContent
   -- ^ a list of fields
-  , _classMethods          :: Map.Map MethodId MethodContent
+  , _classMethods          :: HashMap.HashMap MethodName MethodContent
   -- ^ a list of methods
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
   , _classSignature        :: Maybe ClassSignature
   -- ^ the class signature
-  , _classEnclosingMethod  :: Maybe (ClassName, Maybe MethodId)
+  , _classEnclosingMethod  :: Maybe (ClassName, Maybe MethodName)
   -- ^ maybe an enclosing class and method
   , _classInnerClasses     :: [InnerClass]
   -- ^ a list of inner classes
@@ -165,120 +181,132 @@ data Class = Class
 
 
 -- | A Field is an id and some content
-newtype Field = Field (FieldId, FieldContent)
+newtype Field = Field (Named FieldName FieldContent)
   deriving (Show, Eq, Generic)
   deriving anyclass (NFData)
 
+mkField :: FieldName -> FieldContent -> Field
+mkField fid fc = Field $  Named fid fc
 
-mkField :: FieldId -> FieldContent -> Field
-mkField fid fc = Field (fid, fc)
+instance HasName FieldName Field where
+  name = _Wrapped . name
 
 -- | This is the field
 data FieldContent = FieldContent
-  { _fieldCAccessFlags :: Set.Set FAccessFlag
+  { _fieldAccessFlags :: Set.Set FAccessFlag
   -- ^ the set of access flags
-  , _fieldCValue       :: Maybe JValue
+  , _fieldValue       :: Maybe JValue
   -- ^ an optional value
-  , _fieldCSignature   :: Maybe FieldSignature
+  , _fieldSignature   :: Maybe FieldSignature
   } deriving (Eq, Show, Generic, NFData)
 
 -- | A method is an id and some content
-newtype Method = Method (MethodId, MethodContent)
+newtype Method = Method (Named MethodName MethodContent)
   deriving (Show, Eq, Generic)
   deriving anyclass (NFData)
 
+mkMethod :: MethodName -> MethodContent -> Method
+mkMethod mid mc = Method $ Named mid mc
 
-mkMethod :: MethodId -> MethodContent -> Method
-mkMethod mid mc = Method (mid, mc)
+instance HasName MethodName Method where
+  name = _Wrapped . name
 
 -- | This is the method
 data MethodContent = MethodContent
-  { _methodCAccessFlags :: Set.Set MAccessFlag
+  { _methodAccessFlags :: Set.Set MAccessFlag
   -- ^ the set of access flags
-  , _methodCCode        :: Maybe Code
+  , _methodCode        :: Maybe Code
   -- ^ optionally the method can contain code
-  , _methodCExceptions  :: [ ClassName ]
+  , _methodExceptions  :: [ ClassName ]
   -- ^ the method can have one or more exceptions
-  , _methodCSignature   :: Maybe MethodSignature
+  , _methodSignature   :: Maybe MethodSignature
   } deriving (Eq, Show, Generic, NFData)
 
 makeLenses ''Class
-makeLenses ''FieldContent
-makeLenses ''MethodContent
 makeLenses ''InnerClass
+
+makeClassy ''FieldContent
+makeClassy ''MethodContent
+
 makeWrapped ''Field
 makeWrapped ''Method
 
-classMethodIds :: Fold Class AbsMethodId
-classMethodIds =
-  (selfIndex <. classMethodList.folded).withIndex.to asMethodId
+instance HasFieldContent Field where
+  fieldContent = _Wrapped . content
 
-classFieldIds :: Fold Class AbsFieldId
-classFieldIds =
-  (selfIndex <. classFieldList.folded).withIndex.to asFieldId
+instance HasMethodContent Method where
+  methodContent = _Wrapped . content
+
+-- classMethodIds :: Fold Class AbsMethodId
+-- classMethodIds =
+--   (selfIndex <. classMethodList.folded).withIndex.to asMethodId
+
+-- classFieldIds :: Fold Class AbsFieldId
+-- classFieldIds =
+--   (selfIndex <. classFieldList.folded).withIndex.to asFieldId
 
 
-fieldId :: Lens' Field FieldId
-fieldId = _Wrapped . _1
+-- fieldId :: Lens' Field FieldId
+-- fieldId = _Wrapped . _1
 
-fieldContent :: Lens' Field FieldContent
-fieldContent = _Wrapped . _2
+-- fieldContent :: Lens' Field FieldContent
+-- fieldContent = _Wrapped . _2
 
-fieldName :: Lens' Field Text.Text
-fieldName = fieldId . fieldIdName
+-- fieldName :: Lens' Field Text.Text
+-- fieldName = fieldId . fieldIdName
 
-fieldDescriptor :: Lens' Field FieldDescriptor
-fieldDescriptor = fieldId . fieldIdDescriptor
+-- fieldDescriptor :: Lens' Field FieldDescriptor
+-- fieldDescriptor = fieldId . fieldIdDescriptor
 
-fieldAccessFlags :: Lens' Field (Set.Set FAccessFlag)
-fieldAccessFlags = fieldContent . fieldCAccessFlags
+-- fieldAccessFlags :: Lens' Field (Set.Set FAccessFlag)
+-- fieldAccessFlags = fieldContent . fieldCAccessFlags
 
-fieldValue :: Lens' Field (Maybe JValue)
-fieldValue = fieldContent . fieldCValue
+-- fieldValue :: Lens' Field (Maybe JValue)
+-- fieldValue = fieldContent . fieldCValue
 
-fieldSignature :: Lens' Field (Maybe FieldSignature)
-fieldSignature = fieldContent . fieldCSignature
+-- fieldSignature :: Lens' Field (Maybe FieldSignature)
+-- fieldSignature = fieldContent . fieldCSignature
 
-asFieldId :: (Class, Field) -> AbsFieldId
-asFieldId (cls, m) = inClass (cls ^.className) (m ^.fieldId)
+-- asFieldId :: (Class, Field) -> AbsFieldId
+-- asFieldId (cls, m) = inClass (cls ^.className) (m ^.fieldId)
 
-methodId :: Lens' Method MethodId
-methodId = _Wrapped . _1
+-- methodId :: Lens' Method MethodId
+-- methodId = _Wrapped . _1
 
-methodContent :: Lens' Method MethodContent
-methodContent = _Wrapped . _2
+-- methodContent :: Lens' Method MethodContent
+-- methodContent = _Wrapped . _2
 
-methodName :: Lens' Method Text.Text
-methodName = methodId . methodIdName
+-- methodName :: Lens' Method Text.Text
+-- methodName = methodId . methodIdName
 
-methodDescriptor :: Lens' Method MethodDescriptor
-methodDescriptor = methodId . methodIdDescriptor
+-- methodDescriptor :: Lens' Method MethodDescriptor
+-- methodDescriptor = methodId . methodIdDescriptor
 
-methodAccessFlags :: Lens' Method (Set.Set MAccessFlag)
-methodAccessFlags = methodContent . methodCAccessFlags
+-- methodAccessFlags :: Lens' Method (Set.Set MAccessFlag)
+-- methodAccessFlags = methodContent . methodCAccessFlags
 
-methodCode :: Lens' Method (Maybe Code)
-methodCode = methodContent . methodCCode
+-- methodCode :: Lens' Method (Maybe Code)
+-- methodCode = methodContent . methodCCode
 
-methodExceptions :: Lens' Method [ClassName]
-methodExceptions = methodContent . methodCExceptions
+-- methodExceptions :: Lens' Method [ClassName]
+-- methodExceptions = methodContent . methodCExceptions
 
-methodSignature :: Lens' Method (Maybe MethodSignature)
-methodSignature = methodContent . methodCSignature
+-- methodSignature :: Lens' Method (Maybe MethodSignature)
+-- methodSignature = methodContent . methodCSignature
 
-asMethodId :: (Class, Method) -> AbsMethodId
-asMethodId (cls, m) = inClass (cls ^.className) (m ^.methodId)
+-- asMethodId :: (Class, Method) -> AbsMethodId
+-- asMethodId (cls, m) = inClass (cls ^.className) (m ^.methodId)
 
 traverseClass ::
   (Traversal' ClassName a)
   -> (Traversal' (Maybe ClassName) a)
   -> (Traversal' (Set.Set CAccessFlag) a)
   -> (Traversal' (Set.Set ClassName) a)
-  -> (Traversal' (Map.Map FieldId FieldContent) a)
-  -> (Traversal' (Map.Map MethodId MethodContent) a)
+  -> (Traversal' (HashMap.HashMap FieldName FieldContent) a)
+  -> (Traversal' (HashMap.HashMap MethodName MethodContent) a)
   -> (Traversal' [ BootstrapMethod ] a)
   -> (Traversal' (Maybe ClassSignature) a)
-  -> (Traversal' (Maybe (ClassName, Maybe MethodId)) a)
+  -> (Traversal' (Maybe (ClassName, Maybe MethodName)) a)
   -> (Traversal' [ InnerClass ] a)
   -> (Traversal' Class a)
 traverseClass tcn tsn taf tis tfs tms tbs tss tem tin g s =
@@ -306,9 +334,9 @@ traverseField ::
 traverseField tfn tfd taf tjv ts g s =
   mkField
   <$> (
-  mkFieldId
-    <$> (tfn g . view fieldName $ s)
-    <*> (tfd g . view fieldDescriptor $ s)
+  mkFieldName
+    <$> (tfn g . view (name . fieldNameId) $ s)
+    <*> (tfd g . view (name . fieldNameDescriptor) $ s)
   ) <*> (
   FieldContent
     <$> (taf g . view fieldAccessFlags $ s)
@@ -328,9 +356,9 @@ traverseMethod ::
 traverseMethod tfn tfd taf tc tex ts g s =
   mkMethod
   <$> (
-    mkMethodId
-    <$> (tfn g . view methodName $ s)
-    <*> (tfd g . view methodDescriptor $ s)
+    mkMethodName
+    <$> (tfn g . view (name . methodNameId) $ s)
+    <*> (tfd g . view (name . methodNameDescriptor) $ s)
   ) <*> (
     MethodContent
       <$> (taf g . view methodAccessFlags $ s)
@@ -340,42 +368,27 @@ traverseMethod tfn tfd taf tc tex ts g s =
     )
 {-# INLINE traverseMethod #-}
 
--- | Not a true iso morphism.
-mapAsList :: Ord a => Iso' (Map.Map a b) [(a,b)]
-mapAsList = iso Map.toList Map.fromList
+-- -- | Not a true iso morphism.
+-- mapAsList :: Ord a => Iso' (Map.Map a b) [(a,b)]
+-- mapAsList = iso Map.toList Map.fromList
 
-mapAsFieldList :: Lens' (Map.Map FieldId FieldContent) [Field]
-mapAsFieldList = mapAsList.coerced
+-- mapAsFieldList :: Lens' (Map.Map FieldId FieldContent) [Field]
+-- mapAsFieldList = mapAsList.coerced
 
-mapAsMethodList :: Lens' (Map.Map MethodId MethodContent) [Method]
-mapAsMethodList = mapAsList.coerced
+-- mapAsMethodList :: Lens' (Map.Map MethodId MethodContent) [Method]
+-- mapAsMethodList = mapAsList.coerced
 
 classMethodList :: Lens' Class [Method]
-classMethodList = classMethods . mapAsMethodList
+classMethodList = classMethods . namedMapAsList . coerced
 
 classFieldList :: Lens' Class [Field]
-classFieldList = classFields . mapAsFieldList
+classFieldList = classFields . namedMapAsList . coerced
 
-classField :: FieldId -> Getter Class (Maybe Field)
+classField :: FieldName -> Getter Class (Maybe Field)
 classField fid = classFields . at fid . to (fmap $ mkField fid)
 
-classMethod :: MethodId -> Getter Class (Maybe Method)
+classMethod :: MethodName -> Getter Class (Maybe Method)
 classMethod mid = classMethods . at mid . to (fmap $ mkMethod mid)
-
--- | Get the type of field
-fieldType :: Lens' Field JType
-fieldType =
-  fieldDescriptor . fieldDType
-
--- | Get the type of field
-methodArgumentTypes :: Lens' Method [JType]
-methodArgumentTypes =
-  methodDescriptor . methodDArguments
-
--- | Get the return type
-methodReturnType :: Lens' Method (Maybe JType)
-methodReturnType =
-  methodDescriptor . methodDReturnType
 
 -- | The dependencies of a class
 dependencies :: Class -> [ ClassName ]
@@ -387,53 +400,103 @@ isInterface :: Class -> Bool
 isInterface cls =
   B.CInterface `Set.member` (cls^.classAccessFlags)
 
+
+instance FromJVMBinary (B.Field B.High) Field where
+  _Binary =
+    iso toBField fromBField
+    where
+      fromBField =
+        mkField
+        <$> ( mkFieldName
+              <$> B.fName
+              <*> B.fDescriptor
+            )
+        <*> ( FieldContent
+              <$> B.fAccessFlags
+              <*> (Just . B.constantValue <=< B.fConstantValue)
+              <*> fmap (\(Signature a) ->
+                          fromRight (error $ "could not read " ++ show a)$ fieldSignatureFromText a
+                       ) . B.fSignature
+            )
+      toBField =
+        B.Field
+          <$> B.BitSet . view fieldAccessFlags
+          <*> view (name.fieldNameId)
+          <*> view (name.fieldNameDescriptor)
+          <*> ( B.FieldAttributes
+                  <$> maybe [] (:[])
+                      . fmap B.ConstantValue . view fieldValue
+                  <*> maybe [] (:[]) . fmap (Signature . fieldSignatureToText) . view fieldSignature
+                  <*> pure [] )
+
+instance FromJVMBinary (B.Method B.High) Method where
+  _Binary = iso toBMethod fromBMethod
+    where
+      fromBMethod =
+        mkMethod
+        <$> (
+          mkMethodName
+          <$> B.mName
+          <*> B.mDescriptor
+        ) <*> (
+          MethodContent
+          <$> B.mAccessFlags
+          <*> fmap fromBinaryCode . B.mCode
+          <*> map (view (from _Binary)) . B.mExceptions
+          <*> fmap (\(Signature a) -> fromRight (error $ "could not read " ++ show a) $ methodSignatureFromText a) . B.mSignature
+            )
+
+      toBMethod =
+        B.Method
+          <$> unsafeCoerce . (view methodAccessFlags)
+          <*> (view $ name . methodNameId)
+          <*> (view $ name . methodNameDescriptor)
+          <*> ( B.MethodAttributes
+                  <$> maybe [] (:[]) . fmap toBinaryCode . (view methodCode)
+                  <*> compress (B.Exceptions . B.SizedList . map (view _Binary))
+                      . view methodExceptions
+                  <*> maybe [] (:[]) . fmap (Signature . methodSignatureToText) . (view methodSignature)
+                  <*> pure [] )
+
+instance FromJVMBinary (B.InnerClass B.High) InnerClass where
+  _Binary = iso toBInnerClass fromBInnerClass
+    where
+      fromBInnerClass =
+        InnerClass
+          <$> view (from _Binary) . B.icClassName
+          <*> fmap (view (from _Binary)) . B.icOuterClassName
+          <*> B.icInnerName
+          <*> B.toSet . B.icInnerAccessFlags
+
+      toBInnerClass :: InnerClass -> B.InnerClass B.High
+      toBInnerClass =
+        B.InnerClass
+          <$> view (innerClass . _Binary)
+          <*> preview (innerOuterClass . _Just . _Binary)
+          <*> _innerClassName
+          <*> B.BitSet . _innerAccessFlags
+
+asMethodMap :: Lens' [Method] (HashMap.HashMap MethodName MethodContent)
+asMethodMap = coerced . from namedMapAsList
+
+asFieldMap :: Lens' [Field] (HashMap.HashMap FieldName FieldContent)
+asFieldMap = coerced . from namedMapAsList
+
 fromClassFile :: B.ClassFile B.High -> Class
 fromClassFile =
   Class
-  <$> B.cThisClass
-  <*> (\x -> if B.cThisClass x == "java/lang/Object" then Nothing else Just (B.cSuperClass x))
+  <$> view (from _Binary) . B.cThisClass
+  <*> (\x -> if B.cThisClass x == "java/lang/Object" then Nothing else Just (view (from _Binary) $ B.cSuperClass x))
   <*> B.cAccessFlags
-  <*> Set.fromList . B.unSizedList . B.cInterfaces
-  <*> Map.fromList . map fromBField . B.cFields
-  <*> Map.fromList . map fromBMethod . B.cMethods
+  <*> Set.fromList . toListOf (folded.from _Binary) . B.cInterfaces
+  <*> view asFieldMap . toListOf (folded.from _Binary) . B.cFields
+  <*> view asMethodMap . toListOf (folded.from _Binary) . B.cMethods
   <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
   <*> fmap (\(Signature a) -> fromRight (error $ "could not read " ++ show a) $ classSignatureFromText a) . B.cSignature
-  <*> fmap (\e -> (B.enclosingClassName e, B.enclosingMethodName e)) . B.cEnclosingMethod
-  <*> map fromBInnerClass . B.cInnerClasses
+  <*> fmap (\e -> (view (from _Binary) $ B.enclosingClassName e, fmap (view (from _Binary)) $ B.enclosingMethodName e)) . B.cEnclosingMethod
+  <*> toListOf (folded.from _Binary) . B.cInnerClasses
   <*> (Just <$> ((,) <$> B.cMajorVersion <*> B.cMinorVersion))
-  where
-    fromBField =
-      (,)
-      <$> ( mkFieldId
-            <$> B.fName
-            <*> B.fDescriptor
-          )
-      <*> ( FieldContent
-        <$> B.fAccessFlags
-        <*> (Just . B.constantValue <=< B.fConstantValue)
-        <*> fmap (\(Signature a) -> fromRight (error $ "could not read " ++ show a)$ fieldSignatureFromText a) . B.fSignature
-      )
 
-    fromBMethod =
-      (,)
-      <$> (
-        mkMethodId
-        <$> B.mName
-        <*> B.mDescriptor
-      ) <*> (
-        MethodContent
-        <$> B.mAccessFlags
-        <*> fmap fromBinaryCode . B.mCode
-        <*> B.mExceptions
-        <*> fmap (\(Signature a) -> fromRight (error $ "could not read " ++ show a) $ methodSignatureFromText a) . B.mSignature
-          )
-
-    fromBInnerClass =
-      InnerClass
-        <$> B.icClassName
-        <*> B.icOuterClassName
-        <*> B.icInnerName
-        <*> B.toSet . B.icInnerAccessFlags
 
 toClassFile :: Class -> B.ClassFile B.High
 toClassFile =
@@ -443,59 +506,27 @@ toClassFile =
     <*> (pure ())
     <*> B.BitSet . _classAccessFlags
 
-    <*> _className
-    <*> fromMaybe "java/lang/Object" . _classSuper
+    <*> view (className._Binary)
+    <*> view _Binary . fromMaybe "java/lang/Object" . _classSuper
 
-    <*> B.SizedList . Set.toList . _classInterfaces
-    <*> B.SizedList . map toBField . view classFieldList
-    <*> B.SizedList . map toBMethod . view classMethodList
+    <*> B.SizedList . toListOf ( classInterfaces.folded._Binary )
+    <*> B.SizedList . toListOf ( classFieldList.folded._Binary )
+    <*> B.SizedList . toListOf ( classMethodList.folded._Binary )
     <*> ( B.ClassAttributes
             <$> compress (B.BootstrapMethods . B.SizedList)
                 . map toBinaryBootstrapMethod
                 . _classBootstrapMethods
             <*> maybe [] (:[]) . fmap (Signature . classSignatureToText) . _classSignature
-            <*> maybe [] (:[]) . fmap (\(cn, em) -> B.EnclosingMethod cn em)
+            <*> maybe [] (:[]) . fmap (\(cn, em) -> B.EnclosingMethod (view _Binary cn) (fmap (view _Binary) em))
                                . _classEnclosingMethod
             <*> compress B.InnerClasses
-                 . map toBInnerClass
+                 . map (view _Binary)
                  . _classInnerClasses
             <*> pure [])
 
-  where
-    toBField =
-      B.Field
-        <$> B.BitSet . view fieldAccessFlags
-        <*> view fieldName
-        <*> view fieldDescriptor
-        <*> ( B.FieldAttributes
-                <$> maybe [] (:[])
-                    . fmap B.ConstantValue . view fieldValue
-                <*> maybe [] (:[]) . fmap (Signature . fieldSignatureToText) . view fieldSignature
-                <*> pure [] )
-
-    toBMethod =
-      B.Method
-        <$> unsafeCoerce . (view methodAccessFlags)
-        <*> (view methodName)
-        <*> (view methodDescriptor)
-        <*> ( B.MethodAttributes
-                <$> maybe [] (:[]) . fmap toBinaryCode . (view methodCode)
-                <*> compress (B.Exceptions . B.SizedList)
-                    . view methodExceptions
-                <*> maybe [] (:[]) . fmap (Signature . methodSignatureToText) . (view methodSignature)
-                <*> pure [] )
-
-    toBInnerClass :: InnerClass -> B.InnerClass B.High
-    toBInnerClass =
-      B.InnerClass
-        <$> _innerClass
-        <*> _innerOuterClass
-        <*> _innerName
-        <*> B.BitSet . _innerAccessFlags
-
-    compress :: ([a] -> b) -> [a] -> [b]
-    compress _ [] = []
-    compress f as = [f as]
+compress :: ([a] -> b) -> [a] -> [b]
+compress _ [] = []
+compress f as = [f as]
 
 -- | An Isomorphism between classfiles and checked classes.
 isoBinary :: Iso' (B.ClassFile B.High) Class
