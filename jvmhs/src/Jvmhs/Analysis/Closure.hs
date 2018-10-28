@@ -30,7 +30,6 @@ module Jvmhs.Analysis.Closure
 
 import           Data.Either              (partitionEithers)
 
-
 import           Control.Lens
 import           Control.Lens.Action
 

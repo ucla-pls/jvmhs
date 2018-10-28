@@ -15,11 +15,13 @@ module Main where
 import           Control.Monad
 import qualified Data.List                    as List
 import qualified Data.Maybe                   as Maybe
-import qualified Data.Set                     as Set
-import qualified Data.Map.Strict              as Map
 import           Data.String
 import           System.Environment
 import           System.IO
+
+-- unordered
+import qualified Data.HashSet                     as Set
+import qualified Data.HashMap.Strict              as Map
 
 -- bytestring
 import qualified Data.ByteString.Lazy.Char8   as BS
@@ -236,7 +238,7 @@ runFormat classloader = \case
             True -> do
               void . computeClassClosureM classSet $ \(_, clss) ->
                 cplocal $ do
-                  restrictTo (setOf (folded.className) clss)
+                  restrictTo (Set.fromList $ toListOf (folded.className) clss)
                   action
             False -> do
               restrictTo classSet
@@ -282,7 +284,9 @@ streamAll opts = \case
     mapM_ (\(cn, cl) -> lift $ fn (cn, cl))
       . Map.toList
       . fmap head
-      . Map.restrictKeys cm $ set
+      . Map.difference cm
+      . Set.toMap
+      $ set
   StreamClass fn -> do
     streamClasses fn
 

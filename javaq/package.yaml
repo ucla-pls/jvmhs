@@ -21,6 +21,7 @@ dependencies:
   - filepath
   - bytestring
   - text
+  - unordered-containers
   - cryptohash-sha256
   - base16-bytestring
   - deepseq

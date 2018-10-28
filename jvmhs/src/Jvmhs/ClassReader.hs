@@ -69,7 +69,6 @@ import           Control.Monad.Reader
 import           Data.Bifunctor
 import qualified Data.ByteString.Lazy as BL
 import           Data.Functor
-import qualified Data.Map             as Map
 import           Data.Maybe           (catMaybes, mapMaybe)
 import           Data.Monoid
 import qualified Data.Text            as Text
@@ -77,6 +76,9 @@ import           GHC.Generics         (Generic)
 import           System.Directory
 import           System.FilePath
 import           System.Process
+
+-- unordered-containers
+import qualified Data.HashMap.Strict             as Map
 
 -- zip-archive
 import           Codec.Archive.Zip
@@ -494,7 +496,7 @@ instance ClassReader ClassLoader where
 -- they reside in. This can vastly improve the speed of looking up classes to load
 -- them
 newtype ClassPreloader = ClassPreloader
-  { _classMap :: Map.Map ClassName [ ClassContainer ]
+  { _classMap :: Map.HashMap ClassName [ ClassContainer ]
   } deriving (Show)
 
 -- | Create a class preloader from any 'ClassReader'.

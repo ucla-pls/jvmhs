@@ -101,6 +101,7 @@ import           Control.Monad.State.Strict (StateT(..), mapStateT)
 
 -- transformers
 import Data.Functor.Compose
+import Data.Hashable
 
 -- mtl
 import Control.Monad.Writer
@@ -114,8 +115,8 @@ import           Control.Lens.Action
 
 -- base
 import           Data.Either                (partitionEithers)
-import qualified Data.Map                   as M
-import qualified Data.Set                   as S
+import qualified Data.HashMap.Strict                   as M
+import qualified Data.HashSet                   as S
 import           Data.Maybe
 -- import           Data.Monoid
 import           Data.Foldable as F
@@ -167,7 +168,7 @@ class Monad m => MonadClassPool m where
   -- | Run a command in a local environment
   cplocal :: m a -> m a
 
-  restrictTo :: S.Set ClassName -> m ()
+  restrictTo :: S.HashSet ClassName -> m ()
 
 
 -- | Get a class from a class pool.
@@ -210,7 +211,7 @@ onlyClasses cns = do
   onlyClasses' $ S.fromList (F.toList cns)
 
 -- | Deletes all classes not in the set
-onlyClasses' :: (MonadClassPool m) => S.Set ClassName -> m ()
+onlyClasses' :: (MonadClassPool m) => S.HashSet ClassName -> m ()
 onlyClasses' =
   restrictTo
 
@@ -340,7 +341,7 @@ instance MonadClassPool m => MonadClassPool (ReaderT r m) where
 
 
 -- | The class pool state is just a map from class to class names
-type ClassPoolState = M.Map ClassName Class
+type ClassPoolState = M.HashMap ClassName Class
 
 -- | Load the class pool state upfront
 loadClassPoolState ::
@@ -370,10 +371,10 @@ instance MonadReader r m => MonadReader r (ClassPoolT m) where
 
 instance Monad m => MonadClassPool (ClassPoolT m) where
   alterClass f n = do
-    fmap put . M.alterF f n <$> get
+    fmap put . alterF f n <$> get
 
   alterClasses f =
-    lift get >>= M.traverseMaybeWithKey (\_ cls -> f cls) >>= lift . put
+    lift get >>= fmap (M.mapMaybe id) . M.traverseWithKey (\_ cls -> f cls) >>= lift . put
   -- -- | Perform an action over all the classes in the ClassPool
   -- traverseClasses f = do
   --   fmap put . M.traverseMaybeWithKey (\_ cls -> f cls) <$> get
@@ -386,7 +387,7 @@ instance Monad m => MonadClassPool (ClassPoolT m) where
     lift $ fst <$> runClassPoolT m cp
 
   restrictTo s =
-    modify (flip M.restrictKeys s)
+    modify (flip M.difference (S.toMap s))
 
 type ClassPool = ClassPoolT Identity
 
@@ -418,7 +419,7 @@ data ClassState
   | CSPure Class
   | CSUnread
 
-type CachedClassPoolState = M.Map ClassName ClassState
+type CachedClassPoolState = M.HashMap ClassName ClassState
 
 newtype CachedClassPoolT r m a = CachedClassPoolT
   { runCachedClassPoolT' :: StateT CachedClassPoolState (ReaderT (ReaderOptions r) m) a }
@@ -471,7 +472,7 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
 
   alterClass f n = do
     opt <- CachedClassPoolT ask
-    m <- liftIO . getCompose . M.alterF (alterer opt) n =<< get
+    m <- liftIO . getCompose . alterF (alterer opt) n =<< get
     return (fmap put m)
     where
       alterer opt =
@@ -483,7 +484,7 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
   alterClasses f = do
     opt <- lift $ CachedClassPoolT ask
     lift get
-      >>= M.traverseMaybeWithKey
+      >>= fmap (M.mapMaybe id) . M.traverseWithKey
       (\n cls ->
         traverseState (lift . tryEnsureClass n opt >=> maybe (return Nothing) f) cls
       )
@@ -496,7 +497,7 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
     bs <- forM cns $ \cn -> do
       -- TODO cacheClass cn
       cs <- get
-      let (bs, mp) = M.alterF helper cn cs
+      let (bs, mp) = alterF helper cn cs
       put mp
       return ((cn,) <$> bs)
     liftIO . writeBytesToFilePath fp $ catMaybes bs
@@ -517,7 +518,7 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
       (flip runReaderT r . flip runStateT cp $ m)
 
   restrictTo s =
-    modify (flip M.restrictKeys s)
+    modify (flip M.difference (S.toMap s))
 
 runCachedClassPoolT ::
      (ClassReader r, MonadIO m)
@@ -538,3 +539,13 @@ runCachedClassPool ::
   -> IO (a, CachedClassPoolState)
 runCachedClassPool =
   runCachedClassPoolT
+
+alterF ::
+  (Eq k, Hashable k, Functor f)
+  => (Maybe v -> f (Maybe v))
+  -> k -> M.HashMap k v
+  -> f (M.HashMap k v)
+alterF f k m =
+  flip fmap (f (M.lookup k m)) $ \case
+    Nothing -> M.delete k m
+    Just v  -> M.insert k v m

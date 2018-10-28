@@ -224,7 +224,8 @@ instance Inspectable (B.AbsMethodId B.High) where
     B.InClass <$> classNames g cn <*> classNames g ci
 
   methodNames g (B.InClass cn ci) =
-    (\(cn', ci') -> B.InClass (cn' ^. _Binary) ( ci' ^. _Binary)) <$> g (cn ^. from _Binary, ci ^. from _Binary)
+    (\(cn', ci') -> B.InClass (cn' ^. _Binary) ( ci' ^. _Binary))
+    <$> g (cn ^. from _Binary, ci ^. from _Binary)
 
 instance Inspectable (B.AbsVariableMethodId B.High) where
   classNames g o =

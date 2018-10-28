@@ -453,6 +453,9 @@ instance FromJSONKey MethodName where
 instance FromJSON ClassName where
   parseJSON = withText "ClassName" (return . view (from fullyQualifiedName))
 
+instance FromJSONKey ClassName where
+  fromJSONKey = FromJSONKeyTextParser (return . view (from fullyQualifiedName))
+
 instance ToJSON B.ClassName where
   toJSON = String . view _Wrapped
 
