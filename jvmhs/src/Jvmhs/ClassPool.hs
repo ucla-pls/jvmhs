@@ -387,7 +387,7 @@ instance Monad m => MonadClassPool (ClassPoolT m) where
     lift $ fst <$> runClassPoolT m cp
 
   restrictTo s =
-    modify (flip M.difference (S.toMap s))
+    modify (flip M.intersection (S.toMap s))
 
 type ClassPool = ClassPoolT Identity
 
@@ -518,7 +518,7 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
       (flip runReaderT r . flip runStateT cp $ m)
 
   restrictTo s =
-    modify (flip M.difference (S.toMap s))
+    modify (flip M.intersection (S.toMap s))
 
 runCachedClassPoolT ::
      (ClassReader r, MonadIO m)
