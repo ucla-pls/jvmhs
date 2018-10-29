@@ -271,22 +271,22 @@ formats =
   ]
 
 streamAll ::
-  (ClassReader r, MonadIO m, r ~ ClassPreloader)
+  (ClassReader r, MonadIO m)
   => ReaderOptions r
   -> StreamFunction m
   -> CachedClassPoolT r m ()
 streamAll opts = \case
   StreamClassName fn -> do
     mapM_ (lift . fn) =<< allClassNames
-  StreamContainer fn -> do
-    let cm = classReader opts  ^. classMap
-    set <- Set.fromList <$> allClassNames
-    mapM_ (\(cn, cl) -> lift $ fn (cn, cl))
-      . Map.toList
-      . fmap head
-      . Map.difference cm
-      . Set.toMap
-      $ set
+  StreamContainer fn -> undefined
+    -- let cm = classReader opts  ^. classMap
+    -- set <- Set.fromList <$> allClassNames
+    -- mapM_ (\(cn, cl) -> lift $ fn (cn, cl))
+    --   . Map.toList
+    --   . fmap head
+    --   . Map.difference cm
+    --   . Set.toMap
+    --   $ set
   StreamClass fn -> do
     streamClasses fn
 

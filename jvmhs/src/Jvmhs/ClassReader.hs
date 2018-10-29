@@ -60,6 +60,7 @@ module Jvmhs.ClassReader
   , preload
   , preloadClassPath
 
+  , asClassName
   , guessJre
   ) where
 
@@ -115,6 +116,7 @@ jarsFromFolder fp =
 readZipFile :: FilePath -> IO (Either String Archive)
 readZipFile =
   fmap toArchiveOrFail . BL.readFile
+{-# INLINABLE readZipFile #-}
 
 -- | The content of a folder represented as a absolute path
 folderContents :: FilePath -> IO [ FilePath ]
@@ -126,19 +128,18 @@ isJar :: FilePath -> Bool
 isJar path =
   takeExtension path == ".jar"
 
--- | Check if the extension of the file is ".class"
-isClassFile :: FilePath -> Bool
-isClassFile path =
-  takeExtension path == ".class"
+-- -- | Check if the extension of the file is ".class"
+-- isClassFile :: FilePath -> Bool
+-- isClassFile path =
+--   takeExtension path == ".class"
+-- {-# INLINABLE isClassFile #-}
 
 -- | Takes a relative file path from the main package to the
 -- class file and returns a class name.
 asClassName :: FilePath -> Maybe ClassName
-asClassName path
-  | isClassFile path =
-    return . strCls $ dropExtension path
-  | otherwise =
-    Nothing
+asClassName =
+  fmap (view $ from fullyQualifiedName) . Text.stripSuffix ".class" . Text.pack
+{-# INLINABLE asClassName #-}
 
 -- | Get all the files of under a folder.
 recursiveContents :: FilePath -> IO [ FilePath ]

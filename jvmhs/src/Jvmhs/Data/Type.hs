@@ -158,6 +158,7 @@ fullyQualifiedName ::
   Iso' ClassName Text.Text
 fullyQualifiedName =
    _Binary . _Wrapped
+{-# INLINABLE fullyQualifiedName #-}
 
 -- | Splits a ClassName in it's components
 splitClassName :: Iso' ClassName [Text.Text]
@@ -165,6 +166,7 @@ splitClassName =
   fullyQualifiedName . split
   where
     split = iso (Text.splitOn "/") (Text.intercalate "/")
+{-# INLINABLE splitClassName #-}
 
 type Package = [ Text.Text ]
 
@@ -172,19 +174,23 @@ type Package = [ Text.Text ]
 package :: Traversal' ClassName Package
 package =
   splitClassName . _init
+{-# INLINABLE package #-}
 
 -- | The shorthand name of the class name
 shorthand :: Traversal' ClassName Text.Text
 shorthand =
   splitClassName . _last
+{-# INLINABLE shorthand #-}
 
 dotCls :: Text.Text -> ClassName
 dotCls =
   view $ to B.dotCls . from _Binary
+{-# INLINABLE dotCls #-}
 
 strCls :: String -> ClassName
 strCls =
   view $ to B.strCls . from _Binary
+{-# INLINABLE strCls #-}
 
 instance ToJSON ClassName where
   toJSON = String . view fullyQualifiedName
