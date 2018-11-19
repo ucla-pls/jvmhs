@@ -544,8 +544,8 @@ compress f as = [f as]
 isoBinary :: Iso' (B.ClassFile B.High) Class
 isoBinary = iso fromClassFile toClassFile
 
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 8} ''MethodContent)
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''FieldContent)
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''MethodContent)
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''FieldContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''InnerClass)
 
