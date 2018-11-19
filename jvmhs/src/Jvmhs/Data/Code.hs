@@ -2,6 +2,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE LambdaCase  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TemplateHaskell   #-}
@@ -45,10 +46,11 @@ module Jvmhs.Data.Code
   where
 
 import           Control.DeepSeq
-import           Control.Lens
+import           Control.Lens hiding ((.=))
 import           Data.Aeson
 import           Data.Aeson.TH
 import           Data.Word
+import qualified Data.Text as Text
 import qualified Data.Vector as V
 
 import           GHC.Generics (Generic)
@@ -159,7 +161,44 @@ $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
 
 instance ToJSON (B.ByteCodeOpr B.High) where
-  toJSON _ = String "<code>"
+  toJSON = \case
+    B.Throw -> object
+      [ "opc" .= String "throw"]
+    B.Nop -> object
+      [ "opc" .= String "nop"]
+    B.Return lt -> object
+      [ "opc" .= String "return"
+      , "type" .= toJSON lt
+      ]
+    B.Get fa fid -> object
+      [ "opc" .= String "get"
+      , "static" .= toJSON fa
+      , "field" .= toJSON fid
+      ]
+    B.Put fa fid -> object
+      [ "opc" .= String "get"
+      , "static" .= toJSON fa
+      , "field" .= toJSON fid
+      ]
+    _ ->
+      String "<code>"
+
+instance ToJSON (B.LocalType) where
+  toJSON = String . \case
+    B.LInt -> "I"
+    B.LLong -> "J"
+    B.LFloat -> "F"
+    B.LDouble -> "D"
+    B.LRef -> "L"
+
+instance ToJSON (B.FieldAccess) where
+  toJSON = Bool . \case
+    B.FldStatic -> True
+    B.FldField -> False
+
+instance ToJSON (B.InClass B.FieldId B.High) where
+  toJSON (B.InClass a b) =
+    String $ B.classNameAsText a <> ":" <> Text.pack (show b)
 
 instance ToJSON (B.StackMapTable B.High) where
   toJSON _ = String "<stack-map-table>"
