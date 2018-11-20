@@ -121,6 +121,8 @@ import           Data.Maybe
 -- import           Data.Monoid
 import           Data.Foldable as F
 
+import Debug.Trace
+
 -- bytestring
 import qualified Data.ByteString.Lazy as BL
 
@@ -495,7 +497,7 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
 
   saveClasses fp cns = do
     bs <- forM cns $ \cn -> do
-      -- TODO cacheClass cn
+      modifyClass cn id
       cs <- get
       let (bs, mp) = alterF helper cn cs
       put mp
