@@ -15,13 +15,10 @@ module Main where
 import           Control.Monad
 import qualified Data.List                    as List
 import qualified Data.Maybe                   as Maybe
-import           Data.String
 import           System.Environment
-import           System.IO
 
 -- unordered
 import qualified Data.HashSet                     as Set
-import qualified Data.HashMap.Strict              as Map
 
 -- bytestring
 import qualified Data.ByteString.Lazy.Char8   as BS
@@ -33,7 +30,6 @@ import           Data.Aeson
 import           Control.Monad.Reader
 
 -- text
-import qualified Data.Text                    as Text
 import qualified Data.Text.IO                 as Text
 
 -- filepath
@@ -47,7 +43,6 @@ import qualified Text.PrettyPrint.ANSI.Leijen as D
 
 -- lens
 import           Control.Lens                 hiding (argument)
-import           Data.Set.Lens            (setOf)
 
 -- jvmhs
 import           Jvmhs
@@ -84,9 +79,9 @@ data Config = Config
 makeLenses ''Config
 
 getConfigParser :: [Format] -> IO (Parser (IO Config))
-getConfigParser formats = do
+getConfigParser formats' = do
 
-  let format = head formats
+  let format = head formats'
 
   mclasspath <- lookupEnv "CLASSPATH"
 
@@ -96,7 +91,7 @@ getConfigParser formats = do
       Nothing -> guessJre
 
   return $
-    readConfig formats
+    readConfig
 
     <$> option str
     ( long "cp"
@@ -155,8 +150,8 @@ getConfigParser formats = do
       )
     )
   where
-    readConfig formats classpath jre useStdlib computeClosure fast format classNames = do
-      let Just a = List.find ((format ==) . formatName) formats
+    readConfig classpath jre useStdlib computeClosure fast format classNames' = do
+      let Just a = List.find ((format ==) . formatName) formats'
       return $
         Config
         (splitClassPath classpath)
@@ -165,7 +160,7 @@ getConfigParser formats = do
         computeClosure
         fast
         a
-        classNames
+        classNames'
 
 footerFromFormats :: [Format] -> D.Doc
 footerFromFormats fts =
@@ -176,8 +171,8 @@ footerFromFormats fts =
     D.<$> D.empty
     D.<$> joinFormats fts (formatFormatter "")
   where
-    joinFormats fts fn =
-      D.vcat . map ((<> D.line) . fn) $ fts
+    joinFormats fs fn =
+      D.vcat . map ((<> D.line) . fn) $ fs
 
     formatFormatter prefix (Format name desc type_) =
       D.nest 2 $
@@ -225,28 +220,32 @@ runFormat classloader = \case
     isFast <- view $ cfgFast
     let
       opts = (defaultFromReader preloaded') { keepAttributes = not isFast }
-      action = streamAll opts sfn
+      dothis = streamAll opts sfn
 
     void . flip runCachedClassPoolT opts $ do
       view cfgClassNames >>= \case
         [] ->
-          action
-        classNames -> do
-          let classSet = Set.fromList classNames
+          dothis
+        classNames' -> do
+          let classSet = Set.fromList classNames'
 
           view cfgComputeClosure >>= \case
             True -> do
               void . computeClassClosureM classSet $ \(_, clss) ->
                 cplocal $ do
                   restrictTo (Set.fromList $ toListOf (folded.className) clss)
-                  action
+                  dothis
             False -> do
               restrictTo classSet
-              action
+              dothis
 
   Group ( f:_ ) ->
     runFormat classloader (formatType f)
 
+  Group [] ->
+    error "Bad Format"
+
+formats :: [Format]
 formats =
   [ Format "list" "List classes available on the classpath"
   $ Stream . StreamClassName $ \cn -> liftIO $ do
@@ -275,10 +274,10 @@ streamAll ::
   => ReaderOptions r
   -> StreamFunction m
   -> CachedClassPoolT r m ()
-streamAll opts = \case
+streamAll _ = \case
   StreamClassName fn -> do
     mapM_ (lift . fn) =<< allClassNames
-  StreamContainer fn -> undefined
+  StreamContainer _ -> undefined
     -- let cm = classReader opts  ^. classMap
     -- set <- Set.fromList <$> allClassNames
     -- mapM_ (\(cn, cl) -> lift $ fn (cn, cl))

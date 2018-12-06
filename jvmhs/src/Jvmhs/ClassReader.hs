@@ -16,6 +16,8 @@ module Jvmhs.ClassReader
   , ClassPath
   , splitClassPath
 
+  , relativePathOfClass
+
   , ClassReader (..)
 
   , ReaderOptions (..)
@@ -106,6 +108,10 @@ defaultFromReader = ReaderOptions True
 pathOfClass :: FilePath -> ClassName -> FilePath
 pathOfClass fp cn =
   fp ++ "/" ++ Text.unpack (cn^.fullyQualifiedName) ++ ".class"
+
+relativePathOfClass :: ClassName -> FilePath
+relativePathOfClass cn =
+  Text.unpack (cn^.fullyQualifiedName) ++ ".class"
 
 -- | Return all the jars from in a folder.
 jarsFromFolder :: FilePath -> IO [ FilePath ]
@@ -421,6 +427,7 @@ makeLenses ''ClassLoader
 -- >> split ':' "Hello:World"
 -- [ "Hello", "World" ]
 -- split :: Char -> [Char] -> [[Char]]
+
 split :: (Eq a) => a -> ([a] -> [[a]])
 split a = go []
   where
@@ -433,7 +440,7 @@ split a = go []
         go (b':lst) rest
 
 splitClassPath :: String -> ClassPath
-splitClassPath = split ':'
+splitClassPath = splitSearchPath
 
 -- | Creates a 'ClassLoader' from a class path, automatically predicts
 -- the java version used using the 'which' command.

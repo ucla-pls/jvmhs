@@ -121,8 +121,6 @@ import           Data.Maybe
 -- import           Data.Monoid
 import           Data.Foldable as F
 
-import Debug.Trace
-
 -- bytestring
 import qualified Data.ByteString.Lazy as BL
 

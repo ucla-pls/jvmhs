@@ -3,12 +3,15 @@ packages:
 - jvmhs
 - javaq
 - jreduce
-- location:
-    git: git@bitbucket.org:ucla-pls/reduce.git
-    commit: d74c8853aee45e86f0dc7e1113f2cc47a4ec23c4 
+- location: 
+    git: https://github.com/ucla-pls/reduce.git
+    commit: ff78e9d9f7b1e2cc3cd0d748877fd09596f0ffc2
+    subdirs:
+      - reduce
+      - reduce-util
   extra-dep: true
 - location:
-    git: git@github.com:ucla-pls/jvm-binary.git
+    git: https://github.com/ucla-pls/jvm-binary.git
     commit: 059dce79b204cee348995d506f7a93c16e5e4d11
   extra-dep: true
 extra-deps: 
