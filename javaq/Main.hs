@@ -248,14 +248,14 @@ runFormat classloader = \case
 formats :: [Format]
 formats =
   [ Format "list" "List classes available on the classpath"
-  $ Stream . StreamClassName $ \cn -> liftIO $ do
+    $ Stream . StreamClassName $ \cn -> liftIO $ do
       Text.putStrLn (cn ^. fullyQualifiedName)
   , Format "containers"
     ( "List classes and their containers, outputs in a tap-separated fashion."
-    D.</> "To get a count of classes per container, try:"
-    D.<$> D.indent 4 "> javaq --stdlib --cp /dev/null --format containers | cut -f 2 | sort | uniq -c"
+      D.</> "To get a count of classes per container, try:"
+      D.<$> D.indent 4 "> javaq --stdlib --cp /dev/null --format containers | cut -f 2 | sort | uniq -c"
     )
-  $ Stream . StreamContainer $ \(cn, lo) -> liftIO $ do
+    $ Stream . StreamContainer $ \(cn, lo) -> liftIO $ do
       Text.putStr (cn ^. fullyQualifiedName)
       Text.putStr "\t"
       case lo of
@@ -263,9 +263,13 @@ formats =
         CCJar (CJar fp _)               -> putStrLn fp
         CCEntry (CEntry (CJar fp _, _)) -> putStrLn fp
   , Format "json" "Output each class as json"
-  $ Group
+    $ Group
     [ Format "full" "Full output of the class"
-    $ Stream . StreamClass $ liftIO . BS.putStrLn . encode
+      $ Stream . StreamClass $ liftIO . BS.putStrLn . encode
+    , Format "metrics" "Contains only the overall metrics of the class"
+      $ Stream . StreamContainer $ \(cn, lo) -> do
+        bts <- readClassBytes lo cn
+        liftIO $ do
     ]
   ]
 
@@ -300,6 +304,13 @@ createClassLoader =
       ) >>= liftIO
     False ->
       ClassLoader [] [] <$> view cfgClassPath
+
+
+data ClassMetric = ClassMetric
+  { cmClassName :: !ClassName
+  , cmClassSize :: !Int64
+  , cmClassSha265 :: !BS.ByteString
+  } deriving (Show, Eq)
 
 -- import           Control.DeepSeq            (NFData, force)
 -- import           Control.Lens               hiding (argument)
