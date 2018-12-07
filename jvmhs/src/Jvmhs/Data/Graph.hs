@@ -272,8 +272,6 @@ forwardRemove gr f =
   where
     closure = close gr (toList f)
 
--- | Remove elements in the graph and all nodes that they point to. Return
--- the new graph and the removed elements.
 remove ::
   (Foldable f, Ord v)
   => Graph v e
