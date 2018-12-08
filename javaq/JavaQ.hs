@@ -268,8 +268,9 @@ formats =
       $ Stream . StreamClass $ liftIO . BS.putStrLn . encode
     , Format "metrics" "Contains only the overall metrics of the class"
       $ Stream . StreamContainer $ \(cn, lo) -> do
-        bts <- readClassBytes lo cn
-        liftIO $ do
+        bts <- liftIO $ getClassBytes lo cn
+        undefined
+        -- liftIO $ do
     ]
   ]
 
@@ -306,11 +307,11 @@ createClassLoader =
       ClassLoader [] [] <$> view cfgClassPath
 
 
-data ClassMetric = ClassMetric
-  { cmClassName :: !ClassName
-  , cmClassSize :: !Int64
-  , cmClassSha265 :: !BS.ByteString
-  } deriving (Show, Eq)
+-- data ClassMetric = ClassMetric
+--   { cmClassName :: !ClassName
+--   , cmClassSize :: !Int64
+--   , cmClassSha265 :: !BS.ByteString
+--   } deriving (Show, Eq)
 
 -- import           Control.DeepSeq            (NFData, force)
 -- import           Control.Lens               hiding (argument)

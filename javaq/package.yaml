@@ -32,4 +32,4 @@ dependencies:
 executables:
   javaq:
     source-dirs: .
-    main: Main.hs
+    main: JavaQ.hs
