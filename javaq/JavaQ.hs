@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveAnyClass      #-}
-{-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -9,31 +8,39 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeFamilies        #-}
 module Main where
 
--- prelude
+-- base
 import           Control.Monad
 import qualified Data.List                    as List
 import qualified Data.Maybe                   as Maybe
+import           Data.Word
 import           System.Environment
+import           System.IO
 
 -- unordered
-import qualified Data.HashSet                     as Set
+import qualified Data.HashSet                 as Set
 
 -- bytestring
-import qualified Data.ByteString.Lazy.Char8   as BS
+import qualified Data.ByteString.Lazy.Char8   as BL
 
 -- aeson
 import           Data.Aeson
+import           Data.Aeson.TH
 
 -- mtl
 import           Control.Monad.Reader
 
 -- text
+import qualified Data.Text                    as Text
 import qualified Data.Text.IO                 as Text
 
 -- filepath
 import           System.FilePath
+
+-- vector
+import qualified Data.Vector as V
 
 -- optparse-applicative
 import           Options.Applicative
@@ -46,6 +53,13 @@ import           Control.Lens                 hiding (argument)
 
 -- jvmhs
 import           Jvmhs
+import           Jvmhs.Data.Code
+
+-- cryptohash-sha256
+import           Crypto.Hash.SHA256           as SHA256
+
+-- hexstring
+import           Data.HexString
 
 data OutputFormat
   = Stream (StreamFunction (ReaderT Config IO))
@@ -57,7 +71,7 @@ data StreamFunction m
   | StreamClass ( Class -> m () )
 
 data Format = Format
-  { formatName        :: String
+  { formatName        :: Text.Text
   , formatDescription :: D.Doc
   , formatType        :: OutputFormat
   }
@@ -70,7 +84,7 @@ data Config = Config
   , _cfgJre            :: FilePath
   , _cfgUseStdlib      :: Bool
   , _cfgComputeClosure :: Bool
-  , _cfgFast :: Bool
+  , _cfgFast           :: Bool
   , _cfgFormat         :: Format
   -- , _cfgStubs          :: HierarchyStubs
   , _cfgClassNames     :: [ ClassName ]
@@ -78,9 +92,20 @@ data Config = Config
 
 makeLenses ''Config
 
+data ClassMetric = ClassMetric
+  { cmName         :: !ClassName
+  , cmSize         :: !Word64
+  , cmSha256       :: !HexString
+  , cmMethods      :: !Int
+  , cmFields       :: !Int
+  , cmInstructions :: !Int
+  } deriving (Show, Eq)
+
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 2} ''ClassMetric)
+
+
 getConfigParser :: [Format] -> IO (Parser (IO Config))
 getConfigParser formats' = do
-
   let format = head formats'
 
   mclasspath <- lookupEnv "CLASSPATH"
@@ -135,11 +160,11 @@ getConfigParser formats' = do
          )
     )
 
-    <*> option str
+    <*> option (maybeReader $ findFormat formats' . Text.splitOn "-" . Text.pack)
     ( long "format"
       <> help "The output format, see Formats."
       <> metavar "FORMAT"
-      <> value (formatName format)
+      <> value (format)
       <> showDefault
     )
 
@@ -150,8 +175,7 @@ getConfigParser formats' = do
       )
     )
   where
-    readConfig classpath jre useStdlib computeClosure fast format classNames' = do
-      let Just a = List.find ((format ==) . formatName) formats'
+    readConfig classpath jre useStdlib computeClosure fast fmt classNames' = do
       return $
         Config
         (splitClassPath classpath)
@@ -159,8 +183,22 @@ getConfigParser formats' = do
         useStdlib
         computeClosure
         fast
-        a
+        fmt
         classNames'
+
+    findFormat fmts formatlist = do
+      (a, rest) <- uncons formatlist
+      format <- List.find ((a ==) . formatName) fmts
+
+      case (rest, formatType format) of
+        ([], Group (fmt:_)) ->
+          return fmt
+        ([], _) ->
+          return format
+        (more, Group fmts') ->
+          findFormat fmts' more
+        _ -> Nothing
+
 
 footerFromFormats :: [Format] -> D.Doc
 footerFromFormats fts =
@@ -177,19 +215,19 @@ footerFromFormats fts =
     formatFormatter prefix (Format name desc type_) =
       D.nest 2 $
       let
-        nameDoc = prefix D.<> D.text name
+        nameDoc = prefix D.<> doc name
         title = D.green (nameDoc D.<> D.colon)
       in case type_ of
         Stream _ ->
           title D.<+> D.parens "stream"
           D.<$> desc
         Group fmts ->
-          let prefix' = prefix D.<> D.text name D.<> "-"
+          let prefix' = prefix D.<> doc name D.<> "-"
           in
-            title D.<+> D.parens ("default:" D.<+> (prefix' D.<> (D.text . formatName . head $ fmts)))
+            title D.<+> D.parens ("default:" D.<+> (prefix' D.<> (doc . formatName . head $ fmts)))
             D.<$> desc
             D.<$> D.empty
-            D.<$> joinFormats fmts (formatFormatter (prefix D.<> D.text name D.<> "-"))
+            D.<$> joinFormats fmts (formatFormatter (prefix D.<> doc name D.<> "-"))
 
 main :: IO ()
 main = do
@@ -245,6 +283,7 @@ runFormat classloader = \case
   Group [] ->
     error "Bad Format"
 
+
 formats :: [Format]
 formats =
   [ Format "list" "List classes available on the classpath"
@@ -265,12 +304,27 @@ formats =
   , Format "json" "Output each class as json"
     $ Group
     [ Format "full" "Full output of the class"
-      $ Stream . StreamClass $ liftIO . BS.putStrLn . encode
-    , Format "metrics" "Contains only the overall metrics of the class"
+      $ Stream . StreamClass $ liftIO . BL.putStrLn . encode
+    , Format "metric" "Contains only the overall metrics of the class"
       $ Stream . StreamContainer $ \(cn, lo) -> do
-        bts <- liftIO $ getClassBytes lo cn
-        undefined
-        -- liftIO $ do
+        ebts <- liftIO $ getClassBytes lo cn
+        case (\bts -> (bts,) <$> readClassBytes (ReaderOptions True lo) bts) =<< ebts of
+          Left err ->
+            liftIO . Text.hPutStrLn stderr
+            $ "Error in " <> cn ^. fullyQualifiedName <> ": " <> Text.pack (show err)
+          Right (bts, clsf) -> liftIO $ do
+            let
+              (hsh, ln) = SHA256.hashlazyAndLength bts
+              cls = convertClass clsf
+            BL.putStrLn . encode $ ClassMetric
+              { cmName = cn
+              , cmSize = ln
+              , cmSha256 = fromBytes hsh
+              , cmFields = cls ^. classFieldList.to length
+              , cmMethods = cls ^. classMethodList.to length
+              , cmInstructions =
+                  sumOf (classMethods.folded.methodCode._Just.codeByteCode.to V.length) cls
+              }
     ]
   ]
 
@@ -282,15 +336,10 @@ streamAll ::
 streamAll _ = \case
   StreamClassName fn -> do
     mapM_ (lift . fn) =<< allClassNames
-  StreamContainer _ -> undefined
-    -- let cm = classReader opts  ^. classMap
-    -- set <- Set.fromList <$> allClassNames
-    -- mapM_ (\(cn, cl) -> lift $ fn (cn, cl))
-    --   . Map.toList
-    --   . fmap head
-    --   . Map.difference cm
-    --   . Set.toMap
-    --   $ set
+  StreamContainer fn -> do
+    r <- classReader <$> CachedClassPoolT ask
+    c <- liftIO (classes r)
+    mapM_ (lift . fn) c
   StreamClass fn -> do
     streamClasses fn
 
@@ -307,11 +356,8 @@ createClassLoader =
       ClassLoader [] [] <$> view cfgClassPath
 
 
--- data ClassMetric = ClassMetric
---   { cmClassName :: !ClassName
---   , cmClassSize :: !Int64
---   , cmClassSha265 :: !BS.ByteString
---   } deriving (Show, Eq)
+doc :: Text.Text -> D.Doc
+doc = D.text . Text.unpack
 
 -- import           Control.DeepSeq            (NFData, force)
 -- import           Control.Lens               hiding (argument)

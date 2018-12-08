@@ -28,6 +28,8 @@ dependencies:
   - optparse-applicative
   - ansi-wl-pprint
   - mtl
+  - hexstring
+  - vector
 
 executables:
   javaq:
