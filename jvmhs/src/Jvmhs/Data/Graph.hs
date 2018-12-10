@@ -35,6 +35,8 @@ module Jvmhs.Data.Graph
   , remove
   , forwardRemove
 
+  , shrink
+
   -- * Algorithms
   , isClosedIn
   , partition
@@ -60,6 +62,7 @@ import           Control.DeepSeq
 import           Control.Lens
 import           Data.Foldable                     (toList)
 import qualified Data.Map                          as M
+import qualified Data.Set                          as S
 import           Data.Maybe
 import           Data.Monoid                       ((<>))
 import           Data.Tuple                        (swap)
@@ -281,6 +284,15 @@ remove gr vs =
   gr & innerGraph %~ F.delNodes (vs ^..folded.fromLabel gr._Just)
      & nodeMap %~ flip M.withoutKeys (S.setOf folded vs)
 
+shrink ::
+  (Foldable f, Ord v)
+  => Graph v e
+  -> f v
+  -> Graph v e
+shrink gr vs =
+  remove gr revset
+  where
+    revset = S.setOf grNodes gr `S.difference` S.setOf folded vs
 
 -- | Reads a graph from file. Expects the file to a list of two integres.
 graphFromFile ::
