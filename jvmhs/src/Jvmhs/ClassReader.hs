@@ -423,22 +423,6 @@ data ClassLoader = ClassLoader
 
 makeLenses ''ClassLoader
 
--- | split splits a list on an element
--- >> split ':' "Hello:World"
--- [ "Hello", "World" ]
--- split :: Char -> [Char] -> [[Char]]
-
-split :: (Eq a) => a -> ([a] -> [[a]])
-split a = go []
-  where
-    go lst [] =
-      [ reverse lst ]
-    go lst (b':rest)
-      | b' == a =
-        reverse lst : go [] rest
-      | otherwise =
-        go (b':lst) rest
-
 splitClassPath :: String -> ClassPath
 splitClassPath = splitSearchPath
 

@@ -9,7 +9,7 @@
 {-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeFamilies        #-}
-module Main where
+module JavaQ where
 
 -- base
 import           Control.Monad

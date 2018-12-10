@@ -31,7 +31,10 @@ dependencies:
   - hexstring
   - vector
 
+library:
+  source-dirs: src
+
 executables:
   javaq:
     source-dirs: .
-    main: JavaQ.hs
+    main: Main.hs
