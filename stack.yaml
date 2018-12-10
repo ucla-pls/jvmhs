@@ -5,7 +5,7 @@ packages:
 - jreduce
 - location: 
     git: https://github.com/ucla-pls/reduce.git
-    commit: f421cfcc3e987baf97f2a129fb0bdb799041c9ba
+    commit: 991b0a06427ff1293361b9a1adb80375cabbafd2
     subdirs:
       - reduce
       - reduce-util
