@@ -37,4 +37,9 @@ library:
 executables:
   javaq:
     source-dirs: .
+    dependencies:
+      - javaq
     main: Main.hs
+    ghc-options:
+      - -O2
+      - -threaded

@@ -30,6 +30,9 @@ module Jvmhs.Data.Graph
   , grNodes
   , grNode
 
+  , fromLabel
+  , labels
+
 
   -- * Modifications
   , remove
@@ -56,7 +59,6 @@ module Jvmhs.Data.Graph
   -- * Helper functions
   , graphFromFile
   ) where
-
 
 import           Control.DeepSeq
 import           Control.Lens
@@ -111,6 +113,9 @@ grNode i = innerGraph . to (flip F.lab i)
 
 fromLabel :: Ord v => Graph v e -> Getter v (Maybe Int)
 fromLabel gr = to (`M.lookup` view nodeMap gr)
+
+labels :: [Int] -> Graph v e -> [v]
+labels vs grp = vs ^.. folded . toLabel grp . _Just
 
 -- | Create a graph from nodes and edges. Any edge where both nodes are not in
 -- the inputs will be removed. *This functions assumes that there is only one
@@ -225,6 +230,8 @@ reverseFold gr@(Graph g _) f =
     go vid =
       f (gr ^?! grNode vid._Just) [ (gr^?!grNode vid'._Just, e, go vid') | (vid', e) <- F.lpre g vid ]
 
+
+
 -- | Compute the different possible closures for a graph, returns a list of
 -- unique sets and closures, with indices into the original graph.
 partition :: Graph v e -> [ ([v], [v]) ]
@@ -237,6 +244,9 @@ partition gr =
 closures :: Graph v e -> [ IS.IntSet ]
 closures = map snd . partition'
 
+-- | The partition of the graph into closures, the first is
+-- each strongly connected component and the second is the closure of
+-- that component.
 partition' :: Graph v e -> [ (IS.IntSet, IS.IntSet) ]
 partition' graph =
   catMaybes . V.toList $ cv
@@ -246,7 +256,10 @@ partition' graph =
     iscc = zip [0..] sccs
     vMap = IM.fromList . concatMap (\(i,xs) -> map (,i) xs) $ iscc
 
-    edges = map (\(i, ls) -> IS.unions . map (IS.delete i . getEdges) $ ls) iscc
+    edges = map (
+      \(i, ls) ->
+        IS.unions . map (IS.delete i . getEdges) $ ls
+      ) iscc
 
     cv = V.fromList (zipWith getNode sccs edges)
 
