@@ -33,11 +33,9 @@ module Jvmhs.Data.Graph
   , fromLabel
   , labels
 
-
   -- * Modifications
   , remove
   , forwardRemove
-
   , shrink
 
   -- * Algorithms
@@ -46,6 +44,7 @@ module Jvmhs.Data.Graph
   , partition'
   , closures
   , close
+  , collapse
   , revclose
 
   , revReachable
@@ -141,6 +140,7 @@ mkGraphFromEdges ::
 mkGraphFromEdges edges =
   mkGraph (edges^.folded.(_1 <> _2).toSet) edges
 
+-- | Check if a foldable collection of items is closed in the graph
 isClosedIn ::
   (Foldable f, Ord v)
   => f v
@@ -152,16 +152,36 @@ isClosedIn vs gr =
     input = (L.sort $ vs ^.. folded.fromLabel gr._Just)
     closure = L.sort $ dfs input (gr^.innerGraph)
 
+-- | Given a list of items close under them.
 close ::
-  (Ord v)
+  (Foldable f, Ord v)
   => Graph v e
-  -> [v]
+  -> f v
   -> [v]
 close gr vs =
   closure ^.. folded.toLabel gr._Just
   where
     input = vs ^.. folded.fromLabel gr._Just
     closure = dfs input (gr^.innerGraph)
+
+-- | Given a list of items, remove all items that is not closed.
+collapse ::
+  (Foldable f, Ord v)
+  => Graph v e
+  -> f v
+  -> [v]
+collapse gr vs =
+  left ^.. to IS.toList.folded.toLabel gr._Just
+  where
+    input = vs ^.. folded.fromLabel gr._Just
+    inputSet = IS.fromList input
+    missed =
+      IS.fromList (dfs input (gr^.innerGraph))
+      `IS.difference` inputSet
+    left =
+      inputSet
+      `IS.difference`
+      IS.fromList (rdfs (IS.toList missed) (gr^.innerGraph))
 
 revclose ::
   (Ord v)
