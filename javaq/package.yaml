@@ -30,6 +30,7 @@ dependencies:
   - mtl
   - hexstring
   - vector
+  - fgl
 
 library:
   source-dirs: src

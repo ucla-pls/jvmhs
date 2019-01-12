@@ -17,6 +17,10 @@ module Jvmhs.Data.Graph
   ( Graph
   , mkGraph
   , mkGraphFromEdges
+  , innerGraph
+  , nodeMap
+
+  , graphContexts
 
   -- Graph manipulations
   , sccGraph
@@ -115,6 +119,16 @@ fromLabel gr = to (`M.lookup` view nodeMap gr)
 
 labels :: [Int] -> Graph v e -> [v]
 labels vs grp = vs ^.. folded . toLabel grp . _Just
+
+graphContexts :: IndexedFold Int (Graph v e) (F.Context v e)
+graphContexts fn gr =
+  ( innerGraph
+    . ifolding (
+      map (\(n, _) -> (n, F.context (gr ^.innerGraph) n))
+      . F.labNodes
+      )
+  ) fn gr
+
 
 -- | Create a graph from nodes and edges. Any edge where both nodes are not in
 -- the inputs will be removed. *This functions assumes that there is only one
