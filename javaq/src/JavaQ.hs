@@ -320,9 +320,11 @@ formats =
   $ Group
     [ Format "metric" "Just compute the metrics"
     . Aggregate $ \err -> do
+      liftIO . putStrLn $ "Read class graph"
       grph <- mkClassGraph
+      let nonodes = grph^.innerGraph.to FGL.order
+      liftIO . print $ nonodes
       let
-        nonodes = grph^.innerGraph.to FGL.order
         noscc = List.length $ partition' grph
         meanOf x =
           List.sort (toListOf x grph) List.!! (nonodes `div` 2)
@@ -346,7 +348,7 @@ jsons = Group
   where
     metrics (cn, lo) = do
       ebts <- liftIO $ getClassBytes lo cn
-      let readByte bts = (bts,) <$> readClassBytes (ReaderOptions True lo) bts
+      let readByte bts = (bts,) <$> readClassFile' True bts
       case ebts >>= readByte of
         Left err ->
           liftIO . Text.hPutStrLn stderr

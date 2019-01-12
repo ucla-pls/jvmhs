@@ -1,11 +1,11 @@
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TupleSections              #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE LambdaCase              #-}
+{-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-
 Module      : Jvmhs.ClassPool
@@ -97,15 +97,15 @@ module Jvmhs.ClassPool
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Class
-import           Control.Monad.State.Strict (StateT(..), mapStateT)
+import           Control.Monad.State.Strict (StateT (..), mapStateT)
 
 -- transformers
-import Data.Functor.Compose
-import Data.Hashable
+import           Data.Functor.Compose
+import           Data.Hashable
 
 -- mtl
-import Control.Monad.Writer
-import Control.Monad.Identity
+import           Control.Monad.Identity
+import           Control.Monad.Writer
 
 -- lens
 import           Control.Lens
@@ -114,15 +114,14 @@ import           Control.Lens
 import           Control.Lens.Action
 
 -- base
-import           Data.Either                (partitionEithers)
-import qualified Data.HashMap.Strict                   as M
-import qualified Data.HashSet                   as S
+import qualified Data.HashMap.Strict        as M
+import qualified Data.HashSet               as S
 import           Data.Maybe
 -- import           Data.Monoid
-import           Data.Foldable as F
+import           Data.Foldable              as F
 
 -- bytestring
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy       as BL
 
 -- jvmhs
 import           Jvmhs.ClassReader
@@ -287,9 +286,16 @@ loadClasses ::
   (MonadClassPool m, MonadClassReader r m)
   => m [ClassPoolReadError]
 loadClasses = do
-  (errs, clss) <- partitionEithers <$> readClassesM
-  mapM_ putClass clss
-  return errs
+  r <- ask
+  classnames <- liftIO $ classes (classReader r)
+  errs <- forM classnames $ \(cn, con) ->
+    liftIO (readClass cn (const con <$> r)) >>= \case
+       Right cls -> do
+         putClass cls
+         return Nothing
+       Left err ->
+         return $ Just (cn, err)
+  return $ catMaybes errs
 
 -- | Load all the classes from a class reader into the class reader
 loadClassesFromReader ::
@@ -446,9 +452,9 @@ traverseState ::
   -> ClassState -> f (Maybe ClassState)
 traverseState fn x =
   fmap CSPure <$> case x of
-    CSPure cs -> fn (Just cs)
+    CSPure cs    -> fn (Just cs)
     CSSaved cs _ -> fn (Just cs)
-    CSUnread -> fn (Nothing)
+    CSUnread     -> fn (Nothing)
 
 
 tryEnsureClass ::

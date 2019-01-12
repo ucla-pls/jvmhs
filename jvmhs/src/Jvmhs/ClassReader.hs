@@ -80,6 +80,9 @@ import           System.Directory
 import           System.FilePath
 import           System.Process
 
+-- mtl
+import Control.Monad.Except
+
 -- unordered-containers
 import qualified Data.HashMap.Strict             as Map
 
@@ -168,11 +171,13 @@ data ClassReadError
 
 readClassFile' ::
   Bool -- keep the attribute?
-  ->  BL.ByteString
+  -> BL.ByteString
   -> Either ClassReadError (B.ClassFile B.High)
 readClassFile' bool file =
-  ( B.evolveClassFile (const bool) =<< B.decodeClassFile file )
-  & _Left %~ MalformedClass
+  over _Left MalformedClass
+  $ ( B.evolveClassFile (const bool) =<<
+      force (B.decodeClassFile file)
+    )
 
 -- | A class reader can read a class using a class name.
 class ClassReader m where
@@ -199,18 +204,18 @@ readClassBytes ::
   ClassReader r
   => ReaderOptions r
   -> BL.ByteString
-  -> Either ClassReadError (B.ClassFile B.High)
+  -> ExceptT ClassReadError IO (B.ClassFile B.High)
 readClassBytes m bts = do
-  force $ readClassFile' (keepAttributes m) bts
+  liftEither $ readClassFile' (keepAttributes m) bts
 
 readClassFile ::
   ClassReader r
   => ReaderOptions r
   -> ClassName
-  -> IO (Either ClassReadError (B.ClassFile B.High))
+  -> ExceptT ClassReadError IO (B.ClassFile B.High)
 readClassFile m cn = do
-  bts <- getClassBytes (classReader m) cn
-  return $ readClassBytes m =<< bts
+  b <- ExceptT $ getClassBytes (classReader m) cn
+  readClassBytes m b
 
 deserializeClass :: Class -> BL.ByteString
 deserializeClass =
@@ -272,8 +277,7 @@ readClass ::
   -> ReaderOptions r
   -> IO (Either ClassReadError Class)
 readClass cn r = do
-  cls <- readClassFile r cn
-  return (cls & _Right %~ convertClass)
+  runExceptT $ convertClass <$> readClassFile r cn
 
 -- | Read a checked class from a class reader.
 readClassM ::
@@ -282,8 +286,7 @@ readClassM ::
   -> m (Either ClassReadError Class)
 readClassM cn = do
   r <- ask
-  cls <- liftIO $ readClassFile r cn
-  return (cls & _Right %~ convertClass)
+  liftIO $ readClass cn r
 
 -- | Read
 readClassesM ::
@@ -292,10 +295,11 @@ readClassesM ::
 readClassesM = do
   r <- ask
   classnames <- liftIO $ classes (classReader r)
-  liftIO $ forM classnames (\(cn, con) -> first (cn,) <$> readClass cn (r $> con))
+  liftIO . forM classnames $ \(cn, con) ->
+    first (cn,) <$> readClass cn (r $> con)
 
 convertClass :: B.ClassFile B.High -> Class
-convertClass = view isoBinary
+convertClass = force . view isoBinary
 
 -- | Classes can be in a folder
 newtype CFolder = CFolder
