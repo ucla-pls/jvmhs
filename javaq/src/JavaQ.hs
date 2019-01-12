@@ -320,10 +320,8 @@ formats =
   $ Group
     [ Format "metric" "Just compute the metrics"
     . Aggregate $ \err -> do
-      liftIO . putStrLn $ "Read class graph"
       grph <- mkClassGraph
       let nonodes = grph^.innerGraph.to FGL.order
-      liftIO . print $ nonodes
       let
         noscc = List.length $ partition' grph
         meanOf x =
