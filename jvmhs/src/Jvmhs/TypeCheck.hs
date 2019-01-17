@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
@@ -15,6 +16,9 @@ Maintainer  : kalhuage@cs.ucla.edu
 
 -}
 module Jvmhs.TypeCheck where
+
+-- base
+import Control.Monad
 
 -- lens
 import Control.Lens
@@ -35,16 +39,19 @@ import Jvmhs.Data.Code
 type TypeInfo = B.VerificationTypeInfo B.High
 
 data Stack = Stack
-  { stackLocals :: [TypeInfo]
+  { stackLocals :: V.Vector TypeInfo
   , stackStack :: [TypeInfo]
   } deriving (Show, Eq)
 
-checkMethod :: Method -> Maybe StackMapTable
+mkStack :: [TypeInfo] -> [TypeInfo] -> Stack
+mkStack l s = Stack (V.fromList l) s
+
+checkMethod :: Method -> Maybe (V.Vector Stack)
 checkMethod (Method (Named n cnt)) =
   case _methodCode cnt of
     Just code ->
       let types = n ^. methodArgumentTypes
-      in checkCode (Stack (map typeInfoFromJType types) []) code
+      in checkCode (Stack (V.fromList $ map typeInfoFromJType types) []) code
     Nothing ->
       undefined
   where
@@ -65,31 +72,75 @@ checkMethod (Method (Named n cnt)) =
       B.JTArray _ ->
         undefined
 
-checkCode :: Stack -> Code -> Maybe StackMapTable
+checkCode :: Stack -> Code -> Maybe (V.Vector Stack)
 checkCode stack code =
-  case checkByteCodeOprs stack (_codeByteCode code) of
-    Just vs ->
-      Just (reduceStackMap vs)
-    Nothing ->
-      Nothing
+  checkByteCodeOprs stack (_codeByteCode code)
 
-reduceStackMap :: V.Vector Stack -> StackMapTable
-reduceStackMap _ = B.StackMapTable []
+reduceStackMap :: V.Vector Stack -> Maybe StackMapTable
+reduceStackMap _ = Nothing
+  -- B.StackMapTable (map toFullFrame . V.toList $ v)
+  -- where
+  --   toFullFrame (Stack l s) =
+  --     B.StackMapFrame 1
+  --     $ B.FullFrame (B.SizedList (V.toList l)) (B.SizedList s)
 
 checkByteCodeOprs :: Stack -> V.Vector ByteCodeOpr -> Maybe (V.Vector Stack)
-checkByteCodeOprs _ _ =
-  undefined
+checkByteCodeOprs s v = do
+  V.fromList <$> puttogetter checkByteCodeOpr s (V.toList v)
+  where
+    puttogetter :: (b -> a -> Maybe a) -> a -> [b] -> Maybe [a]
+    puttogetter fn a ls =
+      case ls of
+        [] -> Just []
+        b:rest -> do
+          x <- fn b a
+          rst <- puttogetter fn x rest
+          return (x:rst)
 
-checkByteCodeOpr :: Stack -> ByteCodeOpr -> Maybe Stack
-checkByteCodeOpr stack = \case
-  B.Nop -> Just stack
-  B.Push c ->
-    case c of
-      Nothing ->
-        Just (stack { stackStack = B.VTNull:(stackStack stack)})
-      Just c' ->
-        case c' of
-          B.VInteger _ ->
-            Just (stack { stackStack = B.VTInteger:(stackStack stack) })
-          _ -> Nothing
-  _ -> Nothing
+checkByteCodeOpr :: ByteCodeOpr -> Stack -> Maybe Stack
+checkByteCodeOpr opr stack =
+  case opr of
+    B.Nop -> Just stack
+    B.Push c -> justPush $ maybe B.VTNull typeInfoOf c
+    B.Load lt idx -> do
+      t <- stackLocals stack V.!? fromIntegral idx
+      guard (isLocalTypeEq lt t)
+      justPush t
+
+    B.Return mlt ->
+      case mlt of
+        Just lt ->
+          popIf (isLocalTypeEq lt)
+        Nothing ->
+          Just stack
+    _ -> Nothing
+
+  where
+    justPush i = Just $ push i stack
+
+    popIf fn =
+      case stackStack stack of
+        l:rest
+          | fn l ->
+              Just (stack { stackStack = rest })
+        _ -> Nothing
+
+push :: TypeInfo -> Stack -> Stack
+push i stack = stack { stackStack = i:(stackStack stack)}
+
+typeInfoOf :: B.JValue -> TypeInfo
+typeInfoOf = \case
+  B.VInteger _ -> B.VTInteger
+  B.VLong _ -> B.VTLong
+  B.VFloat _ ->B.VTFloat
+  B.VDouble _ -> B.VTDouble
+  B.VString _ -> B.VTObject "java/lang/String"
+  B.VClass _ -> B.VTObject "java/lang/Class"
+  B.VMethodType _ -> B.VTObject "java/lang/invoke/MethodType"
+  B.VMethodHandle _ -> B.VTObject "java/lang/invoke/MethodHandle"
+
+isLocalTypeEq :: B.LocalType -> TypeInfo -> Bool
+isLocalTypeEq a b =
+  case (a, b) of
+    (B.LInt, B.VTInteger) -> True
+    _ -> False

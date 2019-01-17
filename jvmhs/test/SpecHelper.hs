@@ -6,6 +6,7 @@ module SpecHelper
 
   , liftIO
   , it
+  , describe
   , SpecWith
   , Spec
   , before
@@ -19,6 +20,7 @@ module SpecHelper
   , forEveryClassIt
 
   , useOutputFolder
+  , getClassFromTestPool
   ) where
 
 import Text.Printf
@@ -44,6 +46,9 @@ classpath :: [ FilePath ]
 classpath =
   [ "test/data/classes" ]
 
+getClassFromTestPool :: ClassName -> IO (Maybe Class)
+getClassFromTestPool cn = do
+  fmap snd . runTestClassPool $ getClass cn
 
 runTestClassPool ::
   ClassPool a
