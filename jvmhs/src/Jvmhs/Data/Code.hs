@@ -169,14 +169,14 @@ instance ToJSON ByteCodeOpr where
   toJSON = \case
     B.ArrayLoad arrType -> object
       [ "opc" .= String "array_load"
-      , "type" .= toJSON arrType
+      , "type" .= arrType
       ]
     B.ArrayStore arrType -> object
       [ "opc" .= String "array_store"
-      , "type" .= toJSON arrType
+      , "type" .= arrType
       ]
     B.Push bconstant -> object
-      ([ "opc" .= String "push"] ++ getListOfPairsFromBConstant bconstant)
+      (("opc" .= String "push"):getListOfPairsFromBConstant bconstant)
     B.Load localtype localaddr -> object
       [ "opc" .= String "load"
       , "type" .= toJSON localtype
@@ -255,16 +255,16 @@ instance ToJSON ByteCodeOpr where
       [ "opc" .= String "get"
       , "static" .= toJSON fa
       , "class" .= B.classNameAsText a
-      , "name_and_type" .= nameAndTypeFromFieldId b
+      , "field" .= nameAndTypeFromFieldId b
       ]
 
     B.Put fa (B.InClass a b) -> object
       [ "opc" .= String "put"
       , "static" .= toJSON fa
       , "class" .= B.classNameAsText a
-      , "name_and_type" .= nameAndTypeFromFieldId b
+      , "field" .= nameAndTypeFromFieldId b
       ]
-    B.Invoke invocation -> object ( [ "opc" .= String "invoke"] ++ getInvocationAttributes invocation )
+    B.Invoke invocation -> object ( ("opc" .= String "invoke"): getInvocationAttributes invocation )
     B.New ref -> object
       [ "opc" .= String "new"
       , "ref" .= toJSON ref
@@ -278,7 +278,7 @@ instance ToJSON ByteCodeOpr where
     B.Throw -> object
       [ "opc" .= String "throw"]
     B.CheckCast ref -> object
-      [ "opc" .= String "check)cast"
+      [ "opc" .= String "check_cast"
       , "ref" .= toJSON ref
       ]    
     B.InstanceOf ref -> object
@@ -292,7 +292,7 @@ instance ToJSON ByteCodeOpr where
     B.MultiNewArray ref word8 -> object
       [ "opc" .= String "multi_new_array"
       , "ref" .= toJSON ref
-      , "dimensions" .= show word8
+      , "dimensions" .= toJSON word8
       ]     
     B.Return lt -> object
       [ "opc" .= String "return"
@@ -318,8 +318,6 @@ instance ToJSON ByteCodeOpr where
       ]
     B.Swap -> object
       [ "opc" .= String "swap"]
-    _ ->
-      String "<code>"
 
 
 instance ToJSON (B.LocalType) where
@@ -345,7 +343,7 @@ instance ToJSON (B.StackMapTable B.High) where
 
 instance ToJSON (B.StackMapFrame B.High) where
   toJSON (B.StackMapFrame deltaoffset frametype) = object
-      ([ "offset" .= toJSON deltaoffset] ++ getFrameDetails frametype)
+      (("offset" .= toJSON deltaoffset):getFrameDetails frametype)
 
 instance ToJSON (B.VerificationTypeInfo B.High) where
   toJSON = \case
@@ -433,7 +431,7 @@ instance ToJSON (B.CmpOpr) where
 
 instance ToJSON (B.SwitchTable B.High) where
   toJSON (B.SwitchTable switchLow switchOffsets) = object
-      [ "switch_low" .= show (switchLow)
+      [ "switch_low" .= toJSON (switchLow)
       , "offsets" .= toJSON switchOffsets
       ]
 
@@ -474,7 +472,7 @@ instance ToJSON (B.AbsInterfaceMethodId B.High) where
 instance ToJSON (B.InvokeDynamic B.High) where
   toJSON (B.InvokeDynamic attrIndex method) = object
       [ 
-        "attr_index" .= show (attrIndex)
+        "attr_index" .= toJSON (attrIndex)
       , "method" .= toJSON method
       ]
 
@@ -528,7 +526,7 @@ getListOfPairsFromBConstant = \case
 getInvocationAttributes = \case
     B.InvkSpecial (B.VInterfaceMethodId a) ->
       [ "kind" .= String "special"
-      , "ref" .= toJSON a
+      , "method" .= toJSON a
       ]
     B.InvkSpecial (B.VMethodId (B.InClass a b)) ->
       [ "kind" .= String "special" 
@@ -542,7 +540,7 @@ getInvocationAttributes = \case
       ]  
     B.InvkStatic (B.VInterfaceMethodId a) ->
       [ "kind" .= String "static"
-      , "ref" .= toJSON a
+      , "method" .= toJSON a
       ]
     B.InvkStatic (B.VMethodId (B.InClass a b)) ->
       [ "kind" .= String "static"
@@ -560,8 +558,6 @@ getInvocationAttributes = \case
       , "index" .= toJSON index
       , "method" .= methodIDToText methodid
       ] 
-    _ ->
-      ["idk" .= String "<code>"]
 
 
 getFrameDetails = \case
