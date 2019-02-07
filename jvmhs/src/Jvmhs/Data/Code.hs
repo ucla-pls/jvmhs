@@ -1,11 +1,11 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE LambdaCase  #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes        #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE TemplateHaskell       #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-|
 Module      : Jvmhs.Data.Code
@@ -46,23 +46,23 @@ module Jvmhs.Data.Code
   where
 
 import           Control.DeepSeq
-import           Control.Lens hiding ((.=))
+import           Control.Lens                         hiding ((.=))
 import           Data.Aeson
-import           Data.Aeson.Types
 import           Data.Aeson.TH
+import           Data.Aeson.Types
+import qualified Data.Text                            as Text
+import qualified Data.Vector                          as V
 import           Data.Word
-import qualified Data.Text as Text
-import qualified Data.Vector as V
 
-import           GHC.Generics (Generic)
+import           GHC.Generics                         (Generic)
 
 import qualified Language.JVM                         as B
 import qualified Language.JVM.Attribute.Code          as B
 import qualified Language.JVM.Attribute.StackMapTable as B
-import qualified Language.JVM.Constant                as B
-import qualified Language.JVM.Type                    as B
-import qualified Language.JVM.Utils                   as B
-import qualified Language.JVM.Stage                   as B
+-- import qualified Language.JVM.Constant                as B
+-- import qualified Language.JVM.Stage                   as B
+-- import qualified Language.JVM.Type                    as B
+-- import qualified Language.JVM.Utils                   as B
 
 import           Jvmhs.Data.Type
 
@@ -166,158 +166,207 @@ $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
 
 instance ToJSON ByteCodeOpr where
-  toJSON = \case
-    B.ArrayLoad arrType -> object
-      [ "opc" .= String "array_load"
-      , "type" .= arrType
+  toJSON bopr =
+    object $ ("opc" .= byteCodeOprOpCode bopr) : case bopr of
+
+    B.ArrayLoad arrType ->
+      [ "type" .= arrType
       ]
-    B.ArrayStore arrType -> object
-      [ "opc" .= String "array_store"
-      , "type" .= arrType
+
+    B.ArrayStore arrType ->
+      [ "type" .= arrType
       ]
-    B.Push bconstant -> object
-      (("opc" .= String "push"):getListOfPairsFromBConstant bconstant)
-    B.Load localtype localaddr -> object
-      [ "opc" .= String "load"
-      , "type" .= toJSON localtype
+
+    B.Push bconstant ->
+      getListOfPairsFromBConstant bconstant
+
+    B.Load localtype localaddr ->
+      [ "type" .= toJSON localtype
       , "addr" .= toJSON localaddr
       ]
-    B.Store localtype localaddr -> object
-      [ "opc" .= String "store"
-      , "type" .= toJSON localtype
+
+    B.Store localtype localaddr ->
+      [ "type" .= toJSON localtype
       , "addr" .= toJSON localaddr
       ]
-    B.BinaryOpr binopr arithmetictype -> object
-      [ "opc" .= String "bin_op"
-      , "opr" .= toJSON binopr
+
+    B.BinaryOpr binopr arithmetictype ->
+      [ "opr" .= toJSON binopr
       , "type" .= toJSON arithmetictype
       ]
-    B.Neg arithmetictype -> object
-      [ "opc" .= String "neg"
-      , "type" .= toJSON arithmetictype
+
+    B.Neg arithmetictype ->
+      [ "type" .= toJSON arithmetictype
       ]
-    B.BitOpr bitopr wordsize -> object
-      [ "opc" .= String "bit_op"
-      , "opr" .= toJSON bitopr
+
+    B.BitOpr bitopr wordsize ->
+      [ "opr" .= toJSON bitopr
       , "size" .= toJSON wordsize
       ]
-    B.IncrLocal localaddr increment -> object
-      [ "opc" .= String "incr"
-      , "addr" .= toJSON localaddr
+
+    B.IncrLocal localaddr increment ->
+      [ "addr" .= toJSON localaddr
       , "incr" .= toJSON increment
       ]
-    B.Cast castopr -> object
-      [ "opc" .= String "cast"
-      , "opr" .= toJSON castopr
+
+    B.Cast castopr ->
+      [ "opr" .= toJSON castopr
       ]
-    B.CompareLongs -> object
-      [ "opc" .= String "cmp_long"]
-    B.CompareFloating bool wordsize -> object
-      [ "opc" .= String "cmp_float"
-      , "gt" .= toJSON bool
+
+    B.CompareLongs -> []
+
+    B.CompareFloating bool wordsize ->
+      [ "gt" .= toJSON bool
       , "size" .= toJSON wordsize
       ]
-    B.If cmpOpr oneOrTwo shortRelativeRef -> object
-      [ "opc" .= String "if"
-      , "opr" .= toJSON cmpOpr
-      , "cmp_with_0" .= if oneOrTwo==B.One then (Bool True) else (Bool False)
-      , "offset" .= toJSON shortRelativeRef --convertShortRelativeRefToJSON shortRelativeRef 
-      ]
-    B.IfRef bool oneOrTwo shortRelativeRef -> object
-      [ "opc" .= String "if_ref"
-      , "equal" .= toJSON bool
-      , "one_or_two" .= toJSON oneOrTwo
+
+    B.If cmpOpr oneOrTwo shortRelativeRef ->
+      [ "opr" .= toJSON cmpOpr
+      , "operands" .= oneOrTwo
       , "offset" .= toJSON shortRelativeRef
       ]
-    B.Goto longrelativeref -> object
-      [ "opc" .= String "goto"
-      , "ref" .= toJSON longrelativeref
+
+    B.IfRef bool oneOrTwo shortRelativeRef ->
+      [ "equal" .= toJSON bool
+      , "operands" .= oneOrTwo
+      , "offset" .= toJSON shortRelativeRef
       ]
-    B.Jsr longrelativeref -> object
-      [ "opc" .= String "jsr"
-      , "ref" .= toJSON longrelativeref
+
+    B.Goto longrelativeref ->
+      [ "ref" .= toJSON longrelativeref
       ]
-    B.Ret localaddr -> object
-      [ "opc" .= String "ret"
-      , "addr" .= toJSON localaddr
-      ] 
-    B.TableSwitch longrelativeref switchtable -> object
-      [ "opc" .= String "table_switch"
-      , "ref" .= toJSON longrelativeref
+
+    B.Jsr longrelativeref ->
+      [ "ref" .= toJSON longrelativeref
+      ]
+
+    B.Ret localaddr ->
+      [ "addr" .= toJSON localaddr
+      ]
+
+    B.TableSwitch longrelativeref switchtable ->
+      [ "ref" .= toJSON longrelativeref
       , "table" .= toJSON switchtable
-      ]  
-    B.LookupSwitch longrelativeref vector -> object
-      [ "opc" .= String "lookup_switch"
-      , "ref" .= toJSON longrelativeref
+      ]
+
+    B.LookupSwitch longrelativeref vector ->
+      [ "ref" .= toJSON longrelativeref
       , "vector" .= toJSON vector
-      ] 
-    B.Get fa (B.InClass a b) -> object
-      [ "opc" .= String "get"
-      , "static" .= toJSON fa
+      ]
+
+    B.Get fa (B.InClass a b) ->
+      [ "static" .= toJSON fa
       , "class" .= B.classNameAsText a
       , "field" .= nameAndTypeFromFieldId b
       ]
 
-    B.Put fa (B.InClass a b) -> object
-      [ "opc" .= String "put"
-      , "static" .= toJSON fa
+    B.Put fa (B.InClass a b) ->
+      [ "static" .= toJSON fa
       , "class" .= B.classNameAsText a
       , "field" .= nameAndTypeFromFieldId b
       ]
-    B.Invoke invocation -> object ( ("opc" .= String "invoke"): getInvocationAttributes invocation )
-    B.New ref -> object
-      [ "opc" .= String "new"
-      , "ref" .= toJSON ref
-      ] 
-    B.NewArray arraytype -> object
-      [ "opc" .= String "new_array"
-      , "type" .= toJSON arraytype
+
+    B.Invoke invocation ->
+      getInvocationAttributes invocation
+
+    B.New ref ->
+      [ "ref" .= toJSON ref
       ]
-    B.ArrayLength -> object
-      [ "opc" .= String "array_length"]
-    B.Throw -> object
-      [ "opc" .= String "throw"]
-    B.CheckCast ref -> object
-      [ "opc" .= String "check_cast"
-      , "ref" .= toJSON ref
-      ]    
-    B.InstanceOf ref -> object
-      [ "opc" .= String "instance_of"
-      , "ref" .= toJSON ref
-      ] 
-    B.Monitor enter -> object
-      [ "opc" .= String "monitor"
-      , "enter" .= toJSON enter
-      ] 
-    B.MultiNewArray ref word8 -> object
-      [ "opc" .= String "multi_new_array"
-      , "ref" .= toJSON ref
+
+    B.NewArray arraytype ->
+      [ "type" .= toJSON arraytype
+      ]
+
+    B.ArrayLength ->
+      []
+
+    B.Throw ->
+      []
+
+    B.CheckCast ref ->
+      [ "ref" .= toJSON ref
+      ]
+
+    B.InstanceOf ref ->
+      [ "ref" .= toJSON ref
+      ]
+
+    B.Monitor enter ->
+      [ "enter" .= toJSON enter
+      ]
+
+    B.MultiNewArray ref word8 ->
+      [ "ref" .= toJSON ref
       , "dimensions" .= toJSON word8
-      ]     
-    B.Return lt -> object
-      [ "opc" .= String "return"
-      , "type" .= toJSON lt
-      ] 
-    B.Nop -> object
-      [ "opc" .= String "nop"]
-    B.Pop popsize -> object
-      [ "opc" .= String "pop"
-      , "size" .= toJSON popsize
-      ] 
-    B.Dup wordsize -> object
-      [ "opc" .= String "dup"
-      , "size" .= toJSON wordsize
       ]
-    B.DupX1 wordsize -> object
-      [ "opc" .= String "dupx1"
-      , "size" .= toJSON wordsize
+
+    B.Return lt ->
+      [ "type" .= toJSON lt
       ]
-    B.DupX2 wordsize -> object
-      [ "opc" .= String "dupx2"
-      , "size" .= toJSON wordsize
+
+    B.Nop -> []
+
+    B.Pop popsize ->
+      [ "size" .= toJSON popsize
       ]
-    B.Swap -> object
-      [ "opc" .= String "swap"]
+
+    B.Dup wordsize ->
+      [ "size" .= toJSON wordsize
+      ]
+
+    B.DupX1 wordsize ->
+      [ "size" .= toJSON wordsize
+      ]
+
+    B.DupX2 wordsize ->
+      [ "size" .= toJSON wordsize
+      ]
+
+    B.Swap ->
+      []
+
+
+byteCodeOprOpCode :: ByteCodeOpr -> Text.Text
+byteCodeOprOpCode = \case
+    B.ArrayLoad  _          -> "array_load"
+    B.ArrayStore  _         -> "array_store"
+    B.Push  _               -> "push"
+    B.Load _ _              -> "load"
+    B.Store  _  _           -> "store"
+    B.BinaryOpr  _  _       -> "bin_op"
+    B.Neg  _                -> "neg"
+    B.BitOpr  _  _          -> "bit_op"
+    B.IncrLocal  _  _       -> "incr"
+    B.Cast  _               -> "cast"
+    B.CompareLongs          -> "cmp_long"
+    B.CompareFloating  _  _ -> "cmp_float"
+    B.If  _  _  _           -> "if"
+    B.IfRef  _  _  _        -> "if_ref"
+    B.Goto  _               -> "goto"
+    B.Jsr  _                -> "jsr"
+    B.Ret  _                -> "ret"
+    B.TableSwitch  _  _     -> "table_switch"
+    B.LookupSwitch  _  _    -> "lookup_switch"
+    B.Get  _ _              -> "get"
+    B.Put  _ _              -> "put"
+    B.Invoke  _             -> "invoke"
+    B.New  _                -> "new"
+    B.NewArray  _           -> "new_array"
+    B.ArrayLength           -> "array_length"
+    B.Throw                 -> "throw"
+    B.CheckCast  _          -> "check_cast"
+    B.InstanceOf  _         -> "instance_of"
+    B.Monitor  _            -> "monitor"
+    B.MultiNewArray  _  _   -> "multi_new_array"
+    B.Return  _             -> "return"
+    B.Nop                   -> "nop"
+    B.Pop  _                -> "pop"
+    B.Dup  _                -> "dup"
+    B.DupX1  _              -> "dupx1"
+    B.DupX2  _              -> "dupx2"
+    B.Swap                  -> "swap"
+
+
 
 
 instance ToJSON (B.LocalType) where
@@ -361,6 +410,7 @@ instance ToJSON (B.VerificationTypeInfo B.High) where
       [ "type" .= String "U"
       , "word" .= toJSON word
       ]
+    B.VTUninitializedThis  -> Null
 
 instance ToJSON (B.ArrayType) where
   toJSON = String . \case
@@ -460,36 +510,33 @@ instance ToJSON (B.AbsVariableMethodId B.High) where
       , "method" .= methodIDToText b
       ]
 
-
 instance ToJSON (B.AbsInterfaceMethodId B.High) where
   toJSON interfacemethod = object
-      [ 
-        "type" .= String "abs_interface_method"
+      [ "type" .= String "abs_interface_method"
       , "method" .= toJSON interfacemethod
       ]
 
 
 instance ToJSON (B.InvokeDynamic B.High) where
   toJSON (B.InvokeDynamic attrIndex method) = object
-      [ 
-        "attr_index" .= toJSON (attrIndex)
+      [ "attr_index" .= toJSON (attrIndex)
       , "method" .= toJSON method
       ]
 
 instance ToJSON (B.MethodId) where
   toJSON (B.MethodId (B.NameAndType name args)) = object
-      [ 
-       "signature" .= Text.concat [name,":",(B.toText args)]
+      [ "signature" .= Text.concat [name,":",(B.toText args)]
       ]
 
 methodIDToText :: B.MethodId -> Text.Text
-methodIDToText (B.MethodId (B.NameAndType name args)) = Text.concat [name,":",(B.toText args)]
-
+methodIDToText (B.MethodId (B.NameAndType name args)) =
+  Text.concat [name,":",(B.toText args)]
 
 nameAndTypeFromFieldId :: B.FieldId -> Text.Text
-nameAndTypeFromFieldId (B.FieldId (B.NameAndType name type_)) = Text.concat [name,":",B.toText type_] 
+nameAndTypeFromFieldId (B.FieldId (B.NameAndType name type_)) =
+  Text.concat [name,":",B.toText type_]
 
-
+getListOfPairsFromBConstant :: Maybe JValue -> [Pair]
 getListOfPairsFromBConstant = \case
     Just (VInteger a) ->
       [ "type" .= String "I"
@@ -507,6 +554,10 @@ getListOfPairsFromBConstant = \case
       [ "type" .= String "string"
       , "value" .= toJSON a
       ]
+    -- Just (VLong a) ->
+    --   [ "type" .= String undefined
+    --   , "value" .= toJSON a
+    --   ]
     Just (VClass a) ->
       [ "type" .= String "class"
       , "value" .= toJSON a
@@ -523,60 +574,66 @@ getListOfPairsFromBConstant = \case
       [ "type" .= String "null"
       ]
 
+getInClassMethod ::B.AbsMethodId B.High -> [Pair]
+getInClassMethod (B.InClass a b) =
+  [ "class" .= B.classNameAsText a
+  , "method" .= methodIDToText b
+  ]
+
+getAbsVariableMethodId :: B.AbsVariableMethodId B.High -> [Pair]
+getAbsVariableMethodId = \case
+  B.VInterfaceMethodId a ->
+    [ "method" .= a
+    ]
+  B.VMethodId abs' ->
+    getInClassMethod abs'
+
+-- getAbsVariableMethodId :: B.AbsVariableMethodId B.High -> [Pair]
+-- getAbsVariableMethodId = \case
+--   B.VInterfaceMethodId a ->
+--     [ "method" .= a
+--     ]
+--   B.VMethodId abs ->
+--     getInClassMethod abs
+
+getInvocationAttributes :: B.Invocation B.High -> [Pair]
 getInvocationAttributes = \case
-    B.InvkSpecial (B.VInterfaceMethodId a) ->
-      [ "kind" .= String "special"
-      , "method" .= toJSON a
-      ]
-    B.InvkSpecial (B.VMethodId (B.InClass a b)) ->
-      [ "kind" .= String "special" 
-      , "class" .= B.classNameAsText a
-      , "method" .= methodIDToText b
-      ]
-    B.InvkVirtual (B.InClass a b) ->
-      [ "kind" .= String "virtual"
-      , "class" .= B.classNameAsText a
-      , "method" .= methodIDToText b
-      ]  
-    B.InvkStatic (B.VInterfaceMethodId a) ->
-      [ "kind" .= String "static"
-      , "method" .= toJSON a
-      ]
-    B.InvkStatic (B.VMethodId (B.InClass a b)) ->
-      [ "kind" .= String "static"
-      , "class" .= B.classNameAsText a
-      , "method" .= methodIDToText b
-      ]
-    B.InvkInterface word8 (B.AbsInterfaceMethodId (B.InClass a b))->
-      [ "kind" .= String "interface"
-      , "word8" .= toJSON word8
-      , "class" .= B.classNameAsText a
-      , "method" .= methodIDToText b
-      ]
-    B.InvkDynamic (B.InvokeDynamic index methodid) -> 
-      [ "kind" .= String "dynamic"
-      , "index" .= toJSON index
-      , "method" .= methodIDToText methodid
-      ] 
+    B.InvkSpecial avmi ->
+      ("kind" .= String "special")
+      : getAbsVariableMethodId avmi
+
+    B.InvkVirtual abs' ->
+      ("kind" .= String "virtual")
+      : getInClassMethod abs'
+
+    B.InvkStatic avmi ->
+      ("kind" .= String "static")
+     : getAbsVariableMethodId avmi
+
+    -- B.InvkInterface word8 avmi->
+    --   [ "kind" .= String "interface"
+    --   , "word8" .= toJSON word8
+    --   ] ++ getAbsInterfaceMethodId avmi
 
 
+getFrameDetails :: B.StackMapFrameType B.High -> [Pair]
 getFrameDetails = \case
-    B.SameFrame -> 
+    B.SameFrame ->
       [ "kind" .= String "same"
       ]
-    B.SameLocals1StackItemFrame typeinfo -> 
+    B.SameLocals1StackItemFrame typeinfo ->
       [ "kind" .= String "same_locals_stack_item"
       , "type" .= toJSON typeinfo
       ]
-    B.ChopFrame size -> 
+    B.ChopFrame size ->
       [ "kind" .= String "chop"
       , "size" .= toJSON size
       ]
-    B.AppendFrame typeinfo -> 
+    B.AppendFrame typeinfo ->
       [ "kind" .= String "append"
       , "type" .= toJSON typeinfo
       ]
-    B.FullFrame (B.SizedList a) (B.SizedList b) -> 
+    B.FullFrame (B.SizedList a) (B.SizedList b) ->
       [ "kind" .= String "full_frame"
       , "type_list1" .= toJSON a
       , "type_list2" .= toJSON b
