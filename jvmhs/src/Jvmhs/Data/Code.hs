@@ -86,6 +86,7 @@ data ExceptionHandler = ExceptionHandler
   , _ehCatchType :: !(Maybe ClassName)
   } deriving (Show, Eq, Generic, NFData)
 
+
 makeLenses ''Code
 makeLenses ''ExceptionHandler
 
@@ -170,33 +171,33 @@ instance ToJSON ByteCodeOpr where
     object $ ("opc" .= byteCodeOprOpCode bopr) : case bopr of
 
     B.ArrayLoad arrType ->
-      [ "type" .= arrType
+      [ "type" .= fromArrayType arrType
       ]
 
     B.ArrayStore arrType ->
-      [ "type" .= arrType
+      [ "type" .= fromArrayType arrType
       ]
 
     B.Push bconstant ->
       getListOfPairsFromBConstant bconstant
 
     B.Load localtype localaddr ->
-      [ "type" .= localtype
+      [ "type" .= fromLocalType localtype
       , "addr" .= localaddr
       ]
 
     B.Store localtype localaddr ->
-      [ "type" .= localtype
+      [ "type" .= fromLocalType localtype
       , "addr" .= localaddr
       ]
 
     B.BinaryOpr binopr arithmetictype ->
       [ "opr" .= binopr
-      , "type" .= arithmetictype
+      , "type" .= fromArithmeticType arithmetictype
       ]
 
     B.Neg arithmetictype ->
-      [ "type" .= arithmetictype
+      [ "type" .= fromArithmeticType arithmetictype
       ]
 
     B.BitOpr bitopr wordsize ->
@@ -233,11 +234,11 @@ instance ToJSON ByteCodeOpr where
       ]
 
     B.Goto longrelativeref ->
-      [ "ref" .= longrelativeref
+      [ "target" .= longrelativeref
       ]
 
     B.Jsr longrelativeref ->
-      [ "ref" .= longrelativeref
+      [ "target" .= longrelativeref
       ]
 
     B.Ret localaddr ->
@@ -270,7 +271,7 @@ instance ToJSON ByteCodeOpr where
       getInvocationAttributes invocation
 
     B.New ref ->
-      [ "ref" .= ref
+      [ "cp_entry" .= ref
       ]
 
     B.NewArray arraytype ->
@@ -283,11 +284,11 @@ instance ToJSON ByteCodeOpr where
       []
 
     B.CheckCast ref ->
-      [ "ref" .= ref
+      [ "cp_entry" .= ref
       ]
 
     B.InstanceOf ref ->
-      [ "ref" .= ref
+      [ "cp_entry" .= ref
       ]
 
     B.Monitor enter ->
@@ -295,13 +296,13 @@ instance ToJSON ByteCodeOpr where
       ]
 
     B.MultiNewArray ref word8 ->
-      [ "ref" .= ref
+      [ "cp_entry" .= ref
       , "dimensions" .= word8
       ]
 
-    B.Return lt ->
-      [ "type" .= lt
-      ]
+    B.Return localtype -> case localtype of
+      Just a -> [ "type" .= fromLocalType a]
+      Nothing -> [ "type" .= Null]
 
     B.Nop -> []
 
@@ -367,13 +368,7 @@ byteCodeOprOpCode = \case
 
 
 
-instance ToJSON (B.LocalType) where
-  toJSON = String . \case
-    B.LInt -> getSimpleTypeString "integer"
-    B.LLong -> getSimpleTypeString "long"
-    B.LFloat -> getSimpleTypeString "float"
-    B.LDouble -> getSimpleTypeString "double"
-    B.LRef -> getSimpleTypeString "ref"
+
 
 instance ToJSON (B.FieldAccess) where
   toJSON = Bool . \case
@@ -396,16 +391,7 @@ instance ToJSON (B.StackMapFrame B.High) where
 instance ToJSON (B.VerificationTypeInfo B.High) where
   toJSON = object . getTypeInfo
 
-instance ToJSON (B.ArrayType) where
-  toJSON = String . \case
-    B.AByte -> getSimpleTypeString "byte"
-    B.AChar -> getSimpleTypeString "char"
-    B.AShort -> getSimpleTypeString "short"
-    B.AInt -> getSimpleTypeString "integer"
-    B.ALong -> getSimpleTypeString "long"
-    B.AFloat -> getSimpleTypeString "float"
-    B.ADouble -> getSimpleTypeString "double"
-    B.ARef -> getSimpleTypeString "ref"
+
 
 instance ToJSON (B.BinOpr) where
   toJSON = String . \case
@@ -415,12 +401,7 @@ instance ToJSON (B.BinOpr) where
     B.Div -> "div"
     B.Rem -> "rem"
 
-instance ToJSON (B.ArithmeticType) where
-  toJSON = String . \case
-    B.MInt -> getSimpleTypeString "integer"
-    B.MLong -> getSimpleTypeString "long"
-    B.MFloat -> getSimpleTypeString "float"
-    B.MDouble -> getSimpleTypeString "double"
+
 
 instance ToJSON (B.BitOpr) where
   toJSON = String . \case
@@ -432,27 +413,23 @@ instance ToJSON (B.BitOpr) where
     B.XOr -> "xor"
 
 instance ToJSON (B.WordSize) where
-  toJSON = String . \case
-    B.One -> 1
-    B.Two -> 2
+  toJSON = \case
+    B.One -> Number 1
+    B.Two -> Number 2
 
 instance ToJSON (B.CastOpr) where
   toJSON = \case
     B.CastDown smallarithmetictype -> object
-      [ "caste_type" .= String "down"
-      , "to_type" .= smallarithmetictype
+      [ "cast_type" .= String "down"
+      , "to_type" .= fromSmallArithmeticType smallarithmetictype
       ]
     B.CastTo fromtype totype -> object
       [ "cast_type" .= String "to"
-      , "from_type" .= fromtype
-      , "to_type" .= totype
+      , "from_type" .= fromArithmeticType fromtype
+      , "to_type" .= fromArithmeticType totype
       ]
 
-instance ToJSON (B.SmallArithmeticType) where
-  toJSON = String . \case
-    B.MByte -> getSimpleTypeString "byte"
-    B.MChar -> getSimpleTypeString "char"
-    B.MShort -> getSimpleTypeString "short"
+
 
 instance ToJSON (B.CmpOpr) where
   toJSON = String . \case
@@ -505,39 +482,44 @@ instance ToJSON (B.MethodId) where
 getListOfPairsFromBConstant :: Maybe JValue -> [Pair]
 getListOfPairsFromBConstant = \case
     Just (VInteger a) ->
-      [ "type" .= getSimpleTypeString "integer"
+      [ "type" .= STInteger
       , "value" .= a
       ]
     Just (VFloat a) ->
-      [ "type" .= getSimpleTypeString "float"
+      [ "type" .= STFloat
       , "value" .= a
       ]
     Just (VDouble a) ->
-      [ "type" .= getSimpleTypeString "double"
-      , "value" .= a
-      ]
-    Just (VString a) ->
-      [ "type" .= getSimpleTypeString "string"
+      [ "type" .= STDouble
       , "value" .= a
       ]
     Just (VLong a) -> 
-      [ "type" .= getSimpleTypeString "long" 
+      [ "type" .= STLong
+      , "value" .= a
+      ]
+    Just (VString a) ->
+      [ "type" .= STRef
+      , "classname" .= String "java/lang/String"
       , "value" .= a
       ]
     Just (VClass a) ->
-      [ "type" .= getSimpleTypeString "class"
+      [ "type" .= STRef
+      , "classname" .= String "java/lang/Class"
       , "value" .= a
       ]
     Just (VMethodType a) ->
-      [ "type" .= getSimpleTypeString "method"
+      [ "type" .= STRef
+      , "classname" .= String "java/lang/invoke/MethodType" 
       , "value" .= a
       ]
     Just (VMethodHandle a) ->
-      [ "type" .= getSimpleTypeString "method_handle"
+      [ "type" .= STRef
+      , "classname" .= String "java/lang/invoke/MethodHandle" 
       , "value" .= a
       ]
     Nothing ->
-      [ "type" .= getSimpleTypeString "null"
+      [ "type" .= STRef
+      , "value" .= Null
       ]
 
 
@@ -571,9 +553,9 @@ getInvocationAttributes = \case
       ("kind" .= String "static")
      : getAbsVariableMethodId avmi
 
-    B.InvkInterface word8 avmi ->
+    B.InvkInterface count avmi ->
        ["kind" .= String "interface"
-       , "word8" .= word8
+       , "count" .= count
        ] ++ getAbsInterfaceMethodId avmi
 
     B.InvkDynamic invokeDynamicMethod ->
@@ -599,62 +581,115 @@ getInvokeDynamicMethod = \case
   (B.InvokeDynamic attrIndex methodid) ->
     [ "attr_index" .= attrIndex
     , "method" .= methodIDToText methodid
-    ] 
+    ]
+
+
 
 getArrayType :: B.ExactArrayType B.High -> [Pair]
-getArrayType = \case
-    B.EABoolean -> ["type" .= getSimpleTypeString "boolean"]
-    B.EAByte -> ["type" .= getSimpleTypeString "byte"]
-    B.EAChar -> ["type" .= getSimpleTypeString "char"]
-    B.EAShort -> ["type" .= getSimpleTypeString "short"]
-    B.EAInt -> ["type" .= getSimpleTypeString "integer"]
-    B.EALong -> ["type" .= getSimpleTypeString "long"]
-    B.EAFloat -> ["type" .= getSimpleTypeString "float"]
-    B.EADouble -> ["type" .= getSimpleTypeString "double"]
-    B.EARef ref -> 
-      ["type" .= getSimpleTypeString "ref"
-      , "ref" .= ref
-      ]
+getArrayType t = 
+  ( "type" .= fromExactArrayType t
+  ) : case t of
+    B.EARef ref -> [ "array_ref" .= ref]
+    _ -> []
+
+ 
+
+
+-- * Type Conversion
+
+data SimpleType 
+   = STInteger 
+   | STLong 
+   | STShort
+   | STChar
+   | STByte
+   | STBoolean
+   | STFloat
+   | STDouble
+   | STRef
+  deriving (Show, Eq, Enum)
+
+instance ToJSON SimpleType where
+  toJSON = String . \case
+    STInteger -> "I"
+    STLong -> "J"
+    STShort -> "S"
+    STChar -> "C"
+    STByte -> "B"
+    STBoolean -> "Z"
+    STFloat -> "F"
+    STDouble -> "D"
+    STRef -> "R"
+
+fromExactArrayType :: B.ExactArrayType B.High -> SimpleType
+fromExactArrayType = \case
+  B.EABoolean -> STBoolean
+  B.EAByte -> STByte
+  B.EAChar -> STChar
+  B.EAShort -> STShort
+  B.EAInt -> STInteger
+  B.EALong -> STLong
+  B.EAFloat -> STFloat
+  B.EADouble -> STDouble
+  B.EARef _ -> STRef
+
+fromSmallArithmeticType :: B.SmallArithmeticType -> SimpleType
+fromSmallArithmeticType = \case
+    B.MByte -> STByte
+    B.MChar -> STChar
+    B.MShort -> STShort
+
+fromArithmeticType :: B.ArithmeticType -> SimpleType
+fromArithmeticType = \case
+    B.MInt -> STInteger
+    B.MLong -> STLong
+    B.MFloat -> STFloat
+    B.MDouble -> STDouble
+
+
+fromArrayType :: B.ArrayType -> SimpleType
+fromArrayType = \case
+    B.AByte -> STByte
+    B.AChar -> STChar
+    B.AShort -> STShort
+    B.AInt -> STInteger
+    B.ALong -> STLong
+    B.AFloat -> STFloat
+    B.ADouble -> STDouble
+    B.ARef -> STRef
+
+
+fromLocalType :: B.LocalType -> SimpleType
+fromLocalType = \case
+    B.LInt -> STInteger
+    B.LLong -> STLong
+    B.LFloat -> STFloat
+    B.LDouble -> STDouble
+    B.LRef -> STRef
+
+-- * VerificationTypeInfo
 
 getTypeInfo :: B.VerificationTypeInfo B.High -> [Pair]
 getTypeInfo = \case
-  B.VTTop -> ["type" .= getSimpleTypeString "top"]
-  B.VTInteger -> ["type" .= getSimpleTypeString "integer"]
-  B.VTFloat -> ["type" .= getSimpleTypeString "float"]
-  B.VTLong -> ["type" .= getSimpleTypeString "long"]
-  B.VTDouble -> ["type" .= getSimpleTypeString "double"]
-  B.VTNull -> ["type" .= getSimpleTypeString "null"]
+  B.VTTop -> ["type" .= String "T"]
+  B.VTInteger -> ["type" .= String "I"]
+  B.VTFloat -> ["type" .= String "F"]
+  B.VTLong -> ["type" .= String "J"]
+  B.VTDouble -> ["type" .= String "D"]
+  B.VTNull -> ["type" .= String "null"]
   B.VTObject ref ->
-    [ "type" .= getSimpleTypeString "object"
-    , "ref" .= ref
+    [ "type" .= String "object"
+    , "class_ref" .= ref
     ]
-  B.VTUninitialized word ->
-    [ "type" .= getSimpleTypeString "uninitialized"
-    , "word" .= word
+  B.VTUninitialized offset ->
+    [ "type" .= String "uninitialized"
+    , "offset" .= offset
     ]
-  B.VTUninitializedThis  -> ["type" .= getSimpleTypeString "null"]
+  B.VTUninitializedThis  -> 
+    [ "type" .= String "uninitialized_this"
+    ]
 
 
-getSimpleTypeString :: Text.Text -> Text.Text
-getSimpleTypeString = \case
-      "integer" -> "I"
-      "long" -> "J"
-      "short" -> "S"
-      "char" -> "C"
-      "byte" -> "B"
-      "boolean" -> "B"
-      "float" -> "F"
-      "double" -> "D"
-      "ref" -> "["
-      "string" -> "string"
-      "class" -> "class"
-      "method" -> "method"
-      "method_handle" -> "method_handle"
-      "null" -> "null"
-      "top" -> "T"
-      "uninitialized" -> "U"
-      "object" -> "O"
-      _ -> "<incorrect_code>"
 
 
 getFrameDetails :: B.StackMapFrameType B.High -> [Pair]
