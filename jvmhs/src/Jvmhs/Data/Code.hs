@@ -381,6 +381,7 @@ instance ToJSON (B.FieldAccess) where
     B.FldField -> False
 
 
+
 instance ToJSON (B.StackMapTable B.High) where
   toJSON (B.StackMapTable a) = object
       [ "table" .= a
@@ -389,7 +390,7 @@ instance ToJSON (B.StackMapTable B.High) where
 
 instance ToJSON (B.StackMapFrame B.High) where
   toJSON (B.StackMapFrame deltaoffset frametype) = object
-      (("offset" .=  deltaoffset):getFrameDetails frametype)
+      (("offset" .= deltaoffset):getFrameDetails frametype)
 
 
 instance ToJSON (B.VerificationTypeInfo B.High) where
@@ -432,17 +433,17 @@ instance ToJSON (B.BitOpr) where
 
 instance ToJSON (B.WordSize) where
   toJSON = String . \case
-    B.One -> "1"
-    B.Two -> "2"
+    B.One -> 1
+    B.Two -> 2
 
 instance ToJSON (B.CastOpr) where
   toJSON = \case
     B.CastDown smallarithmetictype -> object
-      [ "caste_type" .= String "cast_down"
+      [ "caste_type" .= String "down"
       , "to_type" .= smallarithmetictype
       ]
     B.CastTo fromtype totype -> object
-      [ "cast_type" .= String "cast-to"
+      [ "cast_type" .= String "to"
       , "from_type" .= fromtype
       , "to_type" .= totype
       ]
