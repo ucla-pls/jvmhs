@@ -246,13 +246,13 @@ instance ToJSON ByteCodeOpr where
       ]
 
     B.TableSwitch longrelativeref switchtable ->
-      [ "ref" .= longrelativeref
+      [ "default" .= longrelativeref
       , "table" .= switchtable
       ]
 
     B.LookupSwitch longrelativeref vector ->
-      [ "ref" .= longrelativeref
-      , "vector" .= vector
+      [ "default" .= longrelativeref
+      , "pairs" .= vector
       ]
 
     B.Get fa (B.InClass a b) ->
@@ -271,7 +271,7 @@ instance ToJSON ByteCodeOpr where
       getInvocationAttributes invocation
 
     B.New ref ->
-      [ "cp_entry" .= ref
+      [ "classname" .= ref
       ]
 
     B.NewArray arraytype ->
@@ -284,11 +284,11 @@ instance ToJSON ByteCodeOpr where
       []
 
     B.CheckCast ref ->
-      [ "cp_entry" .= ref
+      [ "classname" .= ref
       ]
 
     B.InstanceOf ref ->
-      [ "cp_entry" .= ref
+      [ "classname" .= ref
       ]
 
     B.Monitor enter ->
@@ -296,7 +296,7 @@ instance ToJSON ByteCodeOpr where
       ]
 
     B.MultiNewArray ref word8 ->
-      [ "cp_entry" .= ref
+      [ "array_ref" .= ref
       , "dimensions" .= word8
       ]
 
@@ -519,6 +519,7 @@ getListOfPairsFromBConstant = \case
       ]
     Nothing ->
       [ "type" .= STRef
+      , "classname" .= String "java/lang/Object" 
       , "value" .= Null
       ]
 
