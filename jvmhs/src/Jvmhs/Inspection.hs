@@ -118,8 +118,6 @@ instance Inspectable ByteCodeOpr where
       B.Put fa c          -> B.Put fa <$> classNames g c
       B.Invoke r          -> B.Invoke <$> classNames g r
       B.New c             -> B.New <$> classNames g c
-      B.NewArray c        -> B.NewArray <$> classNames g c
-      B.MultiNewArray c v -> flip B.MultiNewArray v <$> classNames g c
       B.CheckCast c       -> B.CheckCast <$> classNames g c
       B.InstanceOf c      -> B.InstanceOf <$> classNames g c
       _                   -> pure o
@@ -170,11 +168,11 @@ instance Inspectable (B.Invocation B.High) where
       B.InvkInterface w r -> B.InvkInterface w <$> methodNames g r
       B.InvkDynamic r     -> B.InvkDynamic <$> methodNames g r
 
-instance Inspectable (B.ExactArrayType B.High) where
+instance Inspectable (B.JRefType) where
   classNames g a =
     case a of
-      B.EARef x -> B.EARef <$> classNames g x
-      _         -> pure a
+      B.JTClass x -> B.JTClass <$> classNames g x
+      B.JTArray x -> B.JTArray <$> classNames g x
 
 instance Inspectable (B.Constant B.High) where
   classNames g a =
@@ -287,8 +285,7 @@ instance Inspectable JValue where
 instance Inspectable JType where
   classNames g t =
     case t of
-      JTClass cn -> JTClass <$> classNames g cn
-      JTArray t' -> JTArray <$> classNames g t'
+      JTRef cn -> JTRef <$> classNames g cn
       a          -> pure a
 
 instance Inspectable ClassSignature where

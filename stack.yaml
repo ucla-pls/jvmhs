@@ -10,15 +10,11 @@ packages:
       - reduce
       - reduce-util
   extra-dep: true
-- location:
-    git: https://github.com/ucla-pls/jvm-binary.git
-    commit: 059dce79b204cee348995d506f7a93c16e5e4d11
-  extra-dep: true
 extra-deps: 
   - fgl-visualize-0.1.0.1
   - dotgen-0.4.2
   - mtl-2.2.2
-    #  - jvm-binary-0.2.0
+  - jvm-binary-0.3.0
 flags: {}
 extra-package-dbs:
 build:

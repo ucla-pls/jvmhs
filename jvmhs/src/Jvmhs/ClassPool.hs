@@ -117,7 +117,6 @@ import           Control.Lens.Action
 import qualified Data.HashMap.Strict        as M
 import qualified Data.HashSet               as S
 import           Data.Maybe
--- import           Data.Monoid
 import           Data.Foldable              as F
 
 -- bytestring
