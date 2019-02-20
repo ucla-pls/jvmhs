@@ -118,10 +118,8 @@ import           Data.Either                (partitionEithers)
 import qualified Data.HashMap.Strict                   as M
 import qualified Data.HashSet                   as S
 import           Data.Maybe
--- import           Data.Monoid
 import           Data.Foldable as F
 
-import Debug.Trace
 
 -- bytestring
 import qualified Data.ByteString.Lazy as BL

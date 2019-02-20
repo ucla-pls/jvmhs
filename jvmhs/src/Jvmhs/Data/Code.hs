@@ -271,11 +271,8 @@ instance ToJSON ByteCodeOpr where
       getInvocationAttributes invocation
 
     B.New ref ->
-      [ "classname" .= ref
+      [ "type" .= ref
       ]
-
-    B.NewArray arraytype ->
-      getArrayType arraytype
 
     B.ArrayLength ->
       []
@@ -293,11 +290,6 @@ instance ToJSON ByteCodeOpr where
 
     B.Monitor enter ->
       [ "enter" .= enter
-      ]
-
-    B.MultiNewArray ref word8 ->
-      [ "array_ref" .= ref
-      , "dimensions" .= word8
       ]
 
     B.Return localtype -> case localtype of
@@ -351,13 +343,11 @@ byteCodeOprOpCode = \case
     B.Put  _ _              -> "put"
     B.Invoke  _             -> "invoke"
     B.New  _                -> "new"
-    B.NewArray  _           -> "new_array"
     B.ArrayLength           -> "array_length"
     B.Throw                 -> "throw"
     B.CheckCast  _          -> "check_cast"
     B.InstanceOf  _         -> "instance_of"
     B.Monitor  _            -> "monitor"
-    B.MultiNewArray  _  _   -> "multi_new_array"
     B.Return  _             -> "return"
     B.Nop                   -> "nop"
     B.Pop  _                -> "pop"
@@ -367,14 +357,10 @@ byteCodeOprOpCode = \case
     B.Swap                  -> "swap"
 
 
-
-
-
 instance ToJSON (B.FieldAccess) where
   toJSON = Bool . \case
     B.FldStatic -> True
     B.FldField -> False
-
 
 
 instance ToJSON (B.StackMapTable B.High) where
@@ -391,7 +377,8 @@ instance ToJSON (B.StackMapFrame B.High) where
 instance ToJSON (B.VerificationTypeInfo B.High) where
   toJSON = object . getTypeInfo
 
-
+instance ToJSON B.JRefType where
+  toJSON = String . B.typeToText
 
 instance ToJSON (B.BinOpr) where
   toJSON = String . \case
@@ -473,8 +460,8 @@ instance ToJSON (B.InvokeDynamic B.High) where
       ]
 
 instance ToJSON (B.MethodId) where
-  toJSON (B.MethodId (B.NameAndType name args)) = object
-      [ "signature" .= Text.concat [name,":",(B.toText args)]
+  toJSON (B.MethodId name) = object
+      [ "signature" .= B.typeToText name
       ]
 
 
@@ -525,12 +512,12 @@ getListOfPairsFromBConstant = \case
 
 
 methodIDToText :: B.MethodId -> Text.Text
-methodIDToText (B.MethodId (B.NameAndType name args)) =
-  Text.concat [name,":",(B.toText args)]
+methodIDToText (B.MethodId name) =
+  B.typeToText name
 
 nameAndTypeFromFieldId :: B.FieldId -> Text.Text
-nameAndTypeFromFieldId (B.FieldId (B.NameAndType name type_)) =
-  Text.concat [name,":",B.toText type_]
+nameAndTypeFromFieldId (B.FieldId name) =
+  B.typeToText name
 
 
 getInClassMethod ::B.AbsMethodId B.High -> [Pair]
@@ -538,7 +525,6 @@ getInClassMethod (B.InClass a b) =
   [ "class" .= B.classNameAsText a
   , "method" .= methodIDToText b
   ]
-
 
 getInvocationAttributes :: B.Invocation B.High -> [Pair]
 getInvocationAttributes = \case
@@ -584,23 +570,21 @@ getInvokeDynamicMethod = \case
     , "method" .= methodIDToText methodid
     ]
 
-
-
-getArrayType :: B.ExactArrayType B.High -> [Pair]
-getArrayType t = 
-  ( "type" .= fromExactArrayType t
-  ) : case t of
-    B.EARef ref -> [ "array_ref" .= ref]
-    _ -> []
+-- getArrayType :: B.ExactArrayType B.High -> [Pair]
+-- getArrayType t =
+--   ( "type" .= fromExactArrayType t
+--   ) : case t of
+--     B.EARef ref -> [ "array_ref" .= ref]
+--     _ -> []
 
  
 
 
 -- * Type Conversion
 
-data SimpleType 
-   = STInteger 
-   | STLong 
+data SimpleType
+   = STInteger
+   | STLong
    | STShort
    | STChar
    | STByte
@@ -622,17 +606,17 @@ instance ToJSON SimpleType where
     STDouble -> "D"
     STRef -> "R"
 
-fromExactArrayType :: B.ExactArrayType B.High -> SimpleType
-fromExactArrayType = \case
-  B.EABoolean -> STBoolean
-  B.EAByte -> STByte
-  B.EAChar -> STChar
-  B.EAShort -> STShort
-  B.EAInt -> STInteger
-  B.EALong -> STLong
-  B.EAFloat -> STFloat
-  B.EADouble -> STDouble
-  B.EARef _ -> STRef
+-- fromExactArrayType :: B.ExactArrayType B.High -> SimpleType
+-- fromExactArrayType = \case
+--   B.EABoolean -> STBoolean
+--   B.EAByte -> STByte
+--   B.EAChar -> STChar
+--   B.EAShort -> STShort
+--   B.EAInt -> STInteger
+--   B.EALong -> STLong
+--   B.EAFloat -> STFloat
+--   B.EADouble -> STDouble
+--   B.EARef _ -> STRef
 
 fromSmallArithmeticType :: B.SmallArithmeticType -> SimpleType
 fromSmallArithmeticType = \case

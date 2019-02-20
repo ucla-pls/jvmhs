@@ -348,7 +348,7 @@ type AbsFieldName = (ClassName, FieldName)
 
 instance Hashable B.JType where
   hashWithSalt i b =
-    i `hashWithSalt` (B.toText b)
+    i `hashWithSalt` (B.typeToText b)
 
 
 -- -- * FieldDescriptor
@@ -394,12 +394,12 @@ instance Hashable B.JType where
 
 parseFieldName :: Text.Text -> Parser FieldName
 parseFieldName e = do
-  let Right x = B.fromText e
+  let Right x = B.typeFromText e
   return $ ( B.FieldId x  ^. from _Binary)
 
 parseMethodName :: Text.Text -> Parser MethodName
 parseMethodName e = do
-  let Right x = B.fromText e
+  let Right x = B.typeFromText e
   return $ ( B.MethodId x ^. from _Binary)
 
 -- type InClass a = B.InClass a B.High
@@ -424,11 +424,11 @@ parseMethodName e = do
 
 methodNameToText :: MethodName -> Text.Text
 methodNameToText =
-  view (_Binary . _Wrapped . to B.toText)
+  view (_Binary . _Wrapped . to B.typeToText)
 
 fieldNameToText :: FieldName -> Text.Text
 fieldNameToText =
-  view (_Binary . _Wrapped . to B.toText)
+  view (_Binary . _Wrapped . to B.typeToText)
 
 -- -- * Instances
 
@@ -466,10 +466,10 @@ instance ToJSON B.ClassName where
   toJSON = String . view _Wrapped
 
 instance ToJSON FieldDescriptor where
-  toJSON = String . B.toText
+  toJSON = String . B.typeToText
 
 instance ToJSON MethodDescriptor where
-  toJSON = String . B.toText
+  toJSON = String . B.typeToText
 
 instance ToJSON BS.ByteString where
   toJSON = String . Text.pack . C.unpack
