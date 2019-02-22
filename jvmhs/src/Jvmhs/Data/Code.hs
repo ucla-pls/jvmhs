@@ -41,7 +41,7 @@ module Jvmhs.Data.Code
   , verificationTypeInfo
   , VerificationTypeInfo
 
-  , ByteCodeOpr
+  , ByteCodeInst
   )
   where
 
@@ -66,7 +66,7 @@ import qualified Language.JVM.Attribute.StackMapTable as B
 
 import           Jvmhs.Data.Type
 
-type ByteCodeOpr = B.ByteCodeOpr B.High
+type ByteCodeInst = B.ByteCodeInst B.High
 -- type LineNumberTable = B.LineNumberTable B.High
 type StackMapTable = B.StackMapTable B.High
 type VerificationTypeInfo = B.VerificationTypeInfo B.High
@@ -74,7 +74,7 @@ type VerificationTypeInfo = B.VerificationTypeInfo B.High
 data Code = Code
   { _codeMaxStack       :: !Word16
   , _codeMaxLocals      :: !Word16
-  , _codeByteCode       :: !(V.Vector ByteCodeOpr)
+  , _codeByteCode       :: !(V.Vector ByteCodeInst)
   , _codeExceptionTable :: ![ExceptionHandler]
   , _codeStackMap       :: !(Maybe StackMapTable)
   } deriving (Show, Eq, Generic, NFData)
@@ -95,7 +95,7 @@ fromBinaryCode =
   Code
     <$> B.codeMaxStack
     <*> B.codeMaxLocals
-    <*> B.codeByteCodeOprs
+    <*> B.codeByteCodeInsts
     <*> fmap (view $ from _Binary) . B.unSizedList . B.codeExceptionTable
     <*> B.codeStackMapTable
 
@@ -104,7 +104,7 @@ toBinaryCode c =
   B.Code
    (c^.codeMaxStack)
    (c^.codeMaxLocals)
-   (B.ByteCode $ c^.codeByteCode)
+   (B.ByteCode $ (0, c^.codeByteCode))
    (B.SizedList $ c^..codeExceptionTable.folded._Binary)
    (B.CodeAttributes (maybe [] (:[]) $ c^.codeStackMap) [] [])
 
@@ -128,7 +128,7 @@ instance FromJVMBinary (B.ExceptionTable B.High) ExceptionHandler where
 traverseCode ::
      (Traversal' Word16 a)
   -> (Traversal' Word16 a)
-  -> (Traversal' (V.Vector ByteCodeOpr) a)
+  -> (Traversal' (V.Vector ByteCodeInst) a)
   -> (Traversal' [ExceptionHandler] a)
   -> (Traversal' (Maybe StackMapTable) a)
   -> Traversal' Code a
@@ -166,10 +166,12 @@ verificationTypeInfo g (B.StackMapTable s) =
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
 
-instance ToJSON ByteCodeOpr where
+instance ToJSON ByteCodeInst where
   toJSON bopr =
-    object $ ("opc" .= byteCodeOprOpCode bopr) : case bopr of
-
+    object $
+    ("opc" .= byteCodeOprOpCode (B.opcode bopr)) :
+    ("off" .= B.offset bopr) :
+    case B.opcode bopr of
     B.ArrayLoad arrType ->
       [ "type" .= fromArrayType arrType
       ]
@@ -318,7 +320,7 @@ instance ToJSON ByteCodeOpr where
       []
 
 
-byteCodeOprOpCode :: ByteCodeOpr -> Text.Text
+byteCodeOprOpCode :: B.ByteCodeOpr B.High -> Text.Text
 byteCodeOprOpCode = \case
     B.ArrayLoad  _          -> "array_load"
     B.ArrayStore  _         -> "array_store"
