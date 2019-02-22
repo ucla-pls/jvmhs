@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE TupleSections     #-}
 {-
 Module      : Jvmhs.Analysis.Hierarchy
 Copyright   : (c) Christian Gram Kalhauge, 2017
@@ -12,14 +12,25 @@ This module defines the a class hierarchy analysis.
 module Jvmhs.Analysis.Reduce
   where
 
---import            Control.Monad.IO.Class
-import            Control.Lens
-import            Jvmhs
+-- base
+import           Data.Functor
+import qualified Data.Set
 
-import qualified Data.Set                             as S
-import qualified Data.Map                             as M
+-- lens
+import           Control.Lens
 
-type IFMapping = M.Map ClassName (S.Set ClassName)
+-- hashable
+import           Data.Hashable
+
+-- unordered-collections
+import qualified Data.HashMap.Strict as M
+import qualified Data.HashSet        as S
+
+-- jvmhs
+import           Jvmhs
+import           Jvmhs.Data.Named
+
+type IFMapping = M.HashMap ClassName (S.HashSet ClassName)
 
 findUnusedInterfaces ::
     (MonadClassPool m)
@@ -29,15 +40,15 @@ findUnusedInterfaces = do
   unusedInterfaces <- S.difference <$> findInterfaces <*> findUsedClasses
   unusedICls <- unusedInterfaces ^!! folded . pool . _Just
   return $ M.fromList
-    (map (\i -> (i^.className, i^.classInterfaces)) unusedICls)
+    (map (\i -> (i^.name, i^.classInterfaces)) unusedICls)
 
 inlineKey ::
-     (Ord a, Foldable t)
-  => M.Map a (S.Set a)
+     (Hashable a, Eq a, Foldable t)
+  => M.HashMap a (S.HashSet a)
   -> t a
-  -> S.Set a
+  -> S.HashSet a
 inlineKey m =
-  foldMap (\i -> M.findWithDefault (S.singleton i) i m)
+  foldMap (\i -> M.lookupDefault (S.singleton i) i m)
 
 
 inlineInterfaces ::
@@ -51,11 +62,11 @@ inlineInterfaces replaceMap cls =
   in cls & classInterfaces .~ inlineKey replaceMap oldInterface
 
 toCannoicalIFMapping ::
-     Ord a
-  => M.Map a (S.Set a)
-  -> M.Map a (S.Set a)
+     (Hashable a, Eq a)
+  => M.HashMap a (S.HashSet a)
+  -> M.HashMap a (S.HashSet a)
 toCannoicalIFMapping m =
-  if S.unions (M.elems m) `S.intersection` M.keysSet m == S.empty
+  if S.unions (M.elems m) `S.intersection` S.fromMap ( m $> ()) == S.empty
   then m
   else toCannoicalIFMapping $
          M.map (inlineKey m) m
@@ -69,18 +80,18 @@ reduceInterfaces = do
 
 findInterfaces ::
   (MonadClassPool m)
-  => m (S.Set ClassName)
+  => m (S.HashSet ClassName)
 findInterfaces =
   foldMap toSetOfInterface <$> allClasses
   where
     toSetOfInterface cls =
-      if CInterface `S.member` (cls ^. classAccessFlags)
-      then S.singleton (cls^.className)
+      if CInterface `Data.Set.member` (cls ^. classAccessFlags)
+      then S.singleton (cls^.name)
       else S.empty
 
 findUsedClasses ::
   (MonadClassPool m)
-  => m (S.Set ClassName)
+  => m (S.HashSet ClassName)
 findUsedClasses  =
   foldMap findUsedClassesInClass <$> allClasses
   where
@@ -90,5 +101,6 @@ findUsedClasses  =
           (mapAsFieldList.traverse.classNames)
           (mapAsMethodList.traverse.classNames)
           (traverse.classNames)
-          nothing) cls
-
+          nothing
+          (traverse.tuple id (traverse.classNames))
+          (traverse.classNames)) cls

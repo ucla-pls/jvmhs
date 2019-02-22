@@ -1,13 +1,14 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE DeriveAnyClass       #-}
+{-# LANGUAGE DeriveFunctor        #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE ConstraintKinds #-}
 
 module Jvmhs.ClassReader
   ( ClassReadError (..)
@@ -15,7 +16,13 @@ module Jvmhs.ClassReader
   , ClassPath
   , splitClassPath
 
+  , relativePathOfClass
+
   , ClassReader (..)
+
+  , ReaderOptions (..)
+  , defaultFromReader
+  , readClassBytes
 
   , MonadClassReader
   , readClass
@@ -33,12 +40,16 @@ module Jvmhs.ClassReader
   , readClassFile'
   , convertClass
 
-  , CFolder
+  , ClassContainer (..)
+
+  , CFolder (..)
   , toFilePath
 
-  , CJar
+  , CJar (..)
   , jarArchive
   , jarPath
+
+  , CEntry (..)
 
   , ClassLoader (..)
   , fromClassPath
@@ -50,36 +61,60 @@ module Jvmhs.ClassReader
   , classMap
   , preload
   , preloadClassPath
+
+  , asClassName
+  , guessJre
   ) where
 
 import           Control.DeepSeq
-import           Control.Monad.Reader.Class
-import           Control.Monad.Reader
 import           Control.Lens
-import           Data.Maybe           (catMaybes)
-import           Data.Monoid
+import           Control.Monad.Reader
 import           Data.Bifunctor
+import qualified Data.ByteString.Lazy as BL
+import           Data.Functor
+import           Data.Maybe           (catMaybes, mapMaybe)
+import           Data.Monoid
+import qualified Data.Text            as Text
 import           GHC.Generics         (Generic)
 import           System.Directory
 import           System.FilePath
 import           System.Process
 
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Text            as Text
+-- mtl
+import Control.Monad.Except
 
+-- unordered-containers
+import qualified Data.HashMap.Strict             as Map
+
+-- zip-archive
 import           Codec.Archive.Zip
-import           Jvmhs.Data.Class
-import           Jvmhs.Data.Type
+
+-- jvm-binary
 import qualified Language.JVM         as B
 
-import qualified Data.Map             as Map
+-- jvmhs
+import           Jvmhs.Data.Class
+import           Jvmhs.Data.Type
 
--- % Utils
+
+-- Reader options
+data ReaderOptions r = ReaderOptions
+  { keepAttributes :: Bool
+  , classReader    :: r
+  }
+  deriving (Show, Functor)
+
+defaultFromReader :: r -> ReaderOptions r
+defaultFromReader = ReaderOptions True
 
 -- | Get the path of a class.
 pathOfClass :: FilePath -> ClassName -> FilePath
 pathOfClass fp cn =
   fp ++ "/" ++ Text.unpack (cn^.fullyQualifiedName) ++ ".class"
+
+relativePathOfClass :: ClassName -> FilePath
+relativePathOfClass cn =
+  Text.unpack (cn^.fullyQualifiedName) ++ ".class"
 
 -- | Return all the jars from in a folder.
 jarsFromFolder :: FilePath -> IO [ FilePath ]
@@ -88,8 +123,9 @@ jarsFromFolder fp =
 
 -- | Read a zip file
 readZipFile :: FilePath -> IO (Either String Archive)
-readZipFile fp = do
-  toArchiveOrFail <$> BL.readFile fp
+readZipFile =
+  fmap toArchiveOrFail . BL.readFile
+{-# INLINABLE readZipFile #-}
 
 -- | The content of a folder represented as a absolute path
 folderContents :: FilePath -> IO [ FilePath ]
@@ -101,19 +137,18 @@ isJar :: FilePath -> Bool
 isJar path =
   takeExtension path == ".jar"
 
--- | Check if the extension of the file is ".class"
-isClassFile :: FilePath -> Bool
-isClassFile path =
-  takeExtension path == ".class"
+-- -- | Check if the extension of the file is ".class"
+-- isClassFile :: FilePath -> Bool
+-- isClassFile path =
+--   takeExtension path == ".class"
+-- {-# INLINABLE isClassFile #-}
 
 -- | Takes a relative file path from the main package to the
 -- class file and returns a class name.
 asClassName :: FilePath -> Maybe ClassName
-asClassName path
-  | isClassFile path =
-    return . strCls $ dropExtension path
-  | otherwise =
-    Nothing
+asClassName =
+  fmap (view $ from fullyQualifiedName) . Text.stripSuffix ".class" . Text.pack
+{-# INLINABLE asClassName #-}
 
 -- | Get all the files of under a folder.
 recursiveContents :: FilePath -> IO [ FilePath ]
@@ -135,22 +170,26 @@ data ClassReadError
  deriving (Show, Eq, Generic, NFData)
 
 readClassFile' ::
-     BL.ByteString
+  Bool -- keep the attribute?
+  -> BL.ByteString
   -> Either ClassReadError (B.ClassFile B.High)
-readClassFile' file =
-  B.readClassFile file & _Left %~ MalformedClass
+readClassFile' bool file =
+  over _Left MalformedClass
+  $ ( B.evolveClassFile (const bool) =<<
+      force (B.decodeClassFile file)
+    )
 
 -- | A class reader can read a class using a class name.
 class ClassReader m where
-  -- | Reads a class file from the reader
-  readClassFile ::
-    m
-    -> ClassName
-    -> IO (Either ClassReadError (B.ClassFile B.High))
-  readClassFile m cn = do
-    bts <- getClassBytes m cn
-    let cf = readClassFile' =<< bts
-    return $! force cf
+  -- -- | Reads a class file from the reader
+  -- readClassFile ::
+  --   ReaderOptions m
+  --   -> ClassName
+  --   -> IO (Either ClassReadError (B.ClassFile B.High))
+  -- readClassFile m cn = do
+  --   bts <- getClassBytes (classReader m) cn
+  --   let cf = readClassFile' (keepAttributes m) =<< bts
+  --   return $! force cf
 
   -- | Returns the bytes of the class
   getClassBytes ::
@@ -161,6 +200,23 @@ class ClassReader m where
   -- | Returns a list of `ClassName` and the containers they are in.
   classes :: m -> IO [ (ClassName, ClassContainer) ]
 
+readClassBytes ::
+  ClassReader r
+  => ReaderOptions r
+  -> BL.ByteString
+  -> ExceptT ClassReadError IO (B.ClassFile B.High)
+readClassBytes m bts = do
+  liftEither $ readClassFile' (keepAttributes m) bts
+
+readClassFile ::
+  ClassReader r
+  => ReaderOptions r
+  -> ClassName
+  -> ExceptT ClassReadError IO (B.ClassFile B.High)
+readClassFile m cn = do
+  b <- ExceptT $ getClassBytes (classReader m) cn
+  readClassBytes m b
+
 deserializeClass :: Class -> BL.ByteString
 deserializeClass =
   B.writeClassFile . toClassFile
@@ -170,8 +226,8 @@ writeClass ::
      FilePath
   -> Class
   -> IO ()
-writeClass fp c = do
-  writeClasses fp (Identity c)
+writeClass fp =
+  writeClasses fp . Identity
 
 -- | Writes some classes to the filepath. If the filepath
 -- is a jar, a jar is created.
@@ -204,21 +260,24 @@ writeBytesToFilePath fp bytes
       addEntryToArchive $ toEntry
         (cn^.fullyQualifiedName.to Text.unpack ++ ".class") 0 bs
 
-type MonadClassReader r m = (MonadReader r m, MonadIO m, ClassReader r)
+type MonadClassReader r m = (MonadReader (ReaderOptions r) m, MonadIO m, ClassReader r)
 
 type ClassReaderT r m = ReaderT r m
 
-runClassReaderT :: (MonadIO m, ClassReader r) => ReaderT r m a -> r -> m a
+runClassReaderT ::
+  (MonadIO m, ClassReader r)
+  => ReaderT (ReaderOptions r) m a
+  -> ReaderOptions r
+  -> m a
 runClassReaderT = runReaderT
 
 readClass ::
     (ClassReader r)
   => ClassName
-  -> r
+  -> ReaderOptions r
   -> IO (Either ClassReadError Class)
 readClass cn r = do
-  cls <- readClassFile r cn
-  return (cls & _Right %~ convertClass)
+  runExceptT $ convertClass <$> readClassFile r cn
 
 -- | Read a checked class from a class reader.
 readClassM ::
@@ -227,8 +286,7 @@ readClassM ::
   -> m (Either ClassReadError Class)
 readClassM cn = do
   r <- ask
-  cls <- liftIO $ readClassFile r cn
-  return (cls & _Right %~ convertClass)
+  liftIO $ readClass cn r
 
 -- | Read
 readClassesM ::
@@ -236,11 +294,12 @@ readClassesM ::
   => m [Either (ClassName, ClassReadError) Class]
 readClassesM = do
   r <- ask
-  classnames <- liftIO $ classes r
-  liftIO $ forM classnames (\c -> first (fst c,) <$> uncurry readClass c)
+  classnames <- liftIO $ classes (classReader r)
+  liftIO . forM classnames $ \(cn, con) ->
+    first (cn,) <$> readClass cn (r $> con)
 
 convertClass :: B.ClassFile B.High -> Class
-convertClass = view isoBinary
+convertClass = force . view isoBinary
 
 -- | Classes can be in a folder
 newtype CFolder = CFolder
@@ -264,9 +323,7 @@ instance ClassReader CFolder where
       else return $ Left ClassNotFound
 
   classes this@(CFolder fp) = do
-     fls <- catMaybes
-       . map asClassName
-       . map (makeRelative fp)
+     fls <- mapMaybe (asClassName . makeRelative fp)
        <$> recursiveContents fp
      return $ map (,CCFolder this) fls
 
@@ -294,22 +351,22 @@ instance ClassReader CJar where
       Nothing ->
         return $ Left ClassNotFound
 
-  classes (CJar _ arch) = do
-     return . catMaybes . flip map (zEntries arch) $ \e ->
-       (,CCEntry (CEntry e)) <$> (asClassName . eRelativePath $ e)
+  classes jar@(CJar _ arch) =
+    return . flip mapMaybe (zEntries arch) $
+      \e -> (,CCEntry (CEntry (jar, e))) <$> (asClassName . eRelativePath $ e)
 
-newtype CEntry = CEntry Entry
+newtype CEntry = CEntry (CJar, Entry)
   deriving (Show)
 
 instance ClassReader CEntry where
-  getClassBytes (CEntry entry) cn =
+  getClassBytes (CEntry (_, entry)) cn =
     if asClassName (eRelativePath entry) == Just cn
     then
         return $ Right (fromEntry entry)
     else
         return $ Left ClassNotFound
 
-  classes this@(CEntry entry) = do
+  classes this@(CEntry (_, entry)) =
     case asClassName . eRelativePath $ entry of
       Just cn -> return [(cn, CCEntry this)]
       Nothing -> return []
@@ -318,7 +375,7 @@ instance ClassReader CEntry where
 -- `Nothing` if it's not a folder or a jar.
 container :: FilePath -> IO (Maybe ClassContainer)
 container fp = do
-  jar <- (fmap CCJar <$> asJar fp)
+  jar <- fmap CCJar <$> asJar fp
   case jar of
     Just _ ->
       return jar
@@ -345,7 +402,7 @@ data ClassContainer
   | CCEntry CEntry
   deriving (Show)
 
-instance ClassReader (ClassContainer) where
+instance ClassReader ClassContainer where
   getClassBytes (CCFolder x) = getClassBytes x
   getClassBytes (CCJar x)    = getClassBytes x
   getClassBytes (CCEntry x)  = getClassBytes x
@@ -370,46 +427,32 @@ data ClassLoader = ClassLoader
 
 makeLenses ''ClassLoader
 
--- | split splits a list on an element
--- >> split ':' "Hello:World"
--- [ "Hello", "World" ]
--- split :: Char -> [Char] -> [[Char]]
-split :: (Eq a) => a -> ([a] -> [[a]])
-split a = go []
-  where
-    go lst [] =
-      [ reverse lst ]
-    go lst (b':rest)
-      | b' == a =
-        reverse lst : go [] rest
-      | otherwise =
-        go (b':lst) rest
-
 splitClassPath :: String -> ClassPath
-splitClassPath = split ':'
+splitClassPath = splitSearchPath
 
 -- | Creates a 'ClassLoader' from a class path, automatically predicts
 -- the java version used using the 'which' command.
 fromClassPath :: [ FilePath ] -> IO ClassLoader
-fromClassPath fps = do
+fromClassPath fps =
   fromJreFolder fps =<< guessJre
 
 -- | Creates a 'ClassLoader' from a class path.
 fromClassPathOnly :: [ FilePath ] -> ClassLoader
-fromClassPathOnly fps =
-  ClassLoader [] [] fps
+fromClassPathOnly =
+  ClassLoader [] []
 
 guessJre :: IO FilePath
 guessJre = do
   java <- readProcess "which" ["java"] ""
-  return $ takeDirectory (takeDirectory java) </> "jre"
+  canon <- canonicalizePath java
+  return $ takeDirectory (takeDirectory canon) </> "jre"
 
 -- | Creates a 'ClassLoader' from a classpath and the jre folder
 fromJreFolder :: [ FilePath ] -> FilePath -> IO ClassLoader
 fromJreFolder clspath jre =
   ClassLoader
-    <$> (jarsFromFolder $ jre </> "lib")
-    <*> (jarsFromFolder $ jre </> "lib/ext")
+    <$> jarsFromFolder ( jre </> "lib" )
+    <*> jarsFromFolder ( jre </> "lib/ext" )
     <*> pure clspath
 
 
@@ -449,7 +492,7 @@ instance ClassReader ClassLoader where
 -- they reside in. This can vastly improve the speed of looking up classes to load
 -- them
 newtype ClassPreloader = ClassPreloader
-  { _classMap :: Map.Map ClassName [ ClassContainer ]
+  { _classMap :: Map.HashMap ClassName [ ClassContainer ]
   } deriving (Show)
 
 -- | Create a class preloader from any 'ClassReader'.
@@ -459,10 +502,9 @@ preload
   -> IO ClassPreloader
 preload r = do
   cls <- classes r
-  return
-    . ClassPreloader
-    . Map.fromListWith (++)
-    $ map (_2 %~ (:[])) cls
+  return . ClassPreloader $
+    flip appEndo []
+    <$> ( Map.fromListWith (<>) $ map (_2 %~ (\e -> Endo (e:))) cls )
 
 -- | Creates a 'ClassPreloader' from a class path, automatically predicts
 -- the java version used using the 'which' command.

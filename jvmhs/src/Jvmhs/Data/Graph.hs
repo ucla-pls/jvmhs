@@ -17,21 +17,43 @@ module Jvmhs.Data.Graph
   ( Graph
   , mkGraph
   , mkGraphFromEdges
+  , innerGraph
+  , nodeMap
+
+  , graphContexts
 
   -- Graph manipulations
   , sccGraph
 
   -- For printing
   , graphToDot
+  , graphToDot'
 
   -- * Lenses
   , toLabel
   , grNodes
+  , grNode
+
+  , fromLabel
+  , labels
+
+  -- * Modifications
+  , remove
+  , forwardRemove
+  , shrink
 
   -- * Algorithms
   , isClosedIn
   , partition
   , partition'
+  , closures
+  , close
+  , collapse
+  , revclose
+
+  , revReachable
+
+  , reverseFold
 
   -- * Re-exports
   , F.order
@@ -41,17 +63,19 @@ module Jvmhs.Data.Graph
   , graphFromFile
   ) where
 
-
-import Control.DeepSeq
+import           Control.DeepSeq
 import           Control.Lens
+import           Data.Foldable                     (toList)
 import qualified Data.Map                          as M
+import qualified Data.Set                          as S
 import           Data.Maybe
 import           Data.Monoid                       ((<>))
 import           Data.Tuple                        (swap)
 
-import qualified Data.IntSet                       as IS
 import qualified Data.IntMap                       as IM
+import qualified Data.IntSet                       as IS
 import qualified Data.List                         as L
+import qualified Data.Set.Lens                     as S
 import qualified Data.Vector                       as V
 
 import qualified Data.ByteString                   as BS
@@ -59,13 +83,10 @@ import           System.IO
 
 import qualified Data.Attoparsec.ByteString.Char8  as P
 
-import Debug.Trace
+import           Data.Graph.Inductive.Dot          (fglToDot, fglToDotGeneric,
+                                                    showDot)
 
-import           Data.Graph.Inductive.Dot          (fglToDot, showDot)
-
---import           Data.Graph.Inductive.Basic
 import qualified Data.Graph.Inductive.Graph        as F
--- import           Data.Graph.Inductive.NodeMap
 import           Data.Graph.Inductive.PatriciaTree
 import           Data.Graph.Inductive.Query.DFS
 
@@ -90,8 +111,24 @@ grNodes = innerGraph . ifolding F.labNodes
 toLabel :: Graph v e -> Getter Int (Maybe v)
 toLabel gr = to (F.lab $ view innerGraph gr)
 
+grNode :: Int -> Getter (Graph v e) (Maybe v)
+grNode i = innerGraph . to (flip F.lab i)
+
 fromLabel :: Ord v => Graph v e -> Getter v (Maybe Int)
 fromLabel gr = to (`M.lookup` view nodeMap gr)
+
+labels :: [Int] -> Graph v e -> [v]
+labels vs grp = vs ^.. folded . toLabel grp . _Just
+
+graphContexts :: IndexedFold Int (Graph v e) (F.Context v e)
+graphContexts fn gr =
+  ( innerGraph
+    . ifolding (
+      map (\(n, _) -> (n, F.context (gr ^.innerGraph) n))
+      . F.labNodes
+      )
+  ) fn gr
+
 
 -- | Create a graph from nodes and edges. Any edge where both nodes are not in
 -- the inputs will be removed. *This functions assumes that there is only one
@@ -117,6 +154,7 @@ mkGraphFromEdges ::
 mkGraphFromEdges edges =
   mkGraph (edges^.folded.(_1 <> _2).toSet) edges
 
+-- | Check if a foldable collection of items is closed in the graph
 isClosedIn ::
   (Foldable f, Ord v)
   => f v
@@ -128,6 +166,48 @@ isClosedIn vs gr =
     input = (L.sort $ vs ^.. folded.fromLabel gr._Just)
     closure = L.sort $ dfs input (gr^.innerGraph)
 
+-- | Given a list of items close under them.
+close ::
+  (Foldable f, Ord v)
+  => Graph v e
+  -> f v
+  -> [v]
+close gr vs =
+  closure ^.. folded.toLabel gr._Just
+  where
+    input = vs ^.. folded.fromLabel gr._Just
+    closure = dfs input (gr^.innerGraph)
+
+-- | Given a list of items, remove all items that is not closed.
+collapse ::
+  (Foldable f, Ord v)
+  => Graph v e
+  -> f v
+  -> [v]
+collapse gr vs =
+  left ^.. to IS.toList.folded.toLabel gr._Just
+  where
+    input = vs ^.. folded.fromLabel gr._Just
+    inputSet = IS.fromList input
+    missed =
+      IS.fromList (dfs input (gr^.innerGraph))
+      `IS.difference` inputSet
+    left =
+      inputSet
+      `IS.difference`
+      IS.fromList (rdfs (IS.toList missed) (gr^.innerGraph))
+
+revclose ::
+  (Ord v)
+  => Graph v e
+  -> [v]
+  -> [v]
+revclose gr vs =
+  closure ^.. folded.toLabel gr._Just
+  where
+    input = vs ^.. folded.fromLabel gr._Just
+    closure = rdfs input (gr^.innerGraph)
+
 
 -- | Output the graph as a dot graph string
 graphToDot ::
@@ -136,6 +216,15 @@ graphToDot ::
   -> String
 graphToDot =
   showDot . fglToDot . _innerGraph
+
+-- | Output the graph as a dot graph string, with string methods
+graphToDot' ::
+  Graph v e
+  -> (v -> String)
+  -> (e -> String)
+  -> String
+graphToDot' gr fv fe =
+  showDot $ fglToDotGeneric (_innerGraph gr) fv fe id
 
 -- | Create a graph of strongly connected components.
 sccGraph ::
@@ -152,6 +241,31 @@ sccGraph gr =
     nodemap' = M.fromList $ nodes ^.. traverse . to unfoldN .traverse
     unfoldN (n,l) = map (,n) l
 
+
+revReachable ::
+  Ord v
+  => Graph v e
+  -> v
+  -> [v]
+revReachable gr@(Graph g _) v =
+  case v ^. fromLabel gr of
+    Just x  -> rdfs [x] g ^.. folded . toLabel gr . _Just
+    Nothing -> []
+
+reverseFold ::
+  Ord v
+  => Graph v e
+  -> (v -> [(v, e, m)] -> m)
+  -> v
+  -> Maybe m
+reverseFold gr@(Graph g _) f =
+  preview (fromLabel gr . _Just . to go)
+  where
+    go vid =
+      f (gr ^?! grNode vid._Just) [ (gr^?!grNode vid'._Just, e, go vid') | (vid', e) <- F.lpre g vid ]
+
+
+
 -- | Compute the different possible closures for a graph, returns a list of
 -- unique sets and closures, with indices into the original graph.
 partition :: Graph v e -> [ ([v], [v]) ]
@@ -161,6 +275,12 @@ partition gr =
     asLabels =
       toListOf (to (IS.toList) . folded . toLabel gr. _Just)
 
+closures :: Graph v e -> [ IS.IntSet ]
+closures = map snd . partition'
+
+-- | The partition of the graph into closures, the first is
+-- each strongly connected component and the second is the closure of
+-- that component.
 partition' :: Graph v e -> [ (IS.IntSet, IS.IntSet) ]
 partition' graph =
   catMaybes . V.toList $ cv
@@ -170,7 +290,10 @@ partition' graph =
     iscc = zip [0..] sccs
     vMap = IM.fromList . concatMap (\(i,xs) -> map (,i) xs) $ iscc
 
-    edges = map (\(i, ls) -> IS.unions . map (IS.delete i . getEdges) $ ls) iscc
+    edges = map (
+      \(i, ls) ->
+        IS.unions . map (IS.delete i . getEdges) $ ls
+      ) iscc
 
     cv = V.fromList (zipWith getNode sccs edges)
 
@@ -186,6 +309,37 @@ partition' graph =
         s'  = IS.fromList s
         closure = IS.unions (s':before)
       return (s', closure)
+
+-- | Remove elements in the graph and all nodes that they point to. Return
+-- the new graph and the removed elements.
+forwardRemove ::
+  (Foldable f, Ord v)
+  => Graph v e
+  -> f v
+  -> ([v], Graph v e)
+forwardRemove gr f =
+  (closure, remove gr closure)
+  where
+    closure = close gr (toList f)
+
+remove ::
+  (Foldable f, Ord v)
+  => Graph v e
+  -> f v
+  -> Graph v e
+remove gr vs =
+  gr & innerGraph %~ F.delNodes (vs ^..folded.fromLabel gr._Just)
+     & nodeMap %~ flip M.withoutKeys (S.setOf folded vs)
+
+shrink ::
+  (Foldable f, Ord v)
+  => Graph v e
+  -> f v
+  -> Graph v e
+shrink gr vs =
+  remove gr revset
+  where
+    revset = S.setOf grNodes gr `S.difference` S.setOf folded vs
 
 -- | Reads a graph from file. Expects the file to a list of two integres.
 graphFromFile ::

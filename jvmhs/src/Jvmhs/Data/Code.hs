@@ -1,9 +1,11 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes        #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE TemplateHaskell       #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-|
 Module      : Jvmhs.Data.Code
@@ -44,17 +46,23 @@ module Jvmhs.Data.Code
   where
 
 import           Control.DeepSeq
-import           Control.Lens
+import           Control.Lens                         hiding ((.=))
 import           Data.Aeson
 import           Data.Aeson.TH
+import           Data.Aeson.Types
+import qualified Data.Text                            as Text
+import qualified Data.Vector                          as V
 import           Data.Word
-import qualified Data.Vector as V
 
-import           GHC.Generics (Generic)
+import           GHC.Generics                         (Generic)
 
 import qualified Language.JVM                         as B
 import qualified Language.JVM.Attribute.Code          as B
 import qualified Language.JVM.Attribute.StackMapTable as B
+-- import qualified Language.JVM.Constant                as B
+-- import qualified Language.JVM.Stage                   as B
+-- import qualified Language.JVM.Type                    as B
+-- import qualified Language.JVM.Utils                   as B
 
 import           Jvmhs.Data.Type
 
@@ -78,6 +86,7 @@ data ExceptionHandler = ExceptionHandler
   , _ehCatchType :: !(Maybe ClassName)
   } deriving (Show, Eq, Generic, NFData)
 
+
 makeLenses ''Code
 makeLenses ''ExceptionHandler
 
@@ -87,7 +96,7 @@ fromBinaryCode =
     <$> B.codeMaxStack
     <*> B.codeMaxLocals
     <*> B.codeByteCodeOprs
-    <*> fmap fromBinaryExceptionTable . B.unSizedList . B.codeExceptionTable
+    <*> fmap (view $ from _Binary) . B.unSizedList . B.codeExceptionTable
     <*> B.codeStackMapTable
 
 toBinaryCode :: Code -> B.Code B.High
@@ -96,24 +105,25 @@ toBinaryCode c =
    (c^.codeMaxStack)
    (c^.codeMaxLocals)
    (B.ByteCode $ c^.codeByteCode)
-   (B.SizedList $ c^..codeExceptionTable.folded.to toBinaryExceptionTable)
+   (B.SizedList $ c^..codeExceptionTable.folded._Binary)
    (B.CodeAttributes (maybe [] (:[]) $ c^.codeStackMap) [] [])
 
-fromBinaryExceptionTable :: B.ExceptionTable B.High -> ExceptionHandler
-fromBinaryExceptionTable =
-  ExceptionHandler
-  <$> B.start
-  <*> B.end
-  <*> B.handler
-  <*> B.catchType
+instance FromJVMBinary (B.ExceptionTable B.High) ExceptionHandler where
+  _Binary = iso toBinaryExceptionTable fromBinaryExceptionTable
+    where
+      fromBinaryExceptionTable =
+        ExceptionHandler
+        <$> B.start
+        <*> B.end
+        <*> B.handler
+        <*> fmap (view $ from _Binary) . B.catchType
 
-toBinaryExceptionTable :: ExceptionHandler -> B.ExceptionTable B.High
-toBinaryExceptionTable =
-  B.ExceptionTable
-  <$> _ehStart
-  <*> _ehEnd
-  <*> _ehHandler
-  <*> _ehCatchType
+      toBinaryExceptionTable =
+        B.ExceptionTable
+        <$> _ehStart
+        <*> _ehEnd
+        <*> _ehHandler
+        <*> fmap (view _Binary) . _ehCatchType
 
 traverseCode ::
      (Traversal' Word16 a)
@@ -156,9 +166,536 @@ verificationTypeInfo g (B.StackMapTable s) =
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
 
-instance ToJSON (B.ByteCodeOpr B.High) where
-  toJSON _ = String "<code>"
+instance ToJSON ByteCodeOpr where
+  toJSON bopr =
+    object $ ("opc" .= byteCodeOprOpCode bopr) : case bopr of
+
+    B.ArrayLoad arrType ->
+      [ "type" .= fromArrayType arrType
+      ]
+
+    B.ArrayStore arrType ->
+      [ "type" .= fromArrayType arrType
+      ]
+
+    B.Push bconstant ->
+      getListOfPairsFromBConstant bconstant
+
+    B.Load localtype localaddr ->
+      [ "type" .= fromLocalType localtype
+      , "addr" .= localaddr
+      ]
+
+    B.Store localtype localaddr ->
+      [ "type" .= fromLocalType localtype
+      , "addr" .= localaddr
+      ]
+
+    B.BinaryOpr binopr arithmetictype ->
+      [ "opr" .= binopr
+      , "type" .= fromArithmeticType arithmetictype
+      ]
+
+    B.Neg arithmetictype ->
+      [ "type" .= fromArithmeticType arithmetictype
+      ]
+
+    B.BitOpr bitopr wordsize ->
+      [ "opr" .= bitopr
+      , "size" .= wordsize
+      ]
+
+    B.IncrLocal localaddr increment ->
+      [ "addr" .= localaddr
+      , "incr" .= increment
+      ]
+
+    B.Cast castopr ->
+      [ "opr" .= castopr
+      ]
+
+    B.CompareLongs -> []
+
+    B.CompareFloating bool wordsize ->
+      [ "gt" .= bool
+      , "size" .= wordsize
+      ]
+
+    B.If cmpOpr oneOrTwo shortRelativeRef ->
+      [ "opr" .= cmpOpr
+      , "operands" .= oneOrTwo
+      , "offset" .= shortRelativeRef
+      ]
+
+    B.IfRef bool oneOrTwo shortRelativeRef ->
+      [ "equal" .= bool
+      , "operands" .= oneOrTwo
+      , "offset" .= shortRelativeRef
+      ]
+
+    B.Goto longrelativeref ->
+      [ "target" .= longrelativeref
+      ]
+
+    B.Jsr longrelativeref ->
+      [ "target" .= longrelativeref
+      ]
+
+    B.Ret localaddr ->
+      [ "addr" .= localaddr
+      ]
+
+    B.TableSwitch longrelativeref switchtable ->
+      [ "default" .= longrelativeref
+      , "table" .= switchtable
+      ]
+
+    B.LookupSwitch longrelativeref vector ->
+      [ "default" .= longrelativeref
+      , "pairs" .= vector
+      ]
+
+    B.Get fa (B.InClass a b) ->
+      [ "static" .= fa
+      , "class" .= B.classNameAsText a
+      , "field" .= nameAndTypeFromFieldId b
+      ]
+
+    B.Put fa (B.InClass a b) ->
+      [ "static" .= fa
+      , "class" .= B.classNameAsText a
+      , "field" .= nameAndTypeFromFieldId b
+      ]
+
+    B.Invoke invocation ->
+      getInvocationAttributes invocation
+
+    B.New ref ->
+      [ "type" .= ref
+      ]
+
+    B.ArrayLength ->
+      []
+
+    B.Throw ->
+      []
+
+    B.CheckCast ref ->
+      [ "classname" .= ref
+      ]
+
+    B.InstanceOf ref ->
+      [ "classname" .= ref
+      ]
+
+    B.Monitor enter ->
+      [ "enter" .= enter
+      ]
+
+    B.Return localtype -> case localtype of
+      Just a -> [ "type" .= fromLocalType a]
+      Nothing -> [ "type" .= Null]
+
+    B.Nop -> []
+
+    B.Pop popsize ->
+      [ "size" .= popsize
+      ]
+
+    B.Dup wordsize ->
+      [ "size" .= wordsize
+      ]
+
+    B.DupX1 wordsize ->
+      [ "size" .= wordsize
+      ]
+
+    B.DupX2 wordsize ->
+      [ "size" .= wordsize
+      ]
+
+    B.Swap ->
+      []
+
+
+byteCodeOprOpCode :: ByteCodeOpr -> Text.Text
+byteCodeOprOpCode = \case
+    B.ArrayLoad  _          -> "array_load"
+    B.ArrayStore  _         -> "array_store"
+    B.Push  _               -> "push"
+    B.Load _ _              -> "load"
+    B.Store  _  _           -> "store"
+    B.BinaryOpr  _  _       -> "bin_op"
+    B.Neg  _                -> "neg"
+    B.BitOpr  _  _          -> "bit_op"
+    B.IncrLocal  _  _       -> "incr"
+    B.Cast  _               -> "cast"
+    B.CompareLongs          -> "cmp_long"
+    B.CompareFloating  _  _ -> "cmp_float"
+    B.If  _  _  _           -> "if"
+    B.IfRef  _  _  _        -> "if_ref"
+    B.Goto  _               -> "goto"
+    B.Jsr  _                -> "jsr"
+    B.Ret  _                -> "ret"
+    B.TableSwitch  _  _     -> "table_switch"
+    B.LookupSwitch  _  _    -> "lookup_switch"
+    B.Get  _ _              -> "get"
+    B.Put  _ _              -> "put"
+    B.Invoke  _             -> "invoke"
+    B.New  _                -> "new"
+    B.ArrayLength           -> "array_length"
+    B.Throw                 -> "throw"
+    B.CheckCast  _          -> "check_cast"
+    B.InstanceOf  _         -> "instance_of"
+    B.Monitor  _            -> "monitor"
+    B.Return  _             -> "return"
+    B.Nop                   -> "nop"
+    B.Pop  _                -> "pop"
+    B.Dup  _                -> "dup"
+    B.DupX1  _              -> "dupx1"
+    B.DupX2  _              -> "dupx2"
+    B.Swap                  -> "swap"
+
+
+instance ToJSON (B.FieldAccess) where
+  toJSON = Bool . \case
+    B.FldStatic -> True
+    B.FldField -> False
+
 
 instance ToJSON (B.StackMapTable B.High) where
-  toJSON _ = String "<stack-map-table>"
--- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
+  toJSON (B.StackMapTable a) = object
+      [ "table" .= a
+      ]
+
+
+instance ToJSON (B.StackMapFrame B.High) where
+  toJSON (B.StackMapFrame deltaoffset frametype) = object
+      (("offset" .= deltaoffset):getFrameDetails frametype)
+
+
+instance ToJSON (B.VerificationTypeInfo B.High) where
+  toJSON = object . getTypeInfo
+
+instance ToJSON B.JRefType where
+  toJSON = String . B.typeToText
+
+instance ToJSON (B.BinOpr) where
+  toJSON = String . \case
+    B.Add -> "add"
+    B.Sub -> "sub"
+    B.Mul -> "mul"
+    B.Div -> "div"
+    B.Rem -> "rem"
+
+
+
+instance ToJSON (B.BitOpr) where
+  toJSON = String . \case
+    B.ShL -> "shl"
+    B.ShR -> "shr"
+    B.UShR -> "ushr"
+    B.And -> "and"
+    B.Or -> "or"
+    B.XOr -> "xor"
+
+instance ToJSON (B.WordSize) where
+  toJSON = \case
+    B.One -> Number 1
+    B.Two -> Number 2
+
+instance ToJSON (B.CastOpr) where
+  toJSON = \case
+    B.CastDown smallarithmetictype -> object
+      [ "cast_type" .= String "down"
+      , "to_type" .= fromSmallArithmeticType smallarithmetictype
+      ]
+    B.CastTo fromtype totype -> object
+      [ "cast_type" .= String "to"
+      , "from_type" .= fromArithmeticType fromtype
+      , "to_type" .= fromArithmeticType totype
+      ]
+
+
+
+instance ToJSON (B.CmpOpr) where
+  toJSON = String . \case
+    B.CEq -> "eq"
+    B.CNe -> "ne"
+    B.CLt -> "lt"
+    B.CGe -> "ge"
+    B.CGt -> "gt"
+    B.CLe -> "le"
+
+instance ToJSON (B.SwitchTable B.High) where
+  toJSON (B.SwitchTable switchLow switchOffsets) = object
+      [ "switch_low" .= switchLow
+      , "offsets" .= switchOffsets
+      ]
+
+
+instance ToJSON (B.AbsVariableMethodId B.High) where
+  toJSON = \case
+    B.VInterfaceMethodId interface_method -> object
+      [ "kind" .= String "interface_method"
+      , "method" .= interface_method
+      ]
+    B.VMethodId (B.InClass a b) -> object
+      [ "kind" .= String "method"
+      , "class" .= B.classNameAsText a
+      , "method" .= methodIDToText b
+      ]
+
+instance ToJSON (B.AbsInterfaceMethodId B.High) where
+  toJSON interfacemethod = object
+      [ "type" .= String "abs_interface_method"
+      , "method" .= interfacemethod
+      ]
+
+
+instance ToJSON (B.InvokeDynamic B.High) where
+  toJSON (B.InvokeDynamic attrIndex method) = object
+      [ "attr_index" .= attrIndex
+      , "method" .= method
+      ]
+
+instance ToJSON (B.MethodId) where
+  toJSON (B.MethodId name) = object
+      [ "signature" .= B.typeToText name
+      ]
+
+
+
+getListOfPairsFromBConstant :: Maybe JValue -> [Pair]
+getListOfPairsFromBConstant = \case
+    Just (VInteger a) ->
+      [ "type" .= STInteger
+      , "value" .= a
+      ]
+    Just (VFloat a) ->
+      [ "type" .= STFloat
+      , "value" .= a
+      ]
+    Just (VDouble a) ->
+      [ "type" .= STDouble
+      , "value" .= a
+      ]
+    Just (VLong a) -> 
+      [ "type" .= STLong
+      , "value" .= a
+      ]
+    Just (VString a) ->
+      [ "type" .= STRef
+      , "classname" .= String "java/lang/String"
+      , "value" .= a
+      ]
+    Just (VClass a) ->
+      [ "type" .= STRef
+      , "classname" .= String "java/lang/Class"
+      , "value" .= a
+      ]
+    Just (VMethodType a) ->
+      [ "type" .= STRef
+      , "classname" .= String "java/lang/invoke/MethodType" 
+      , "value" .= a
+      ]
+    Just (VMethodHandle a) ->
+      [ "type" .= STRef
+      , "classname" .= String "java/lang/invoke/MethodHandle" 
+      , "value" .= a
+      ]
+    Nothing ->
+      [ "type" .= STRef
+      , "classname" .= String "java/lang/Object" 
+      , "value" .= Null
+      ]
+
+
+methodIDToText :: B.MethodId -> Text.Text
+methodIDToText (B.MethodId name) =
+  B.typeToText name
+
+nameAndTypeFromFieldId :: B.FieldId -> Text.Text
+nameAndTypeFromFieldId (B.FieldId name) =
+  B.typeToText name
+
+
+getInClassMethod ::B.AbsMethodId B.High -> [Pair]
+getInClassMethod (B.InClass a b) =
+  [ "class" .= B.classNameAsText a
+  , "method" .= methodIDToText b
+  ]
+
+getInvocationAttributes :: B.Invocation B.High -> [Pair]
+getInvocationAttributes = \case
+    B.InvkSpecial avmi ->
+      ("kind" .= String "special")
+      : getAbsVariableMethodId avmi
+
+    B.InvkVirtual abs' ->
+      ("kind" .= String "virtual")
+      : getInClassMethod abs'
+
+    B.InvkStatic avmi ->
+      ("kind" .= String "static")
+     : getAbsVariableMethodId avmi
+
+    B.InvkInterface count avmi ->
+       ["kind" .= String "interface"
+       , "count" .= count
+       ] ++ getAbsInterfaceMethodId avmi
+
+    B.InvkDynamic invokeDynamicMethod ->
+      ("kind" .= String "dynamic")
+     : getInvokeDynamicMethod invokeDynamicMethod
+
+
+getAbsInterfaceMethodId :: B.AbsInterfaceMethodId B.High -> [Pair]
+getAbsInterfaceMethodId (B.AbsInterfaceMethodId interfaceMethodId) 
+    = getInClassMethod interfaceMethodId
+
+
+getAbsVariableMethodId :: B.AbsVariableMethodId B.High -> [Pair]
+getAbsVariableMethodId = \case
+  B.VInterfaceMethodId a ->
+    [ "method" .= a
+    ]
+  B.VMethodId abs' ->
+    getInClassMethod abs'
+
+getInvokeDynamicMethod :: B.InvokeDynamic B.High -> [Pair]
+getInvokeDynamicMethod = \case 
+  (B.InvokeDynamic attrIndex methodid) ->
+    [ "attr_index" .= attrIndex
+    , "method" .= methodIDToText methodid
+    ]
+
+-- getArrayType :: B.ExactArrayType B.High -> [Pair]
+-- getArrayType t =
+--   ( "type" .= fromExactArrayType t
+--   ) : case t of
+--     B.EARef ref -> [ "array_ref" .= ref]
+--     _ -> []
+
+ 
+
+
+-- * Type Conversion
+
+data SimpleType
+   = STInteger
+   | STLong
+   | STShort
+   | STChar
+   | STByte
+   | STBoolean
+   | STFloat
+   | STDouble
+   | STRef
+  deriving (Show, Eq, Enum)
+
+instance ToJSON SimpleType where
+  toJSON = String . \case
+    STInteger -> "I"
+    STLong -> "J"
+    STShort -> "S"
+    STChar -> "C"
+    STByte -> "B"
+    STBoolean -> "Z"
+    STFloat -> "F"
+    STDouble -> "D"
+    STRef -> "R"
+
+-- fromExactArrayType :: B.ExactArrayType B.High -> SimpleType
+-- fromExactArrayType = \case
+--   B.EABoolean -> STBoolean
+--   B.EAByte -> STByte
+--   B.EAChar -> STChar
+--   B.EAShort -> STShort
+--   B.EAInt -> STInteger
+--   B.EALong -> STLong
+--   B.EAFloat -> STFloat
+--   B.EADouble -> STDouble
+--   B.EARef _ -> STRef
+
+fromSmallArithmeticType :: B.SmallArithmeticType -> SimpleType
+fromSmallArithmeticType = \case
+    B.MByte -> STByte
+    B.MChar -> STChar
+    B.MShort -> STShort
+
+fromArithmeticType :: B.ArithmeticType -> SimpleType
+fromArithmeticType = \case
+    B.MInt -> STInteger
+    B.MLong -> STLong
+    B.MFloat -> STFloat
+    B.MDouble -> STDouble
+
+
+fromArrayType :: B.ArrayType -> SimpleType
+fromArrayType = \case
+    B.AByte -> STByte
+    B.AChar -> STChar
+    B.AShort -> STShort
+    B.AInt -> STInteger
+    B.ALong -> STLong
+    B.AFloat -> STFloat
+    B.ADouble -> STDouble
+    B.ARef -> STRef
+
+
+fromLocalType :: B.LocalType -> SimpleType
+fromLocalType = \case
+    B.LInt -> STInteger
+    B.LLong -> STLong
+    B.LFloat -> STFloat
+    B.LDouble -> STDouble
+    B.LRef -> STRef
+
+-- * VerificationTypeInfo
+
+getTypeInfo :: B.VerificationTypeInfo B.High -> [Pair]
+getTypeInfo = \case
+  B.VTTop -> ["type" .= String "T"]
+  B.VTInteger -> ["type" .= String "I"]
+  B.VTFloat -> ["type" .= String "F"]
+  B.VTLong -> ["type" .= String "J"]
+  B.VTDouble -> ["type" .= String "D"]
+  B.VTNull -> ["type" .= String "null"]
+  B.VTObject ref ->
+    [ "type" .= String "object"
+    , "class_ref" .= ref
+    ]
+  B.VTUninitialized offset ->
+    [ "type" .= String "uninitialized"
+    , "offset" .= offset
+    ]
+  B.VTUninitializedThis  -> 
+    [ "type" .= String "uninitialized_this"
+    ]
+
+
+
+
+getFrameDetails :: B.StackMapFrameType B.High -> [Pair]
+getFrameDetails = \case
+    B.SameFrame ->
+      [ "kind" .= String "same"
+      ]
+    B.SameLocals1StackItemFrame typeinfo ->
+      ("kind" .= String "same_locals_stack_item")
+     : getTypeInfo typeinfo
+    B.ChopFrame size ->
+      [ "kind" .= String "chop"
+      , "size" .= size
+      ]
+    B.AppendFrame typeinfoList ->
+      [ "kind" .= String "append"
+      , "type_list" .= typeinfoList
+      ]
+
+    B.FullFrame (B.SizedList a) (B.SizedList b) ->
+      [ "kind" .= String "full_frame"
+      , "type_list1" .= a
+      , "type_list2" .= b
+      ]

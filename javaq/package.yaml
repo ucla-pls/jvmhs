@@ -12,8 +12,7 @@ category: Language, Java, JVM
 github: ucla-pls/jvmhs
 
 dependencies:
-  - base >= 4.10 && < 4.11
-  - docopt
+  - base >= 4.10 && < 4.12
   - lens
   - lens-action
   - aeson
@@ -22,11 +21,26 @@ dependencies:
   - filepath
   - bytestring
   - text
+  - unordered-containers
   - cryptohash-sha256
   - base16-bytestring
   - deepseq
+  - optparse-applicative
+  - ansi-wl-pprint
+  - mtl
+  - hexstring
+  - vector
+  - fgl
+
+library:
+  source-dirs: src
 
 executables:
   javaq:
     source-dirs: .
+    dependencies:
+      - javaq
     main: Main.hs
+    ghc-options:
+      - -O2
+      - -threaded

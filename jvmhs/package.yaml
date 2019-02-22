@@ -20,8 +20,8 @@ extra-source-files:
   - README.md
 
 dependencies:
-  - base >= 4.10 && < 4.11
-  - jvm-binary >= 0.1.0 && < 0.2.0
+  - base >= 4.10 && < 4.12
+  - jvm-binary >= 0.3.0 && < 0.4.0
   - lens
   - aeson
   - lens-action
@@ -36,6 +36,8 @@ dependencies:
   - mtl
   - transformers
   - deepseq
+  - unordered-containers
+  - hashable
   - fgl
   - fgl-visualize
   - attoparsec
@@ -60,13 +62,3 @@ tests:
       - text
       - generic-random
       - hspec-expectations-pretty-diff
-
-benchmarks:
-  delta-debug:
-    source-dirs: benchmark
-    main: DeltaDebug.hs
-    dependencies:
-      - jvmhs
-      - criterion
-      - lens
-      - vector

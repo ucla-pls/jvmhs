@@ -1,6 +1,8 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
 {-
 Module      : Jvmhs.Analysis.Hierarchy
 Copyright   : (c) Christian Gram Kalhauge, 2017
@@ -12,107 +14,146 @@ this module expects a type checking hierarchy.
 -}
 module Jvmhs.Analysis.Hierarchy
   (
-  -- * Hierachy
+  -- * Hierarchy
+    Hierarchy (..)
+  , hryStubs
+  , hryGraph
+
+  , HierarchyStub (..)
+  , hrySuper
+  , hryInterfaces
+  , hryFields
+  , hryMethods
+
+  , HierarchyStubs
+
+  , toStub
+  , allStubs
+  , expandStubs
 
   -- ** Creation
-    Hierarchy -- (..)
-  -- , hryNodes
-  -- , hryImplements
-  -- , hryExtends
+  , getHierarchy
+  , getHierarchyWithStubs
   , calculateHierarchy
 
   -- ** Classes
-  , superclasses
   , implementations
 
-  -- ** Fields
-  , classNameOfFieldId
-  , fieldFromId
-
   -- ** Methods
-  , classNameOfMethodId
-  , methodFromId
-  , canonicalMethodId
+  , definitions
+  , declaration
   , callSites
-  , methodImpls'
-  , methodImpls
-  , isMethodRequired
-
+  , requiredMethods
   ) where
 
 
+-- lens
 import           Control.Lens
-import           Control.Lens.Action
 
-import           Control.Monad.Trans.Maybe
-import           Control.Monad.Trans
+-- aeson
+import           Data.Aeson
+import           Data.Aeson.TH
+
+-- base
 import           Control.Monad
-import           Data.Monoid
--- import           Data.Set
-import           Data.Graph.Inductive.Basic
-import           Data.Graph.Inductive.Graph
-import           Data.Graph.Inductive.PatriciaTree
-import           Data.Graph.Inductive.NodeMap
-import           Data.Graph.Inductive.Query.DFS
+import           Data.Functor
+import           Data.Hashable
+import           Data.Maybe
+import qualified Data.Set
+import           GHC.Generics        (Generic)
 
+-- unordered-containers
+import qualified Data.HashMap.Strict as M
+import qualified Data.HashSet        as S
+
+-- jvmhs
 import           Jvmhs.ClassPool
-import           Jvmhs.Data.Type
 import           Jvmhs.Data.Class
+import           Jvmhs.Data.Graph
+import           Jvmhs.Data.Type
+
+-- import qualified Data.Set.Lens       as S
+
+-- | from map utils
+fromMap' :: M.HashMap k v -> S.HashSet k
+fromMap' m = S.fromMap $ m $> ()
+
+-- | A hierarchy stub, is the only information needed to calculate the
+-- hierarchy. The benifit is that this can be loaded up front.
+data HierarchyStub = HierarchyStub
+  { _hrySuper      :: Maybe ClassName
+  , _hryInterfaces :: S.HashSet ClassName
+  , _hryMethods    :: M.HashMap MethodName Bool
+  , _hryFields     :: S.HashSet FieldName
+  } deriving (Show, Eq)
+
+makeLenses ''HierarchyStub
+$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''HierarchyStub)
+
+toStub :: Class -> HierarchyStub
+toStub cls = HierarchyStub
+  (cls ^. classSuper)
+  (cls ^. classInterfaces)
+  (cls ^. classMethods & traverse %~ views methodAccessFlags (Data.Set.member MAbstract))
+  (cls ^. classFields . to fromMap')
+
+type HierarchyStubs = M.HashMap ClassName HierarchyStub
+
+allStubs ::
+  MonadClassPool m
+  => m HierarchyStubs
+allStubs =
+   M.fromList <$> mapClasses (\c -> (c^.className, toStub c))
+
+expandStubs ::
+  MonadClassPool m
+  => HierarchyStubs
+  -> m HierarchyStubs
+expandStubs old = do
+  s <- allStubs
+  return $ s <> old
 
 data HEdge
   = Implement
   | Extend
-  deriving (Show, Ord, Eq)
+  deriving (Show, Ord, Eq, Generic)
 
--- | The class hierarchy analysis results in two graphs, a implements graph and
--- an extends graph.
+instance Hashable HEdge
+
+
 data Hierarchy = Hierarchy
-  { _hryNodes      :: NodeMap ClassName
-  , _hryGraph      :: Gr ClassName HEdge
-  } deriving (Show, Eq)
+  { _hryStubs :: HierarchyStubs
+  , _hryGraph :: Graph ClassName HEdge
+  }
 
--- makeLenses ''Hierarchy
+makeLenses ''Hierarchy
 
--- | Given a foldable structure over 'ClassName's compute a Hierarchy.
+getHierarchy ::
+  MonadClassPool m
+  => m ([ClassName], Hierarchy)
+getHierarchy =
+  getHierarchyWithStubs mempty
+
+getHierarchyWithStubs ::
+  MonadClassPool m
+  => HierarchyStubs
+  -> m ([ClassName], Hierarchy)
+getHierarchyWithStubs =
+  expandStubs >=> return . calculateHierarchy
+
 calculateHierarchy ::
-  (Foldable t, MonadClassPool m)
-  => t ClassName
-  -> m Hierarchy
-calculateHierarchy clss = do
-  (classNames, hierachy) <- clss ^! folded . pool ._Just . to collection
-  let
-    (nodes_, nodeMap) = mkNodes new classNames
-    Just edges_ = mkEdges nodeMap hierachy
-  return $ Hierarchy nodeMap (mkGraph nodes_ edges_)
+  HierarchyStubs
+  -> ([ClassName], Hierarchy)
+calculateHierarchy stubs = do
+  (missed, Hierarchy stubs (mkGraph nodes edges))
   where
-    collection cls =
-      let toedge x = to (cls^.className,,x) in
-      ( toListOf (className <> classSuper <> classInterfaces.folded) cls
-      , toListOf (classSuper.toedge Extend <> classInterfaces.folded.toedge Implement) cls
+    (nodes, edges) = stubs ^. ifolded.withIndex.to collection
+    missed = S.toList (nodes `S.difference` fromMap' stubs)
+    collection (cn, stub) =
+      let toedge x = to (cn,,x) in
+      ( cn `S.insert` view (hrySuper.folded. to S.singleton <> hryInterfaces) stub
+      , S.fromList $ toListOf (hrySuper.folded.toedge Extend <> hryInterfaces.folded.toedge Implement) stub
       )
-
-nodeOf :: Hierarchy -> ClassName -> Node
-nodeOf hry = fst . mkNode_ (_hryNodes hry)
-
--- | Given a Hierarchy, determine the parrents of a class.
--- The returned list is in order as they appear in the class hierarchy.
-parrents ::
-     Hierarchy
-  -> ClassName
-  -> [ClassName]
-parrents hry@(Hierarchy _ graph) cln =
-  let search = dfs [nodeOf hry cln] graph
-  in tail $ search ^.. folded . to (lab graph) . _Just
-
--- | Given a Hierarchy, determine the superclasses of a class.
--- The returned list is in order as they appear in the class hierarchy.
-superclasses ::
-     Hierarchy
-  -> ClassName
-  -> [ClassName]
-superclasses hry@(Hierarchy _ graph) cln =
-  let search = dfs [nodeOf hry cln] (elfilter (==Extend) graph)
-  in tail $ search ^.. folded . to (lab graph) . _Just
 
 -- | Returns a list of all classes that implement some interface, or extends
 -- a class, including the class itself.
@@ -120,137 +161,80 @@ implementations ::
   Hierarchy
   -> ClassName
   -> [ClassName]
-implementations hry@(Hierarchy _ graph) cln =
-  rdfs [nodeOf hry cln] graph ^.. folded . to (lab graph) . _Just
+implementations hry =
+  revReachable (hry ^. hryGraph)
 
--- | Get the class name of the containing class of a field id.
--- This is delegates to 'fieldFromId'.
-classNameOfFieldId ::
-  MonadClassPool m
-  => AbsFieldId
-  -> m (Maybe ClassName)
-classNameOfFieldId fid =
-  fmap (view (_1.className)) <$> fieldFromId fid
+definitions ::
+  Hierarchy
+  -> AbsMethodName
+  -> S.HashSet ClassName
+definitions hry mid =
+  S.fromList
+  . toListOf (folded.filtered (methodDefinedIn hry $ mid^._2))
+  . implementations hry
+  $ mid^._1
 
--- | Get the class in which the field resides. The function searches from an
--- initial class.
-fieldFromId ::
-  MonadClassPool m
-  => AbsFieldId
-  -> m (Maybe (Class, Field))
-fieldFromId afid = go (afid ^. inClassName)
+declaration ::
+  Hierarchy
+  -> AbsMethodName
+  -> Maybe AbsMethodName
+declaration hry mid =
+  (\a -> mid & _1.~ a) <$> go (mid ^. _1)
   where
-    fid = afid ^. inId
-    go "java.lang.Object" =
-      return Nothing
-    go cn = do
-      mc <- getClass cn
-      case mc of
-        Nothing -> return Nothing
-        Just cls -> do
-          case cls ^. classField fid of
-            Nothing -> go (cls^.classSuper)
-            a -> return . fmap (cls,) $ a
+    ii = mid ^. _2
+    go cn =
+      case hry ^. hryStubs.at cn of
+        Nothing -> Nothing
+        Just stub ->
+          flip firstOf stub $
+             (hryMethods.at ii._Just.like cn)
+             <> (hrySuper.folded.to go._Just)
+             <> (hryInterfaces.folded.to go._Just)
 
+isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
+isAbstract hry mid =
+  hry ^? hryStubs . at (mid^._1) . _Just . hryMethods . at (mid^._2) ._Just
 
--- | Get the class name of the containing class of a method id.
--- This is delegates to 'methodFromId'.
-classNameOfMethodId ::
-  MonadClassPool m
-  => AbsMethodId
-  -> m (Maybe ClassName)
-classNameOfMethodId mid =
-  fmap (view (_1.className)) <$> methodFromId mid
-
--- | Get the class name and the method of the method id. Starting
--- the search from a class, and proceeds through.
-methodFromId ::
-  MonadClassPool m
-  => AbsMethodId
-  -> m (Maybe (Class, Method))
-methodFromId amid = do
-  go $ amid ^. inClassName
+isRequired ::
+  Hierarchy
+  -> AbsMethodName
+  -> Bool
+isRequired hry mid
+  | mid ^. _2 == "<init>:()V" = True
+  | otherwise =
+    case hry ^. hryStubs.at (mid ^. _1) of
+      Nothing -> False
+      Just stub ->
+        case stub ^? hrySuper._Just.to (declaration hry.flip (set _1) mid)._Just of
+          Just w -> fromMaybe True (isAbstract hry w)
+          Nothing ->
+            orOf (hryInterfaces.folded.to go) stub
   where
-    mid = amid ^. inId
-    go cn = do
-      mc <- getClass cn
-      case mc of
-        Nothing -> return Nothing
-        Just cls ->
-          case cls ^. classMethod mid of
-            Nothing
-              | cn /= "java.lang.Object" ->
-                go $ cls^.classSuper
-              | otherwise ->
-                return Nothing
-            a -> return . fmap (cls,) $ a
+    go cn =
+      case hry ^. hryStubs.at cn of
+        Nothing -> True
+        Just stub ->
+          orOf (hryMethods.at(mid^. _2)._Just <> hryInterfaces.folded.to go) stub
 
-canonicalMethodId ::
-  MonadClassPool m
-  => AbsMethodId
-  -> m (Maybe AbsMethodId)
-canonicalMethodId amid = do
-  x <- methodFromId amid
-  return $ asMethodId <$> x
+requiredMethods ::
+  Hierarchy
+  -> Class
+  -> [AbsMethodName]
+requiredMethods hry cls =
+  cls ^.. classAbsMethodNames . filtered (isRequired hry)
 
--- | Returns a list of possible call sites.
+methodDefinedIn ::
+  Hierarchy
+  -> MethodName
+  -> ClassName
+  -> Bool
+methodDefinedIn hry mid cn =
+  orOf (hryStubs.at cn._Just.hryMethods.at mid._Just.to not) hry
+
+-- | returns a list of possible call sites.
 callSites ::
-  MonadClassPool m
-  => Hierarchy
-  -> AbsMethodId
-  -> m [(Class, Method)]
+  Hierarchy
+  -> AbsMethodName
+  -> [ AbsMethodName ]
 callSites hry mid =
-  mid ^!! act canonicalMethodId . _Just . act (methodImpls hry) . folded
-
--- | Returns all list of pairs of classes and methods that has
--- the same id as the method id.
--- Note: To check if the met
-methodImpls' ::
-  MonadClassPool m
-  => Hierarchy
-  -> AbsMethodId
-  -> m [(Class, Method)]
-methodImpls' hry mn = do
-  implementations hry (mn ^. inClassName) ^!! traverse.pool._Just.to mpair._Just
-  where mpair cls = (cls ^? classMethod (mn ^. inId) . _Just . to (cls,))
-
--- | Like 'methodImpls'' with the extra check that all the methods has code
--- executable.
-methodImpls ::
-  MonadClassPool m
-  => Hierarchy
-  -> AbsMethodId
-  -> m [(Class, Method)]
-methodImpls hry mn =
-  toListOf (folded.filtered(has $ _2.methodCode._Just)) <$> methodImpls' hry mn
-
-
-isImplementation ::
-  MonadClassPool m
-  => Hierarchy
-  -> AbsMethodId
-  -> m Bool
-isImplementation hry mid = do
-  mm <- mid ^!? inClassName.pool._Just. classMethod (mid ^. inId) . _Just
-  case mm of
-    Just method
-      | has (methodCode._Just) method -> do
-        let clss = parrents hry (mid ^. inClassName)
-        Any res <- clss ^! folded . pool
-          . to (maybe (Any True)
-               (view $ classMethod (mid ^. inId) . like (Any True)))
-        return res
-    _ ->
-      return False
-
-isMethodRequired ::
-  MonadClassPool m
-  => Hierarchy
-  -> AbsMethodId
-  -> m Bool
-isMethodRequired hry mid =
-  fmap (maybe False (const True)) . runMaybeT $
-    msum
-      [ guard (mid ^. inId . methodIdName == "<clinit>")
-      , guard =<< lift (isImplementation hry mid)
-      ]
+  definitions hry mid ^.. folded . to (\cn -> mid & _1 .~ cn)

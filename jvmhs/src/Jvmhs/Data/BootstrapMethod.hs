@@ -1,6 +1,7 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedStrings  #-}
 {-|
 Module      : Jvmhs.Data.BootstrapMethod
 Copyright   : (c) Christian Gram Kalhauge, 2018
@@ -13,15 +14,17 @@ This module works with the BootstrapMethod. This is a work in progress.
 module Jvmhs.Data.BootstrapMethod
   where
 
-import GHC.Generics
-import Control.DeepSeq
-import Data.Aeson
+import           Control.DeepSeq
+import           Data.Aeson
+import           GHC.Generics
+import qualified Language.JVM                            as B
 import qualified Language.JVM.Attribute.BootstrapMethods as B
-import qualified Language.JVM as B
 
 newtype BootstrapMethod = BootstrapMethod
   { _unBootstrapMethod :: B.BootstrapMethod B.High
-  } deriving (Show, Eq, Generic, NFData)
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass NFData
 
 fromBinaryBootstrapMethod :: B.BootstrapMethod B.High -> BootstrapMethod
 fromBinaryBootstrapMethod =
