@@ -333,9 +333,12 @@ formats =
         <> "scc" .= noscc
         <> "out_degree" .= meanOf (graphContexts.to FGL.outdeg')
         <> "in_degree" .= meanOf (graphContexts.to FGL.indeg')
+    , interfaces
     ]
   ]
 
+
+  -- TODO: add to new jsons for interfaces, iterate over it and get list
 jsons :: OutputFormat
 jsons = Group
   [ Format "full" "Full output of the class"

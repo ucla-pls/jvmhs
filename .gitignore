@@ -8,3 +8,4 @@ jvmhs/test/regression
 .idea/
 cabal.config
 .DS_Store
+tags
