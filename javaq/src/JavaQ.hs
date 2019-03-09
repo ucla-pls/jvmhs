@@ -345,29 +345,44 @@ formats =
 
 interfaces :: OutputFormat
 interfaces = Group
-  [ Format "metric" "Contains only the overall metrics of the class"
-    . Stream . StreamContainer $ metrics
+  [ Format "itfcs" "<itfc>: <implementing classes>(, <impl classes>)*"
+  . Aggregate $ \err -> do
+    clss <- allClasses 
+    let 
+      clss_itfcs = fmap (view classInterfaces) clss
+      itfcs = Set.toList $ foldr (Set.union) Set.empty clss_itfcs
+      text_itfc = fmap (interfaceList clss) itfcs
+    liftIO . Text.putStrLn $ Text.intercalate "\n" text_itfc
   ]
-  where
-    metrics (cn, lo) = do
-      ebts <- liftIO $ getClassBytes lo cn
-      let readByte bts = (bts,) <$> readClassFile' True bts
-      case ebts >>= readByte of
-        Left err ->
-          liftIO . Text.hPutStrLn stderr
-          $ "Error in " <> cn^.fullyQualifiedName <> ": " <> Text.pack (show err)
-        Right (bts, clsf) -> liftIO $ do
-          let
-            cls = convertClass clsf
-            out = (cn ^. fullyQualifiedName) 
-            itfc_list = (Set.toList $ cls ^. classInterfaces)
-            -- itfc =  List.head itfc_list
-            itfc = fmap (view fullyQualifiedName) itfc_list
-            itfc_text = Text.intercalate ", " itfc
-          Text.putStrLn $ out <> ": " <> itfc_text 
-          -- case itfc_list of 
-          --   [] -> Text.putStrLn "None"
-          --   _ -> Text.putStrLn (view fullyQualifiedName itfc)
+  -- [ Format "metric" "Contains only the overall metrics of the class"
+  --   . Stream . StreamContainer $ metrics
+  -- ]
+  -- where
+  --   metrics (cn, lo) = do
+  --     ebts <- liftIO $ getClassBytes lo cn
+  --     let readByte bts = (bts,) <$> readClassFile' True bts
+  --     case ebts >>= readByte of
+  --       Left err ->
+  --         liftIO . Text.hPutStrLn stderr
+  --         $ "Error in " <> cn^.fullyQualifiedName <> ": " <> Text.pack (show err)
+  --       Right (bts, clsf) -> liftIO $ do
+  --         let
+  --           cls = convertClass clsf
+  --           out = (cn ^. fullyQualifiedName) 
+  --           itfc_list = (Set.toList $ cls ^. classInterfaces)
+  --           itfc = fmap (view fullyQualifiedName) itfc_list
+  --           itfc_text = Text.intercalate ", " itfc
+  --           seen_iface = Set.fromList itfc_list
+  --         Text.putStrLn $ out <> ": " <> itfc_text 
+interfaceList :: [Class] -> ClassName -> Text.Text
+interfaceList clss itfc =
+  let
+    impl = filter (Set.member itfc . view classInterfaces) clss 
+    names = fmap (view fullyQualifiedName . view className) impl
+  in
+    itfc ^. fullyQualifiedName <> ": " <> Text.intercalate ", " names
+        
+
 
   -- TODO: add to new jsons for interfaces, iterate over it and get list
 jsons :: OutputFormat
