@@ -358,21 +358,16 @@ interfaces = Group
           $ "Error in " <> cn^.fullyQualifiedName <> ": " <> Text.pack (show err)
         Right (bts, clsf) -> liftIO $ do
           let
-            (hsh, ln) = SHA256.hashlazyAndLength bts
             cls = convertClass clsf
             out = (cn ^. fullyQualifiedName) 
             itfc_list = (Set.toList $ cls ^. classInterfaces)
-            -- itfc = fullyQualifiedName <$> itfc_list
-          Text.putStrLn $ out <> ": " 
-          -- BL.putStrLn . encode $ ClassMetric
-          --   { cmName = cn
-          --   , cmSize = ln
-          --   , cmSha256 = fromBytes hsh
-          --   , cmFields = cls ^. classFieldList.to length
-          --   , cmMethods = cls ^. classMethodList.to length
-          --   , cmInstructions =
-          --       sumOf (classMethods.folded.methodCode._Just.codeByteCode.to V.length) cls
-          --   }
+            -- itfc =  List.head itfc_list
+            itfc = fmap (view fullyQualifiedName) itfc_list
+            itfc_text = foldr (<>) "" itfc
+          Text.putStrLn $ out <> ": " <> itfc_text 
+          -- case itfc_list of 
+          --   [] -> Text.putStrLn "None"
+          --   _ -> Text.putStrLn (view fullyQualifiedName itfc)
 
   -- TODO: add to new jsons for interfaces, iterate over it and get list
 jsons :: OutputFormat
