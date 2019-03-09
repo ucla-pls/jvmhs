@@ -106,6 +106,11 @@ data ClassMetric = ClassMetric
   , cmInstructions :: !Int
   } deriving (Show, Eq)
 
+data InterfaceList = InterfaceList 
+  { ilName         :: ClassName
+  , ilImpl         :: [ClassName]
+  } deriving (Show, Eq)
+
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 2} ''ClassMetric)
 
 
@@ -333,10 +338,41 @@ formats =
         <> "scc" .= noscc
         <> "out_degree" .= meanOf (graphContexts.to FGL.outdeg')
         <> "in_degree" .= meanOf (graphContexts.to FGL.indeg')
-    , interfaces
+    -- , interfaces
     ]
+  , Format "interfaces" "Output all interfaces with classes that implement them" interfaces
   ]
 
+interfaces :: OutputFormat
+interfaces = Group
+  [ Format "metric" "Contains only the overall metrics of the class"
+    . Stream . StreamContainer $ metrics
+  ]
+  where
+    metrics (cn, lo) = do
+      ebts <- liftIO $ getClassBytes lo cn
+      let readByte bts = (bts,) <$> readClassFile' True bts
+      case ebts >>= readByte of
+        Left err ->
+          liftIO . Text.hPutStrLn stderr
+          $ "Error in " <> cn^.fullyQualifiedName <> ": " <> Text.pack (show err)
+        Right (bts, clsf) -> liftIO $ do
+          let
+            (hsh, ln) = SHA256.hashlazyAndLength bts
+            cls = convertClass clsf
+            out = (cn ^. fullyQualifiedName) 
+            itfc_list = (Set.toList $ cls ^. classInterfaces)
+            -- itfc = fullyQualifiedName <$> itfc_list
+          Text.putStrLn $ out <> ": " 
+          -- BL.putStrLn . encode $ ClassMetric
+          --   { cmName = cn
+          --   , cmSize = ln
+          --   , cmSha256 = fromBytes hsh
+          --   , cmFields = cls ^. classFieldList.to length
+          --   , cmMethods = cls ^. classMethodList.to length
+          --   , cmInstructions =
+          --       sumOf (classMethods.folded.methodCode._Just.codeByteCode.to V.length) cls
+          --   }
 
   -- TODO: add to new jsons for interfaces, iterate over it and get list
 jsons :: OutputFormat
