@@ -363,7 +363,7 @@ interfaces = Group
             itfc_list = (Set.toList $ cls ^. classInterfaces)
             -- itfc =  List.head itfc_list
             itfc = fmap (view fullyQualifiedName) itfc_list
-            itfc_text = foldr (<>) "" itfc
+            itfc_text = Text.intercalate ", " itfc
           Text.putStrLn $ out <> ": " <> itfc_text 
           -- case itfc_list of 
           --   [] -> Text.putStrLn "None"
