@@ -354,26 +354,7 @@ interfaces = Group
       text_itfc = fmap (interfaceList clss) itfcs
     liftIO . Text.putStrLn $ Text.intercalate "\n" text_itfc
   ]
-  -- [ Format "metric" "Contains only the overall metrics of the class"
-  --   . Stream . StreamContainer $ metrics
-  -- ]
-  -- where
-  --   metrics (cn, lo) = do
-  --     ebts <- liftIO $ getClassBytes lo cn
-  --     let readByte bts = (bts,) <$> readClassFile' True bts
-  --     case ebts >>= readByte of
-  --       Left err ->
-  --         liftIO . Text.hPutStrLn stderr
-  --         $ "Error in " <> cn^.fullyQualifiedName <> ": " <> Text.pack (show err)
-  --       Right (bts, clsf) -> liftIO $ do
-  --         let
-  --           cls = convertClass clsf
-  --           out = (cn ^. fullyQualifiedName) 
-  --           itfc_list = (Set.toList $ cls ^. classInterfaces)
-  --           itfc = fmap (view fullyQualifiedName) itfc_list
-  --           itfc_text = Text.intercalate ", " itfc
-  --           seen_iface = Set.fromList itfc_list
-  --         Text.putStrLn $ out <> ": " <> itfc_text 
+
 interfaceList :: [Class] -> ClassName -> Text.Text
 interfaceList clss itfc =
   let
@@ -382,9 +363,6 @@ interfaceList clss itfc =
   in
     itfc ^. fullyQualifiedName <> ": " <> Text.intercalate ", " names
         
-
-
-  -- TODO: add to new jsons for interfaces, iterate over it and get list
 jsons :: OutputFormat
 jsons = Group
   [ Format "full" "Full output of the class"
