@@ -112,6 +112,7 @@ data InterfaceList = InterfaceList
   } deriving (Show, Eq)
 
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 2} ''ClassMetric)
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 2} ''InterfaceList)
 
 
 getConfigParser :: [Format] -> IO (Parser (IO Config))
