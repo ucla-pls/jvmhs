@@ -353,16 +353,22 @@ interfaces = Group
       clss_itfcs = fmap (view classInterfaces) clss
       itfcs = Set.toList $ foldr (Set.union) Set.empty clss_itfcs
       text_itfc = fmap (interfaceList clss) itfcs
-    liftIO . Text.putStrLn $ Text.intercalate "\n" text_itfc
+    liftIO . BL.putStrLn $ BL.intercalate "\n" text_itfc
   ]
 
-interfaceList :: [Class] -> ClassName -> Text.Text
+interfaceList :: [Class] -> ClassName -> BL.ByteString
 interfaceList clss itfc =
   let
     impl = filter (Set.member itfc . view classInterfaces) clss 
-    names = fmap (view fullyQualifiedName . view className) impl
+    impl_cls = fmap (view className) impl
+    names = fmap (view fullyQualifiedName) impl_cls 
+    json_itfc = encode $ InterfaceList 
+      { ilName = itfc
+      , ilImpl = impl_cls 
+      }
   in
-    itfc ^. fullyQualifiedName <> ": " <> Text.intercalate ", " names
+    -- itfc ^. fullyQualifiedName <> ": " <> Text.intercalate ", " names
+    json_itfc
         
 jsons :: OutputFormat
 jsons = Group
