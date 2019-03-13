@@ -23,6 +23,7 @@ import           System.IO
 import qualified Data.Graph.Inductive as FGL
 
 -- unordered
+import qualified Data.HashMap.Strict          as HashMap
 import qualified Data.HashSet                 as Set
 
 -- bytestring
@@ -339,7 +340,6 @@ formats =
         <> "scc" .= noscc
         <> "out_degree" .= meanOf (graphContexts.to FGL.outdeg')
         <> "in_degree" .= meanOf (graphContexts.to FGL.indeg')
-    -- , interfaces
     ]
   , Format "interfaces" "Output all interfaces with classes that implement them" interfaces
   ]
@@ -350,11 +350,37 @@ interfaces = Group
   . Aggregate $ \err -> do
     clss <- allClasses 
     let 
-      clss_itfcs = fmap (view classInterfaces) clss
-      itfcs = Set.toList $ foldr (Set.union) Set.empty clss_itfcs
-      text_itfc = fmap (interfaceList clss) itfcs
-    liftIO . BL.putStrLn $ BL.intercalate "\n" text_itfc
+      itfcMap = foldr genItfcMap HashMap.empty clss
+      itfcList = HashMap.toList itfcMap
+      json = encode . toIList <$> itfcList
+      -- clss_itfcs = fmap (view classInterfaces) clss
+      -- itfcs = Set.toList $ foldr (Set.union) Set.empty clss_itfcs
+      -- text_itfc = fmap (interfaceList clss) itfcs
+    liftIO . BL.putStrLn $ BL.intercalate "\n" json
   ]
+
+toIList :: (ClassName, [ClassName]) -> InterfaceList
+toIList (itfc, clss) =
+  InterfaceList
+    { ilName = itfc
+    , ilImpl = clss
+    }
+  
+genItfcMap :: Class -> HashMap.HashMap ClassName [ClassName] -> HashMap.HashMap ClassName [ClassName]
+genItfcMap cls hmap =
+  let
+    itfcs = Set.toList $ cls ^. classInterfaces
+    itfc = head itfcs
+  in
+    -- HashMap.insertWith (++) itfc [cls ^. className] hmap
+    foldr (addToItfcMapHelper [(cls ^. className)]) hmap itfcs 
+
+addToItfcMapHelper ::  [ClassName] -> ClassName -> HashMap.HashMap ClassName [ClassName] -> HashMap.HashMap ClassName [ClassName]
+addToItfcMapHelper clsName itfc hmap =
+  HashMap.insertWith (++) itfc clsName hmap
+  
+  -- HashMap.empty
+-- look into hashmap for a single pass over interfaces
 
 interfaceList :: [Class] -> ClassName -> BL.ByteString
 interfaceList clss itfc =
