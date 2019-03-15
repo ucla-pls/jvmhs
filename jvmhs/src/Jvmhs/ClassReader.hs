@@ -49,6 +49,8 @@ module Jvmhs.ClassReader
   , jarArchive
   , jarPath
 
+  , isJar
+
   , CEntry (..)
 
   , ClassLoader (..)

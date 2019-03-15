@@ -108,7 +108,6 @@ data ClassMetric = ClassMetric
 
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 2} ''ClassMetric)
 
-
 getConfigParser :: [Format] -> IO (Parser (IO Config))
 getConfigParser formats' = do
   let format = head formats'
@@ -160,7 +159,8 @@ getConfigParser formats' = do
       <> short 'f'
       <> ( helpDoc . Just $ (
              "Do not read any attributes, including the byte code instructions."
-             <> "This can be much faster, but also changes the behavior of the formats, that compute closures."
+             <> " This can be much faster, but also changes the behavior of the"
+             <> " formats, that compute closures."
              )
          )
     )
@@ -324,16 +324,20 @@ formats =
       let nonodes = grph^.innerGraph.to FGL.order
       let
         noscc = List.length $ partition' grph
-        meanOf x =
+        medianOf x =
           List.sort (toListOf x grph) List.!! (nonodes `div` 2)
       liftIO . BL.putStrLn . encodingToLazyByteString . pairs
         $ "errors" .= List.length err
         <> "nodes" .= nonodes
         <> "edges" .= (grph^.innerGraph.to FGL.size)
         <> "scc" .= noscc
-        <> "out_degree" .= meanOf (graphContexts.to FGL.outdeg')
-        <> "in_degree" .= meanOf (graphContexts.to FGL.indeg')
+        <> "out_degree" .= medianOf (graphContexts.to FGL.outdeg')
+        <> "in_degree" .= medianOf (graphContexts.to FGL.indeg')
     ]
+  -- , Format "callsites" "Inspect the call sites of every method"
+  --   $ Stream . StreamClass $ \cls -> do
+  --     forM_ (cls ^. classMethodList) $ \m -> do
+  --       return ()
   ]
 
 jsons :: OutputFormat
