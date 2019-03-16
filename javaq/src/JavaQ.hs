@@ -1,14 +1,16 @@
-{-# LANGUAGE DeriveAnyClass      #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE QuasiQuotes         #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell     #-}
-{-# LANGUAGE TupleSections       #-}
-{-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE DeriveAnyClass            #-}
+{-# LANGUAGE DeriveGeneric             #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE QuasiQuotes               #-}
+{-# LANGUAGE RankNTypes                #-}
+{-# LANGUAGE RecordWildCards           #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TemplateHaskell           #-}
+{-# LANGUAGE TupleSections             #-}
+{-# LANGUAGE TypeFamilies              #-}
 module JavaQ where
 
 -- base
@@ -20,10 +22,9 @@ import           System.Environment
 import           System.IO
 
 -- fgl
-import qualified Data.Graph.Inductive as FGL
+import qualified Data.Graph.Inductive         as FGL
 
 -- unordered
-import qualified Data.HashMap.Strict          as HashMap
 import qualified Data.HashSet                 as Set
 
 -- bytestring
@@ -31,11 +32,12 @@ import qualified Data.ByteString.Lazy.Char8   as BL
 
 -- aeson
 import           Data.Aeson
-import           Data.Aeson.TH
 import           Data.Aeson.Encoding.Internal (encodingToLazyByteString)
+import           Data.Aeson.TH
 
 -- mtl
 import           Control.Monad.Reader
+import           Control.Monad.Writer.Strict
 
 -- text
 import qualified Data.Text                    as Text
@@ -45,7 +47,7 @@ import qualified Data.Text.IO                 as Text
 import           System.FilePath
 
 -- vector
-import qualified Data.Vector as V
+import qualified Data.Vector                  as V
 
 -- optparse-applicative
 import           Options.Applicative
@@ -66,10 +68,17 @@ import           Crypto.Hash.SHA256           as SHA256
 -- hexstring
 import           Data.HexString
 
+-- javaq
+import           JavaQ.CHA
+
 data OutputFormat
   = Stream (StreamFunction (ReaderT Config IO))
   | Aggregate ([ClassPoolReadError] -> ClassPoolT (ReaderT Config IO) ())
+  | Folding (FoldFunction (ReaderT Config IO))
   | Group [Format]
+
+data FoldFunction m
+  = forall r. (FromJSON r, Monoid r) => FoldClass (Class -> m r) (r -> m ())
 
 data StreamFunction m
   = StreamContainer ( (ClassName, ClassContainer) -> m () )
@@ -87,6 +96,7 @@ instance Show Format where
 -- | The config file dictates the execution of the program
 data Config = Config
   { _cfgClassPath      :: ClassPath
+  , _cfgInitial        :: Maybe FilePath
   , _cfgJre            :: FilePath
   , _cfgUseStdlib      :: Bool
   , _cfgComputeClosure :: Bool
@@ -107,13 +117,8 @@ data ClassMetric = ClassMetric
   , cmInstructions :: !Int
   } deriving (Show, Eq)
 
-data InterfaceList = InterfaceList 
-  { ilName         :: ClassName
-  , ilImpl         :: [ClassName]
-  } deriving (Show, Eq)
 
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 2} ''ClassMetric)
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 2} ''InterfaceList)
 
 
 getConfigParser :: [Format] -> IO (Parser (IO Config))
@@ -137,6 +142,12 @@ getConfigParser formats' = do
       <> (Maybe.maybe mempty value $ mclasspath)
       <> showDefault
     )
+
+    <*> ( Just <$> option str
+          ( long "initial"
+            <> help "Initial values for a fold"
+            <> metavar "INITIAL"
+          ) <|> pure Nothing )
 
     <*> option str
     ( long "jre"
@@ -173,7 +184,7 @@ getConfigParser formats' = do
     )
 
     <*> option (maybeReader $ findFormat formats' . Text.splitOn "-" . Text.pack)
-    ( long "format"
+    ( long "format" <> short 'F'
       <> help "The output format, see Formats."
       <> metavar "FORMAT"
       <> value (format)
@@ -187,10 +198,11 @@ getConfigParser formats' = do
       )
     )
   where
-    readConfig classpath jre useStdlib computeClosure fast fmt classNames' = do
+    readConfig classpath initial jre useStdlib computeClosure fast fmt classNames' = do
       return $
         Config
         (splitClassPath classpath)
+        initial
         jre
         useStdlib
         computeClosure
@@ -236,6 +248,9 @@ footerFromFormats fts =
         Aggregate _ ->
           title D.<+> D.parens "aggregate"
           D.<$> desc
+        Folding _ ->
+          title D.<+> D.parens "fold"
+          D.<$> desc
         Group fmts ->
           let prefix' = prefix D.<> doc name D.<> "-"
           in
@@ -269,34 +284,22 @@ runFormat ::
   -> ReaderT Config IO ()
 runFormat classloader = \case
   Stream sfn -> do
-    preloaded' <- liftIO ( preload classloader )
-    isFast <- view $ cfgFast
-    let
-      opts = (defaultFromReader preloaded') { keepAttributes = not isFast }
-      dothis = streamAll opts sfn
+    inClasspool (streamAll sfn)
 
-    void . flip runCachedClassPoolT opts $ do
-      view cfgClassNames >>= \case
-        [] ->
-          dothis
-        classNames' -> do
-          let classSet = Set.fromList classNames'
-
-          view cfgComputeClosure >>= \case
-            True -> do
-              void . computeClassClosureM classSet $ \(_, clss) ->
-                cplocal $ do
-                  restrictTo (Set.fromList $ toListOf (folded.className) clss)
-                  dothis
-            False -> do
-              restrictTo classSet
-              dothis
-
-  Group ( f:_ ) ->
-    runFormat classloader (formatType f)
-
-  Group [] ->
-    error "Bad Format"
+  Folding ff ->
+    case ff of
+      FoldClass folder printIt -> do
+        initial <- view cfgInitial >>= \case
+          Just fp -> do
+            x <- liftIO (decode <$> BL.readFile fp)
+            return $ Maybe.fromMaybe mempty x
+          Nothing ->
+            return mempty
+        r <- execWriterT $ inClasspool $ do
+          streamClasses $ \cls -> do
+            a <- lift $ folder cls
+            tell a
+        printIt (initial <> r)
 
   Aggregate m -> do
     preloaded' <- liftIO $ preload classloader
@@ -304,6 +307,35 @@ runFormat classloader = \case
       (defaultFromReader preloaded') { keepAttributes = not isFast }
       ) <$> view cfgFast
     void $ runClassPoolTWithReader m opts
+
+  Group ( f:_ ) ->
+    runFormat classloader (formatType f)
+
+  Group [] ->
+    error "Bad Format"
+
+  where
+    inClasspool :: forall m. (MonadReader Config m, MonadIO m) => (forall r. ClassReader r => CachedClassPoolT r m ()) -> m ()
+    inClasspool dothis = do
+      preloaded' <- liftIO ( preload classloader )
+      isFast <- view $ cfgFast
+      let opts = (defaultFromReader preloaded') { keepAttributes = not isFast }
+      void . flip runCachedClassPoolT opts $ do
+        view cfgClassNames >>= \case
+          [] ->
+            dothis
+          classNames' -> do
+            let classSet = Set.fromList classNames'
+
+            view cfgComputeClosure >>= \case
+              True -> do
+                void . computeClassClosureM classSet $ \(_, clss) ->
+                  cplocal $ do
+                    restrictTo (Set.fromList $ toListOf (folded.className) clss)
+
+              False -> do
+                restrictTo classSet
+                dothis
 
 formats :: [Format]
 formats =
@@ -347,55 +379,12 @@ formats =
 interfaces :: OutputFormat
 interfaces = Group
   [ Format "itfcs" "<itfc>: <implementing classes>(, <impl classes>)*"
-  . Aggregate $ \err -> do
-    clss <- allClasses 
-    let 
-      itfcMap = foldr genItfcMap HashMap.empty clss
-      itfcList = HashMap.toList itfcMap
-      json = encode . toIList <$> itfcList
-      -- clss_itfcs = fmap (view classInterfaces) clss
-      -- itfcs = Set.toList $ foldr (Set.union) Set.empty clss_itfcs
-      -- text_itfc = fmap (interfaceList clss) itfcs
-    liftIO . BL.putStrLn $ BL.intercalate "\n" json
+  . Folding
+  $ FoldClass
+    (return . classToCHA)
+    (liftIO . BL.putStrLn . encode)
   ]
 
-toIList :: (ClassName, [ClassName]) -> InterfaceList
-toIList (itfc, clss) =
-  InterfaceList
-    { ilName = itfc
-    , ilImpl = clss
-    }
-  
-genItfcMap :: Class -> HashMap.HashMap ClassName [ClassName] -> HashMap.HashMap ClassName [ClassName]
-genItfcMap cls hmap =
-  let
-    itfcs = Set.toList $ cls ^. classInterfaces
-    itfc = head itfcs
-  in
-    -- HashMap.insertWith (++) itfc [cls ^. className] hmap
-    foldr (addToItfcMapHelper [(cls ^. className)]) hmap itfcs 
-
-addToItfcMapHelper ::  [ClassName] -> ClassName -> HashMap.HashMap ClassName [ClassName] -> HashMap.HashMap ClassName [ClassName]
-addToItfcMapHelper clsName itfc hmap =
-  HashMap.insertWith (++) itfc clsName hmap
-  
-  -- HashMap.empty
--- look into hashmap for a single pass over interfaces
-
-interfaceList :: [Class] -> ClassName -> BL.ByteString
-interfaceList clss itfc =
-  let
-    impl = filter (Set.member itfc . view classInterfaces) clss 
-    impl_cls = fmap (view className) impl
-    names = fmap (view fullyQualifiedName) impl_cls 
-    json_itfc = encode $ InterfaceList 
-      { ilName = itfc
-      , ilImpl = impl_cls 
-      }
-  in
-    -- itfc ^. fullyQualifiedName <> ": " <> Text.intercalate ", " names
-    json_itfc
-        
 jsons :: OutputFormat
 jsons = Group
   [ Format "full" "Full output of the class"
@@ -427,10 +416,9 @@ jsons = Group
 
 streamAll ::
   (ClassReader r, MonadIO m)
-  => ReaderOptions r
-  -> StreamFunction m
+  => StreamFunction m
   -> CachedClassPoolT r m ()
-streamAll _ = \case
+streamAll = \case
   StreamClassName fn -> do
     mapM_ (lift . fn) =<< allClassNames
   StreamContainer fn -> do
@@ -455,3 +443,4 @@ createClassLoader =
 
 doc :: Text.Text -> D.Doc
 doc = D.text . Text.unpack
+
