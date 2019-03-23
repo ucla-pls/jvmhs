@@ -78,7 +78,7 @@ data OutputFormat
   | Group [Format]
 
 data FoldFunction m
-  = forall r. (FromJSON r, Monoid r) => FoldClass (Class -> m r) (r -> m ())
+  = forall r. (ToJSON r, FromJSON r, Monoid r) => FoldClass (Class -> m r) 
 
 data StreamFunction m
   = StreamContainer ( (ClassName, ClassContainer) -> m () )
@@ -288,7 +288,7 @@ runFormat classloader = \case
 
   Folding ff ->
     case ff of
-      FoldClass folder printIt -> do
+      FoldClass folder -> do
         initial <- view cfgInitial >>= \case
           Just fp -> do
             x <- liftIO (decode <$> BL.readFile fp)
@@ -299,7 +299,7 @@ runFormat classloader = \case
           streamClasses $ \cls -> do
             a <- lift $ folder cls
             tell a
-        printIt (initial <> r)
+        liftIO . BL.putStrLn . encode $ initial <> r
 
   Aggregate m -> do
     preloaded' <- liftIO $ preload classloader
@@ -382,7 +382,6 @@ interfaces = Group
   . Folding
   $ FoldClass
     (return . classToCHA)
-    (liftIO . BL.putStrLn . encode)
   ]
 
 jsons :: OutputFormat
