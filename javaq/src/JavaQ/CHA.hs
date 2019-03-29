@@ -13,6 +13,8 @@
 {-# LANGUAGE TypeFamilies              #-}
 module JavaQ.CHA where
 
+import           Data.Maybe
+
 -- unordered
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.HashSet as Set
@@ -27,39 +29,82 @@ import           Control.Lens hiding (argument, (.=))
 -- jvmhs
 import           Jvmhs
 
-newtype ImplMap a = ImplMap { getImplMap :: HashMap.HashMap ClassName a }
+class Closable m where
+  closure :: m -> m
+
+-- instance Closable CHA where 
+--   close = closureCHA
+
+newtype CHA = CHA { getCHA :: HashMap.HashMap ClassName ClassHierarchyInfo }
   deriving (Show, Eq)
 
-type CHA = ImplMap ClassHierachyInfo
+-- instance Semigroup a => Semigroup (CHTree ClassHierarchyInfo a) where
+--   CHTree ClassHierarchyInfo a <> CHTree ClassHierarchyInfo b = CHTree (HashMap.unionWith (<>) a b)
 
-data ClassHierachyInfo = ClassHierachyInfo
-  { chaImplements :: Set.HashSet ClassName
+instance Semigroup CHA where
+  CHA a <> CHA b = closure $ CHA (HashMap.unionWith (<>) a b)
+
+instance Monoid CHA where
+  mempty = CHA HashMap.empty
+
+instance ToJSON CHA where
+  toJSON (CHA a) = toJSON a
+
+instance FromJSON CHA where
+  parseJSON v = CHA <$> parseJSON v
+
+instance Closable CHA where
+  closure = closureCHA
+
+data ClassHierarchyInfo = ClassHierarchyInfo
+  { chaExtendedBy :: Set.HashSet ClassName
   } deriving (Show, Eq)
 
-instance Semigroup ClassHierachyInfo where
-  ClassHierachyInfo a <> ClassHierachyInfo b = ClassHierachyInfo (a <> b)
+instance Semigroup ClassHierarchyInfo where
+  ClassHierarchyInfo a <> ClassHierarchyInfo b = ClassHierarchyInfo (a <> b)
 
-instance Monoid ClassHierachyInfo where
-  mempty = ClassHierachyInfo mempty
+instance Monoid ClassHierarchyInfo where
+  mempty = ClassHierarchyInfo mempty
 
 classToCHA :: Class -> CHA
 classToCHA cls =
-  ImplMap $ HashMap.fromList ((clsnm, ClassHierachyInfo (Set.singleton clsnm)) : entries)
+  case super of
+    Nothing -> CHA orig_map
+    Just sup -> CHA $ HashMap.insert sup (ClassHierarchyInfo $ Set.singleton clsnm) orig_map
   where
     clsnm = cls ^. className
-    interfs = toListOf (classInterfaces.folded) cls
-    entries = map (, ClassHierachyInfo (Set.singleton clsnm)) interfs
+    -- interfs = maybeToList (cls ^. classSuper) ++ toListOf (classInterfaces.folded) cls
+    inners = fmap (view innerClass) $ cls ^. classInnerClasses
+    interfs = inners ++ toListOf (classInterfaces . folded) cls
+    entries = map (, ClassHierarchyInfo (Set.singleton clsnm)) interfs
+    orig_map =
+      HashMap.fromList
+        ((clsnm, ClassHierarchyInfo (Set.singleton clsnm)) : entries)
+    super = cls ^. classSuper
 
-instance Semigroup a => Semigroup (ImplMap a) where
-  ImplMap a <> ImplMap b = ImplMap (HashMap.unionWith (<>) a b)
 
-instance Semigroup a => Monoid (ImplMap a) where
-  mempty = ImplMap HashMap.empty
+closureCHA :: CHA -> CHA
+closureCHA cha =
+  let
+    tmap = getCHA cha
+    keys = HashMap.keys tmap
+    newCHA = CHA $ mconcat $ closeClass tmap <$> keys
+  in
+    -- cha
+    if cha == newCHA
+      then newCHA
+      else closureCHA newCHA
 
-instance ToJSON a => ToJSON (ImplMap a) where
-  toJSON (ImplMap a) = toJSON a
 
-instance FromJSON a => FromJSON (ImplMap a)where
-  parseJSON v = ImplMap <$> parseJSON v
+closeClass :: HashMap.HashMap ClassName ClassHierarchyInfo -> 
+  ClassName -> HashMap.HashMap ClassName ClassHierarchyInfo
+closeClass hmap clsnm =
+  HashMap.fromList [(clsnm, implSet)]
+  where
+    origSet = fromJust (HashMap.lookup clsnm hmap)
+    -- flipper = flip HashMap.lookup hmap clsnm
+    toMerge = catMaybes $ (flip HashMap.lookup hmap) <$> (Set.toList (chaExtendedBy origSet))
+    implSet = mconcat toMerge 
 
-$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ClassHierachyInfo)
+
+$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ClassHierarchyInfo)
