@@ -29,8 +29,8 @@ import           Control.Lens hiding (argument, (.=))
 -- jvmhs
 import           Jvmhs
 
-class Closable m where
-  closure :: m -> m
+-- class Closable m where
+--   closure :: m -> m
 
 -- instance Closable CHA where 
 --   close = closureCHA
@@ -41,11 +41,14 @@ newtype CHA = CHA { getCHA :: HashMap.HashMap ClassName ClassHierarchyInfo }
 -- instance Semigroup a => Semigroup (CHTree ClassHierarchyInfo a) where
 --   CHTree ClassHierarchyInfo a <> CHTree ClassHierarchyInfo b = CHTree (HashMap.unionWith (<>) a b)
 
-instance Semigroup CHA where
-  CHA a <> CHA b = closure $ CHA (HashMap.unionWith (<>) a b)
+-- instance Semigroup CHA where
+--   CHA a <> CHA b = closure $ CHA (HashMap.unionWith (<>) a b)
 
-instance Monoid CHA where
-  mempty = CHA HashMap.empty
+emptyCHA :: CHA 
+emptyCHA = CHA HashMap.empty
+
+-- instance Monoid CHA where
+--   mempty = CHA HashMap.empty
 
 instance ToJSON CHA where
   toJSON (CHA a) = toJSON a
@@ -53,58 +56,53 @@ instance ToJSON CHA where
 instance FromJSON CHA where
   parseJSON v = CHA <$> parseJSON v
 
-instance Closable CHA where
-  closure = closureCHA
+-- instance Closable CHA where
+--   closure = closureCHA
 
 data ClassHierarchyInfo = ClassHierarchyInfo
-  { chaExtendedBy :: Set.HashSet ClassName
+  { _chaExtendedBy :: Set.HashSet ClassName
+  , _chaSuperclasses :: [ClassName] 
   } deriving (Show, Eq)
 
-instance Semigroup ClassHierarchyInfo where
-  ClassHierarchyInfo a <> ClassHierarchyInfo b = ClassHierarchyInfo (a <> b)
+makeLenses ''ClassHierarchyInfo
 
-instance Monoid ClassHierarchyInfo where
-  mempty = ClassHierarchyInfo mempty
+emptyClassHierarchyInfo :: ClassHierarchyInfo
+emptyClassHierarchyInfo =
+  ClassHierarchyInfo Set.empty []
 
-classToCHA :: Class -> CHA
-classToCHA cls =
-  case super of
-    Nothing -> CHA orig_map
-    Just sup -> CHA $ HashMap.insert sup (ClassHierarchyInfo $ Set.singleton clsnm) orig_map
+toClassHierarchyInfo :: Class -> ClassHierarchyInfo
+toClassHierarchyInfo cls =
+  ClassHierarchyInfo (Set.singleton $ cls ^. className) (maybeToList $ cls ^. classSuper)
+
+addNode :: CHA -> Class -> CHA
+addNode (CHA hm) cls = CHA hm'
   where
-    clsnm = cls ^. className
-    -- interfs = maybeToList (cls ^. classSuper) ++ toListOf (classInterfaces.folded) cls
-    inners = fmap (view innerClass) $ cls ^. classInnerClasses
-    interfs = inners ++ toListOf (classInterfaces . folded) cls
-    entries = map (, ClassHierarchyInfo (Set.singleton clsnm)) interfs
-    orig_map =
-      HashMap.fromList
-        ((clsnm, ClassHierarchyInfo (Set.singleton clsnm)) : entries)
-    super = cls ^. classSuper
+    hm' =
+      HashMap.singleton (cls ^. className) chi 
+      <> updatedSuperclasses 
+      <> updatedExtendedBy 
+      <> hm
+    
+    chi = getOrEmpty (cls ^. className) & chaSuperclasses .~ superclasses
+ 
+    superclasses =
+      fromMaybe (maybeToList $ cls ^. classSuper) $ do
+        cn <- cls ^. classSuper
+        view chaSuperclasses <$> HashMap.lookup cn hm
 
+    extends = Set.singleton (cls ^. className) <> chi ^. chaExtendedBy
+    
+    updatedSuperclasses =
+      HashMap.fromList $ do
+        cn <- superclasses
+        return (cn, getOrEmpty cn & chaExtendedBy <>~ extends)
+   
+    updatedExtendedBy =
+      HashMap.fromList $ do
+        cn <- Set.toList (chi ^. chaExtendedBy)
+        return (cn, getOrEmpty cn & chaSuperclasses %~ (superclasses ++))
+  
+    getOrEmpty cn = fromMaybe emptyClassHierarchyInfo $ HashMap.lookup cn hm
 
-closureCHA :: CHA -> CHA
-closureCHA cha =
-  let
-    tmap = getCHA cha
-    keys = HashMap.keys tmap
-    newCHA = CHA $ mconcat $ closeClass tmap <$> keys
-  in
-    -- cha
-    if cha == newCHA
-      then newCHA
-      else closureCHA newCHA
-
-
-closeClass :: HashMap.HashMap ClassName ClassHierarchyInfo -> 
-  ClassName -> HashMap.HashMap ClassName ClassHierarchyInfo
-closeClass hmap clsnm =
-  HashMap.fromList [(clsnm, implSet)]
-  where
-    origSet = fromJust (HashMap.lookup clsnm hmap)
-    -- flipper = flip HashMap.lookup hmap clsnm
-    toMerge = catMaybes $ (flip HashMap.lookup hmap) <$> (Set.toList (chaExtendedBy origSet))
-    implSet = mconcat toMerge 
-
-
-$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ClassHierarchyInfo)
+$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''ClassHierarchyInfo)
+    

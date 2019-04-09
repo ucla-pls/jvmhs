@@ -21,6 +21,8 @@ import           Data.Word
 import           System.Environment
 import           System.IO
 
+import Debug.Trace as T
+
 -- fgl
 import qualified Data.Graph.Inductive         as FGL
 
@@ -38,6 +40,7 @@ import           Data.Aeson.TH
 -- mtl
 import           Control.Monad.Reader
 import           Control.Monad.Writer.Strict
+import           Control.Monad.State
 
 -- text
 import qualified Data.Text                    as Text
@@ -78,7 +81,8 @@ data OutputFormat
   | Group [Format]
 
 data FoldFunction m
-  = forall r. (ToJSON r, FromJSON r, Monoid r) => FoldClass (Class -> m r) 
+  = forall r. (ToJSON r, FromJSON r, Monoid r) => MonoidalFoldClass (Class -> m r) 
+  | forall r. (ToJSON r, FromJSON r)           => FoldClass r (r -> Class -> m r) 
 
 data StreamFunction m
   = StreamContainer ( (ClassName, ClassContainer) -> m () )
@@ -288,7 +292,7 @@ runFormat classloader = \case
 
   Folding ff ->
     case ff of
-      FoldClass folder -> do
+      MonoidalFoldClass folder -> do
         initial <- view cfgInitial >>= \case
           Just fp -> do
             x <- liftIO (decode <$> BL.readFile fp)
@@ -300,6 +304,21 @@ runFormat classloader = \case
             a <- lift $ folder cls
             tell a
         liftIO . BL.putStrLn . encode $ initial <> r
+      FoldClass def foldf -> do
+        initial <- view cfgInitial >>= \case
+          Just fp -> do
+            x <- liftIO (decode <$> BL.readFile fp)
+            return $ Maybe.fromMaybe def x
+          Nothing ->
+            return def
+        T.traceM $ "initial: \n" ++ (BL.unpack $ encode initial) 
+        r <- flip execStateT initial $ inClasspool $ do
+          streamClasses $ \cls -> do
+            s <- get
+            a <- lift $ foldf s cls
+            traceM $ "for class: " ++ show (cls^.className) ++ " state after: \n" ++ BL.unpack (encode a)
+            put a
+        liftIO . BL.putStrLn . encode $ r
 
   Aggregate m -> do
     preloaded' <- liftIO $ preload classloader
@@ -380,8 +399,7 @@ interfaces :: OutputFormat
 interfaces = Group
   [ Format "itfcs" "<itfc>: <implementing classes>(, <impl classes>)*"
   . Folding
-  $ FoldClass
-    (return . classToCHA)
+  $ FoldClass emptyCHA (\cha cls -> return (addNode cha cls))
   ]
 
 jsons :: OutputFormat
