@@ -29,35 +29,17 @@ import           Control.Lens hiding (argument, (.=))
 -- jvmhs
 import           Jvmhs
 
--- class Closable m where
---   closure :: m -> m
-
--- instance Closable CHA where 
---   close = closureCHA
-
 newtype CHA = CHA { getCHA :: HashMap.HashMap ClassName ClassHierarchyInfo }
   deriving (Show, Eq)
 
--- instance Semigroup a => Semigroup (CHTree ClassHierarchyInfo a) where
---   CHTree ClassHierarchyInfo a <> CHTree ClassHierarchyInfo b = CHTree (HashMap.unionWith (<>) a b)
-
--- instance Semigroup CHA where
---   CHA a <> CHA b = closure $ CHA (HashMap.unionWith (<>) a b)
-
 emptyCHA :: CHA 
 emptyCHA = CHA HashMap.empty
-
--- instance Monoid CHA where
---   mempty = CHA HashMap.empty
 
 instance ToJSON CHA where
   toJSON (CHA a) = toJSON a
 
 instance FromJSON CHA where
   parseJSON v = CHA <$> parseJSON v
-
--- instance Closable CHA where
---   closure = closureCHA
 
 data ClassHierarchyInfo = ClassHierarchyInfo
   { _chaExtendedBy :: Set.HashSet ClassName
@@ -86,9 +68,9 @@ addNode (CHA hm) cls = CHA hm'
     chi = getOrEmpty (cls ^. className) & chaSuperclasses .~ superclasses
  
     superclasses =
-      fromMaybe (maybeToList $ cls ^. classSuper) $ do
+      (maybeToList $ cls ^. classSuper) ++ (fromMaybe [] $ do
         cn <- cls ^. classSuper
-        view chaSuperclasses <$> HashMap.lookup cn hm
+        view chaSuperclasses <$> HashMap.lookup cn hm)
 
     extends = Set.singleton (cls ^. className) <> chi ^. chaExtendedBy
     

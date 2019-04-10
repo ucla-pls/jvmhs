@@ -316,7 +316,7 @@ runFormat classloader = \case
           streamClasses $ \cls -> do
             s <- get
             a <- lift $ foldf s cls
-            traceM $ "for class: " ++ show (cls^.className) ++ " state after: \n" ++ BL.unpack (encode a)
+            traceM $ "for class: " ++ show (cls^.className) ++ " state after: \n" ++ BL.unpack (encode a) ++ "\n"
             put a
         liftIO . BL.putStrLn . encode $ r
 
