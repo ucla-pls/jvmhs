@@ -73,11 +73,12 @@ addNode (CHA hm) cls = CHA hm'
       <> updatedSuperclasses 
       <> updatedImplementedByAbove
       <> updatedExtByAndImpl 
+      <> updatedImplementsBelow
       <> hm
     
     chi = getOrEmpty (cls ^. className) 
       & chaSuperclasses .~ superclasses 
-      & chaImplements <>~ cls ^. classInterfaces
+      & chaImplements <>~ clsInterfaces
       & chaIsInterface .~ isInterface cls
  
     -- Creates list of superclasses for node class
@@ -85,6 +86,14 @@ addNode (CHA hm) cls = CHA hm'
       (maybeToList $ cls ^. classSuper) ++ (fromMaybe [] $ do
         cn <- cls ^. classSuper
         view chaSuperclasses <$> HashMap.lookup cn hm)
+    
+    -- get all interfaces and then parent interfaces' interfaces
+    clsInterfaces = 
+      Set.foldr
+        (\clsnm acc -> acc <> (getOrEmpty clsnm) ^. chaImplements)
+        (cls ^. classInterfaces)
+        (cls ^. classInterfaces)
+
 
     extends = Set.singleton (cls ^. className) <> chi ^. chaExtendedBy
     implements = Set.singleton (cls ^. className) <> chi ^. chaImplements
