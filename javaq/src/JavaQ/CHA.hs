@@ -44,17 +44,26 @@ instance FromJSON CHA where
 data ClassHierarchyInfo = ClassHierarchyInfo
   { _chaExtendedBy :: Set.HashSet ClassName
   , _chaSuperclasses :: [ClassName] 
+  , _chaImplements :: Set.HashSet ClassName
+  , _chaImplementedBy :: Set.HashSet ClassName
+  , _chaIsInterface :: Bool
   } deriving (Show, Eq)
 
 makeLenses ''ClassHierarchyInfo
 
 emptyClassHierarchyInfo :: ClassHierarchyInfo
 emptyClassHierarchyInfo =
-  ClassHierarchyInfo Set.empty []
+  ClassHierarchyInfo Set.empty [] Set.empty Set.empty False
 
 toClassHierarchyInfo :: Class -> ClassHierarchyInfo
 toClassHierarchyInfo cls =
-  ClassHierarchyInfo (Set.singleton $ cls ^. className) (maybeToList $ cls ^. classSuper)
+  ClassHierarchyInfo
+    (Set.singleton $ cls ^. className)
+    (maybeToList $ cls ^. classSuper)
+    (cls ^. classInterfaces)
+    Set.empty
+    (isInterface cls)
+
 
 addNode :: CHA -> Class -> CHA
 addNode (CHA hm) cls = CHA hm'
@@ -62,28 +71,48 @@ addNode (CHA hm) cls = CHA hm'
     hm' =
       HashMap.singleton (cls ^. className) chi 
       <> updatedSuperclasses 
-      <> updatedExtendedBy 
+      <> updatedImplementedByAbove
+      <> updatedExtByAndImpl 
       <> hm
     
-    chi = getOrEmpty (cls ^. className) & chaSuperclasses .~ superclasses
+    chi = getOrEmpty (cls ^. className) 
+      & chaSuperclasses .~ superclasses 
+      & chaImplements <>~ cls ^. classInterfaces
+      & chaIsInterface .~ isInterface cls
  
+    -- Creates list of superclasses for node class
     superclasses =
       (maybeToList $ cls ^. classSuper) ++ (fromMaybe [] $ do
         cn <- cls ^. classSuper
         view chaSuperclasses <$> HashMap.lookup cn hm)
 
     extends = Set.singleton (cls ^. className) <> chi ^. chaExtendedBy
-    
+    implements = Set.singleton (cls ^. className) <> chi ^. chaImplements
+    implementedBy = Set.singleton (cls ^. className) <> chi ^. chaImplementedBy
+
+    -- Update extendedBy of all superclasses
+    -- update all classes above me
     updatedSuperclasses =
       HashMap.fromList $ do
         cn <- superclasses
-        return (cn, getOrEmpty cn & chaExtendedBy <>~ extends)
-   
-    updatedExtendedBy =
+        return (cn, getOrEmpty cn & chaExtendedBy <>~ extends & chaImplementedBy <>~ implementedBy)
+
+    updatedImplementedByAbove =
+      HashMap.fromList $ do
+        cn <- Set.toList (chi ^. chaImplements)
+        return (cn, getOrEmpty cn & chaImplementedBy <>~ extends <> implementedBy)
+
+    -- update all classes lower than me
+    updatedExtByAndImpl =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaExtendedBy)
         return (cn, getOrEmpty cn & chaSuperclasses %~ (superclasses ++))
-  
+
+    updatedImplementsBelow =
+      HashMap.fromList $ do
+        cn <- Set.toList (chi ^. chaExtendedBy <> chi ^. chaImplementedBy)
+        return (cn, getOrEmpty cn & chaImplements <>~ implements)
+    
     getOrEmpty cn = fromMaybe emptyClassHierarchyInfo $ HashMap.lookup cn hm
 
 $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''ClassHierarchyInfo)
