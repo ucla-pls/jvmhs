@@ -47,13 +47,14 @@ data ClassHierarchyInfo = ClassHierarchyInfo
   , _chaImplements :: Set.HashSet ClassName
   , _chaImplementedBy :: Set.HashSet ClassName
   , _chaIsInterface :: Bool
+  , _chaCallableMethods :: HashMap.HashMap MethodName ClassName
   } deriving (Show, Eq)
 
 makeLenses ''ClassHierarchyInfo
 
 emptyClassHierarchyInfo :: ClassHierarchyInfo
 emptyClassHierarchyInfo =
-  ClassHierarchyInfo Set.empty [] Set.empty Set.empty False
+  ClassHierarchyInfo Set.empty [] Set.empty Set.empty False HashMap.empty
 
 toClassHierarchyInfo :: Class -> ClassHierarchyInfo
 toClassHierarchyInfo cls =
@@ -63,6 +64,7 @@ toClassHierarchyInfo cls =
     (cls ^. classInterfaces)
     Set.empty
     (isInterface cls)
+    HashMap.empty
 
 
 addNode :: CHA -> Class -> CHA
