@@ -69,14 +69,6 @@ toClassHierarchyInfo cls =
     (isInterface cls)
     HashMap.empty
 
-notl :: Lens' Bool Bool
-notl f b = 
-  fmap (not) (f (not b))
-
-zerol :: Lens' Int Bool
-zerol f n =
-  fmap (\b -> if b then 0 else 1) (f (n == 0)) 
-
 addNode :: CHA -> Class -> CHA
 addNode (CHA hm) cls = CHA hm'
   where
@@ -116,7 +108,6 @@ addNode (CHA hm) cls = CHA hm'
            name)
         return (mn, cls ^. className)
 
-    -- BUG: Need to check not abstract
     superMethods =
       chi ^. (chaSuperclasses.folded).to getOrEmpty . chaCallableMethods
     itfcMethods = 
@@ -128,6 +119,22 @@ addNode (CHA hm) cls = CHA hm'
       HashMap.foldrWithKey
         (\mthd clsnm mmap -> if HashMap.member mthd mmap then mmap else HashMap.insert mthd clsnm mmap)
         accMap
+
+    -- pullOverrideItfc accMap =
+    --   HashMap.foldrWithKey
+    --     (\mthd clsnm mmap ->
+    --        if HashMap.member mthd mmap && not ((getOrEmpty clsnm) ^. chaIsInterface)
+    --          then mmap
+    --          else HashMap.insert mthd clsnm mmap)
+    --     accMap
+
+    override =
+      (\clsnm1 clsnm2 ->
+         if (chi ^. chaIsInterface && (getOrEmpty clsnm1) ^. chaIsInterface)
+           then clsnm2
+           else clsnm1)
+
+
 
     extends = Set.singleton (cls ^. className) <> chi ^. chaExtendedBy
     implements = Set.singleton (cls ^. className) <> chi ^. chaImplements
@@ -155,7 +162,8 @@ addNode (CHA hm) cls = CHA hm'
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaExtendedBy <> chi ^. chaImplementedBy)
         return (cn, getOrEmpty cn & chaImplements <>~ implements
-                                  & chaCallableMethods %~ (flip pullMethods $ chi ^. chaCallableMethods))
+                                  & chaCallableMethods %~ (HashMap.unionWith override $ chi ^. chaCallableMethods))
+    -- need to update the hm itself if the information is proven wrong already                              
     
     getOrEmpty cn = fromMaybe emptyClassHierarchyInfo $ HashMap.lookup cn hm
 
