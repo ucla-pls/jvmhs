@@ -29,6 +29,9 @@ import           Control.Lens hiding (argument, (.=))
 -- jvmhs
 import           Jvmhs
 
+import           Jvmhs.Data.Named
+
+
 newtype CHA = CHA { getCHA :: HashMap.HashMap ClassName ClassHierarchyInfo }
   deriving (Show, Eq)
 
@@ -66,6 +69,13 @@ toClassHierarchyInfo cls =
     (isInterface cls)
     HashMap.empty
 
+notl :: Lens' Bool Bool
+notl f b = 
+  fmap (not) (f (not b))
+
+zerol :: Lens' Int Bool
+zerol f n =
+  fmap (\b -> if b then 0 else 1) (f (n == 0)) 
 
 addNode :: CHA -> Class -> CHA
 addNode (CHA hm) cls = CHA hm'
@@ -77,11 +87,12 @@ addNode (CHA hm) cls = CHA hm'
       <> updatedExtByAndImpl 
       <> updatedImplementsBelow
       <> hm
-    
+      
     chi = getOrEmpty (cls ^. className) 
       & chaSuperclasses .~ superclasses 
       & chaImplements <>~ clsInterfaces
       & chaIsInterface .~ isInterface cls
+      & chaCallableMethods %~ pullMethods fullMethods
  
     -- Creates list of superclasses for node class
     superclasses =
@@ -96,6 +107,27 @@ addNode (CHA hm) cls = CHA hm'
         (cls ^. classInterfaces)
         (cls ^. classInterfaces)
 
+    -- find all direct class methods
+    clsMethods =
+      HashMap.fromList $ do
+        mn <-
+          (cls ^.. classMethodList . folded .
+           filtered (\m -> not $ m ^. methodAccessFlags . contains MAbstract) .
+           name)
+        return (mn, cls ^. className)
+
+    -- BUG: Need to check not abstract
+    superMethods =
+      chi ^. (chaSuperclasses.folded).to getOrEmpty . chaCallableMethods
+    itfcMethods = 
+      chi ^. (chaImplements.folded).to getOrEmpty . chaCallableMethods
+    
+    fullMethods = pullMethods (pullMethods clsMethods superMethods) itfcMethods
+
+    pullMethods accMap = 
+      HashMap.foldrWithKey
+        (\mthd clsnm mmap -> if HashMap.member mthd mmap then mmap else HashMap.insert mthd clsnm mmap)
+        accMap
 
     extends = Set.singleton (cls ^. className) <> chi ^. chaExtendedBy
     implements = Set.singleton (cls ^. className) <> chi ^. chaImplements
@@ -122,9 +154,9 @@ addNode (CHA hm) cls = CHA hm'
     updatedImplementsBelow =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaExtendedBy <> chi ^. chaImplementedBy)
-        return (cn, getOrEmpty cn & chaImplements <>~ implements)
+        return (cn, getOrEmpty cn & chaImplements <>~ implements
+                                  & chaCallableMethods %~ (flip pullMethods $ chi ^. chaCallableMethods))
     
     getOrEmpty cn = fromMaybe emptyClassHierarchyInfo $ HashMap.lookup cn hm
 
 $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''ClassHierarchyInfo)
-    
