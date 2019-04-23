@@ -31,6 +31,7 @@ import           Jvmhs
 
 import           Jvmhs.Data.Named
 
+import Debug.Trace as T
 
 newtype CHA = CHA { getCHA :: HashMap.HashMap ClassName ClassHierarchyInfo }
   deriving (Show, Eq)
@@ -76,7 +77,7 @@ addNode (CHA hm) cls = CHA hm'
       HashMap.singleton (cls ^. className) chi 
       <> updatedSuperclasses 
       <> updatedImplementedByAbove
-      <> updatedExtByAndImpl 
+      -- <> updatedExtByAndImpl 
       <> updatedImplementsBelow
       <> hm
       
@@ -120,21 +121,13 @@ addNode (CHA hm) cls = CHA hm'
         (\mthd clsnm mmap -> if HashMap.member mthd mmap then mmap else HashMap.insert mthd clsnm mmap)
         accMap
 
-    -- pullOverrideItfc accMap =
-    --   HashMap.foldrWithKey
-    --     (\mthd clsnm mmap ->
-    --        if HashMap.member mthd mmap && not ((getOrEmpty clsnm) ^. chaIsInterface)
-    --          then mmap
-    --          else HashMap.insert mthd clsnm mmap)
-    --     accMap
-
+    -- If the i am not an interface, and the inherited method of the implementer is not by a intfc
+    -- then take my version. Otherwise, do not modify (keep clsnm2)
     override =
       (\clsnm1 clsnm2 ->
-         if (chi ^. chaIsInterface && (getOrEmpty clsnm1) ^. chaIsInterface)
-           then clsnm2
-           else clsnm1)
-
-
+         if ((getOrEmpty clsnm2) ^. chaIsInterface && not ((getOrEmpty clsnm1) ^. chaIsInterface))
+           then clsnm1
+           else clsnm2)
 
     extends = Set.singleton (cls ^. className) <> chi ^. chaExtendedBy
     implements = Set.singleton (cls ^. className) <> chi ^. chaImplements
@@ -153,6 +146,7 @@ addNode (CHA hm) cls = CHA hm'
         return (cn, getOrEmpty cn & chaImplementedBy <>~ extends <> implementedBy)
 
     -- update all classes lower than me
+    -- I think BUG is here: these two maps are not distinct 
     updatedExtByAndImpl =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaExtendedBy)
@@ -161,9 +155,10 @@ addNode (CHA hm) cls = CHA hm'
     updatedImplementsBelow =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaExtendedBy <> chi ^. chaImplementedBy)
-        return (cn, getOrEmpty cn & chaImplements <>~ implements
+        return (cn, getOrEmptyMap cn updatedExtByAndImpl & chaImplements <>~ implements
                                   & chaCallableMethods %~ (HashMap.unionWith override $ chi ^. chaCallableMethods))
-    -- need to update the hm itself if the information is proven wrong already                              
+
+    getOrEmptyMap cn hmap = fromMaybe (getOrEmpty cn) $ HashMap.lookup cn hmap
     
     getOrEmpty cn = fromMaybe emptyClassHierarchyInfo $ HashMap.lookup cn hm
 
