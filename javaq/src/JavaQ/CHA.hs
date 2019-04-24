@@ -36,7 +36,7 @@ import Debug.Trace as T
 newtype CHA = CHA { getCHA :: HashMap.HashMap ClassName ClassHierarchyInfo }
   deriving (Show, Eq)
 
-emptyCHA :: CHA 
+emptyCHA :: CHA
 emptyCHA = CHA HashMap.empty
 
 instance ToJSON CHA where
@@ -47,7 +47,7 @@ instance FromJSON CHA where
 
 data ClassHierarchyInfo = ClassHierarchyInfo
   { _chaExtendedBy :: Set.HashSet ClassName
-  , _chaSuperclasses :: [ClassName] 
+  , _chaSuperclasses :: [ClassName]
   , _chaImplements :: Set.HashSet ClassName
   , _chaImplementedBy :: Set.HashSet ClassName
   , _chaIsInterface :: Bool
@@ -74,27 +74,26 @@ addNode :: CHA -> Class -> CHA
 addNode (CHA hm) cls = CHA hm'
   where
     hm' =
-      HashMap.singleton (cls ^. className) chi 
-      <> updatedSuperclasses 
+      HashMap.singleton (cls ^. className) chi
+      <> updatedSuperclasses
       <> updatedImplementedByAbove
-      -- <> updatedExtByAndImpl 
       <> updatedImplementsBelow
       <> hm
-      
-    chi = getOrEmpty (cls ^. className) 
-      & chaSuperclasses .~ superclasses 
+
+    chi = getOrEmpty (cls ^. className)
+      & chaSuperclasses .~ superclasses
       & chaImplements <>~ clsInterfaces
       & chaIsInterface .~ isInterface cls
       & chaCallableMethods %~ pullMethods fullMethods
- 
+
     -- Creates list of superclasses for node class
     superclasses =
       (maybeToList $ cls ^. classSuper) ++ (fromMaybe [] $ do
         cn <- cls ^. classSuper
         view chaSuperclasses <$> HashMap.lookup cn hm)
-    
+
     -- get all interfaces and then parent interfaces' interfaces
-    clsInterfaces = 
+    clsInterfaces =
       Set.foldr
         (\clsnm acc -> acc <> (getOrEmpty clsnm) ^. chaImplements)
         (cls ^. classInterfaces)
@@ -111,12 +110,12 @@ addNode (CHA hm) cls = CHA hm'
 
     superMethods =
       chi ^. (chaSuperclasses.folded).to getOrEmpty . chaCallableMethods
-    itfcMethods = 
+    itfcMethods =
       chi ^. (chaImplements.folded).to getOrEmpty . chaCallableMethods
-    
+
     fullMethods = pullMethods (pullMethods clsMethods superMethods) itfcMethods
 
-    pullMethods accMap = 
+    pullMethods accMap =
       HashMap.foldrWithKey
         (\mthd clsnm mmap -> if HashMap.member mthd mmap then mmap else HashMap.insert mthd clsnm mmap)
         accMap
@@ -146,7 +145,7 @@ addNode (CHA hm) cls = CHA hm'
         return (cn, getOrEmpty cn & chaImplementedBy <>~ extends <> implementedBy)
 
     -- update all classes lower than me
-    -- I think BUG is here: these two maps are not distinct 
+    -- I think BUG is here: these two maps are not distinct
     updatedExtByAndImpl =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaExtendedBy)
@@ -159,7 +158,7 @@ addNode (CHA hm) cls = CHA hm'
                                   & chaCallableMethods %~ (HashMap.unionWith override $ chi ^. chaCallableMethods))
 
     getOrEmptyMap cn hmap = fromMaybe (getOrEmpty cn) $ HashMap.lookup cn hmap
-    
+
     getOrEmpty cn = fromMaybe emptyClassHierarchyInfo $ HashMap.lookup cn hm
 
 $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''ClassHierarchyInfo)
