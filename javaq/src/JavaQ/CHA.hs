@@ -13,25 +13,25 @@
 {-# LANGUAGE TypeFamilies              #-}
 module JavaQ.CHA where
 
+-- base
 import           Data.Maybe
 
 -- unordered
 import qualified Data.HashMap.Strict as HashMap
-import qualified Data.HashSet as Set
+import qualified Data.HashSet        as Set
 
 -- aeson
 import           Data.Aeson
 import           Data.Aeson.TH
 
 -- lens
-import           Control.Lens hiding (argument, (.=))
+import           Control.Lens        hiding (argument, (.=))
 
 -- jvmhs
 import           Jvmhs
-
 import           Jvmhs.Data.Named
 
-import Debug.Trace as T
+import           Debug.Trace         as T
 
 newtype CHA = CHA { getCHA :: HashMap.HashMap ClassName ClassHierarchyInfo }
   deriving (Show, Eq)
@@ -46,11 +46,11 @@ instance FromJSON CHA where
   parseJSON v = CHA <$> parseJSON v
 
 data ClassHierarchyInfo = ClassHierarchyInfo
-  { _chaExtendedBy :: Set.HashSet ClassName
-  , _chaSuperclasses :: [ClassName]
-  , _chaImplements :: Set.HashSet ClassName
-  , _chaImplementedBy :: Set.HashSet ClassName
-  , _chaIsInterface :: Bool
+  { _chaExtendedBy      :: Set.HashSet ClassName
+  , _chaSuperclasses    :: [ClassName]
+  , _chaImplements      :: Set.HashSet ClassName
+  , _chaImplementedBy   :: Set.HashSet ClassName
+  , _chaIsInterface     :: Bool
   , _chaCallableMethods :: HashMap.HashMap MethodName ClassName
   } deriving (Show, Eq)
 
