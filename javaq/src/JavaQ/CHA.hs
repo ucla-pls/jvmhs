@@ -84,7 +84,7 @@ addNode (CHA hm) cls = CHA hm'
       & chaSuperclasses .~ superclasses
       & chaImplements <>~ clsInterfaces
       & chaIsInterface .~ isInterface cls
-      & chaCallableMethods %~ pullMethods fullMethods
+      & chaCallableMethods %~ HashMap.union fullMethods
 
     -- Creates list of superclasses for node class
     superclasses =
@@ -113,12 +113,7 @@ addNode (CHA hm) cls = CHA hm'
     itfcMethods =
       chi ^. (chaImplements.folded).to getOrEmpty . chaCallableMethods
 
-    fullMethods = pullMethods (pullMethods clsMethods superMethods) itfcMethods
-
-    pullMethods accMap =
-      HashMap.foldrWithKey
-        (\mthd clsnm mmap -> if HashMap.member mthd mmap then mmap else HashMap.insert mthd clsnm mmap)
-        accMap
+    fullMethods = HashMap.union (HashMap.union clsMethods superMethods) itfcMethods
 
     -- If the i am not an interface, and the inherited method of the implementer is not by a intfc
     -- then take my version. Otherwise, do not modify (keep clsnm2)
