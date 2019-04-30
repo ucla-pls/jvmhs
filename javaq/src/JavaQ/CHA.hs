@@ -153,10 +153,8 @@ addNode (CHA hm) cls = CHA hm'
     updatedImplementedByAbove =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaImplements)
-        return (cn, getOrEmpty cn & chaImplementedBy <>~ extends <> implementedBy)
-                                  -- & chaCallableMethods %~ (HashMap.unionWith 
-                                  --                           (\lSet rSet -> lSet <> rSet)
-                                  --                           (chi ^. chaCallableMethods)))
+        return (cn, getOrEmpty cn & chaImplementedBy <>~ extends <> implementedBy
+                                  & chaCallableMethods %~ insertOnFind cn (chi ^. chaCallableMethods))
 
     -- update all classes lower than me
     updatedExtBy =
