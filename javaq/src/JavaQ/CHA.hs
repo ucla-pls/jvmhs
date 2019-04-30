@@ -116,8 +116,14 @@ addNode (CHA hm) cls = CHA hm'
       chi ^. (chaSuperclasses.folded).to getOrEmpty . chaCallableMethods
     itfcMethods =
       chi ^. (chaImplements.folded).to getOrEmpty . chaCallableMethods
+    upperMethods = HashMap.union (HashMap.union clsMethods superMethods) itfcMethods
+    lowerMethodsImpl = 
+      chi ^. (chaImplementedBy.folded).to getOrEmpty . chaCallableMethods 
+    
+    -- fullMethods = HashMap.empty
 
-    fullMethods = HashMap.union (HashMap.union clsMethods superMethods) itfcMethods
+    fullMethods = 
+      insertOnFind (cls ^. className) lowerMethodsImpl upperMethods
 
     extends = Set.singleton (cls ^. className) <> chi ^. chaExtendedBy
     implements = Set.singleton (cls ^. className) <> chi ^. chaImplements
@@ -129,20 +135,20 @@ addNode (CHA hm) cls = CHA hm'
       HashMap.fromList $ do
         cn <- superclasses
         return (cn, getOrEmpty cn & chaExtendedBy <>~ extends 
-                                  & chaImplementedBy <>~ implementedBy)
-                                  -- & chaCallableMethods %~ (HashMap.unionWith 
-                                  --                           (\lSet rSet -> lSet <> rSet)
-                                  --                           (chi ^. chaCallableMethods)))
-    insertOnFind parentMap = HashMap.foldrWithKey
+                                  & chaImplementedBy <>~ implementedBy
+                                  & chaCallableMethods %~ insertOnFind cn (chi ^. chaCallableMethods))
+
+    insertOnFind clsnm foldedMap insertMap = 
+      HashMap.foldrWithKey
         (\mthd set parentMthds -> 
           HashMap.adjust 
-            (\parentSet -> if (Set.member (cls ^. className) parentSet) 
-              then set <> parentSet
-              else parentSet)
+            (\insertSet -> if (Set.member clsnm insertSet) 
+              then set <> insertSet
+              else insertSet)
             mthd
             parentMthds)
-        parentMap
-        (chi ^. chaCallableMethods)
+        insertMap
+        foldedMap
 
     updatedImplementedByAbove =
       HashMap.fromList $ do
@@ -159,6 +165,7 @@ addNode (CHA hm) cls = CHA hm'
         return (cn, getOrEmpty cn & chaSuperclasses %~ (superclasses ++))
 
     -- need to check if class implements if not found 
+    -- BUG: need to update unionWith function to account when double parents of class and interface
     updatedImplementsBelow =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaExtendedBy <> chi ^. chaImplementedBy)
