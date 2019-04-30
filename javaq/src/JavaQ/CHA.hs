@@ -51,7 +51,7 @@ data ClassHierarchyInfo = ClassHierarchyInfo
   , _chaImplements      :: Set.HashSet ClassName
   , _chaImplementedBy   :: Set.HashSet ClassName
   , _chaIsInterface     :: Bool
-  , _chaCallableMethods :: HashMap.HashMap MethodName ClassName
+  , _chaCallableMethods :: HashMap.HashMap MethodName (Set.HashSet ClassName)
   } deriving (Show, Eq)
 
 makeLenses ''ClassHierarchyInfo
@@ -99,6 +99,9 @@ addNode (CHA hm) cls = CHA hm'
         (cls ^. classInterfaces)
         (cls ^. classInterfaces)
 
+    foldedInterfaces = 
+      chi ^. (chaImplements.folded).to getOrEmpty . chaImplements
+
     -- find all direct class methods
     clsMethods =
       HashMap.fromList $ do
@@ -106,22 +109,15 @@ addNode (CHA hm) cls = CHA hm'
           (cls ^.. classMethodList . folded .
            filtered (\m -> not $ m ^. methodAccessFlags . contains MAbstract) .
            name)
-        return (mn, cls ^. className)
+        return (mn, Set.singleton $ cls ^. className)
 
+    -- NOTE: need to check if it unions or not
     superMethods =
       chi ^. (chaSuperclasses.folded).to getOrEmpty . chaCallableMethods
     itfcMethods =
       chi ^. (chaImplements.folded).to getOrEmpty . chaCallableMethods
 
     fullMethods = HashMap.union (HashMap.union clsMethods superMethods) itfcMethods
-
-    -- If the i am not an interface, and the inherited method of the implementer is not by a intfc
-    -- then take my version. Otherwise, do not modify (keep clsnm2)
-    override =
-      (\clsnm1 clsnm2 ->
-         if ((getOrEmpty clsnm2) ^. chaIsInterface && not ((getOrEmpty clsnm1) ^. chaIsInterface))
-           then clsnm1
-           else clsnm2)
 
     extends = Set.singleton (cls ^. className) <> chi ^. chaExtendedBy
     implements = Set.singleton (cls ^. className) <> chi ^. chaImplements
@@ -132,25 +128,47 @@ addNode (CHA hm) cls = CHA hm'
     updatedSuperclasses =
       HashMap.fromList $ do
         cn <- superclasses
-        return (cn, getOrEmpty cn & chaExtendedBy <>~ extends & chaImplementedBy <>~ implementedBy)
+        return (cn, getOrEmpty cn & chaExtendedBy <>~ extends 
+                                  & chaImplementedBy <>~ implementedBy)
+                                  -- & chaCallableMethods %~ (HashMap.unionWith 
+                                  --                           (\lSet rSet -> lSet <> rSet)
+                                  --                           (chi ^. chaCallableMethods)))
+    insertOnFind parentMap = HashMap.foldrWithKey
+        (\mthd set parentMthds -> 
+          HashMap.adjust 
+            (\parentSet -> if (Set.member (cls ^. className) parentSet) 
+              then set <> parentSet
+              else parentSet)
+            mthd
+            parentMthds)
+        parentMap
+        (chi ^. chaCallableMethods)
 
     updatedImplementedByAbove =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaImplements)
         return (cn, getOrEmpty cn & chaImplementedBy <>~ extends <> implementedBy)
+                                  -- & chaCallableMethods %~ (HashMap.unionWith 
+                                  --                           (\lSet rSet -> lSet <> rSet)
+                                  --                           (chi ^. chaCallableMethods)))
 
     -- update all classes lower than me
-    -- I think BUG is here: these two maps are not distinct
-    updatedExtByAndImpl =
+    updatedExtBy =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaExtendedBy)
         return (cn, getOrEmpty cn & chaSuperclasses %~ (superclasses ++))
 
+    -- need to check if class implements if not found 
     updatedImplementsBelow =
       HashMap.fromList $ do
         cn <- Set.toList (chi ^. chaExtendedBy <> chi ^. chaImplementedBy)
-        return (cn, getOrEmptyMap cn updatedExtByAndImpl & chaImplements <>~ implements
-                                  & chaCallableMethods %~ (HashMap.unionWith override $ chi ^. chaCallableMethods))
+        return (cn, getOrEmptyMap cn updatedExtBy & chaImplements <>~ implements
+                                  & chaCallableMethods %~ (HashMap.unionWith
+                                                            (\parentSet childSet -> 
+                                                              if (Set.member cn childSet)
+                                                                then childSet
+                                                                else parentSet <> childSet) 
+                                                            $ chi ^. chaCallableMethods))
 
     getOrEmptyMap cn hmap = fromMaybe (getOrEmpty cn) $ HashMap.lookup cn hmap
 
