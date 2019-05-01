@@ -72,7 +72,7 @@ import           Crypto.Hash.SHA256           as SHA256
 import           Data.HexString
 
 -- javaq
-import           JavaQ.CHA
+import           JavaQ.HR
 
 data OutputFormat
   = Stream (StreamFunction (ReaderT Config IO))
@@ -392,14 +392,14 @@ formats =
         <> "out_degree" .= meanOf (graphContexts.to FGL.outdeg')
         <> "in_degree" .= meanOf (graphContexts.to FGL.indeg')
     ]
-  , Format "interfaces" "Output all interfaces with classes that implement them" interfaces
+  , Format "hierarchy" "Outputs the class relation relation" hierarchy
   ]
 
-interfaces :: OutputFormat
-interfaces = Group
-  [ Format "itfcs" "<itfc>: <implementing classes>(, <impl classes>)*"
+hierarchy :: OutputFormat
+hierarchy = Group
+  [ Format "hierarchy" "Includes superclasses, extendedBy, implementedBy, implements"
   . Folding
-  $ FoldClass emptyCHA (\cha cls -> return (addNode cha cls))
+  $ FoldClass emptyHR (\hr cls -> return (addNode hr cls))
   ]
 
 jsons :: OutputFormat
