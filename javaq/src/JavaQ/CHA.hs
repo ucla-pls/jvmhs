@@ -31,9 +31,11 @@ import           Control.Lens        hiding (argument, (.=))
 import           Jvmhs
 import           Jvmhs.Data.Named
 
+import           JavaQ.HR
+
 import           Debug.Trace         as T
 
-newtype CHA = CHA { getClassHierarchy :: HashMap.HashMap ClassName CHAInfo }
+newtype CHA = CHA { getClassHierarchyAnalysis :: HashMap.HashMap ClassName CHAInfo }
   deriving (Show, Eq)
 
 emptyCHA :: CHA
@@ -60,10 +62,36 @@ emptyCHAInfo :: CHAInfo
 emptyCHAInfo =
   CHAInfo Set.empty [] Set.empty Set.empty False HashMap.empty
 
+-- topological sort on classes
+getClassOrder :: HR -> [ClassName]
+getClassOrder (HR hr) = []
+
 -- buildMethods :: HR -> CHA
 -- buildMethods (HR hm) = CHA hm
 --   where
 --     ord = getClassOrder hm
 
+    -- NOTE: need to check if it unions or not
+    -- superMethods =
+    --   chi ^. (hrSuperclasses.folded).to getOrEmpty . hrCallableMethods
+    -- itfcMethods =
+    --   chi ^. (hrImplements.folded).to getOrEmpty . hrCallableMethods
+    -- upperMethods = HashMap.union (HashMap.union clsMethods superMethods) itfcMethods
+    -- lowerMethodsImpl = 
+    --   chi ^. (hrImplementedBy.folded).to getOrEmpty . hrCallableMethods 
+    -- fullMethods = 
+    --   insertOnFind (cls ^. className) lowerMethodsImpl upperMethods
+
+        -- return (cn, getOrEmpty cn & hrExtendedBy <>~ extends 
+        --                           & hrImplementedBy <>~ implementedBy
+        --                           & hrCallableMethods %~ insertOnFind cn (chi ^. hrCallableMethods))
+
+    -- updateCallable clsnm =
+    --   HashMap.unionWith
+    --     (\parentSet childSet ->
+    --        if (Set.member clsnm childSet)
+    --          then childSet
+    --          else parentSet <> childSet) $
+    --   chi ^. hrCallableMethods
 
 $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''CHAInfo)
