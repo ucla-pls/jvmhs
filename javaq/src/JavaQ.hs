@@ -26,6 +26,9 @@ import qualified Data.HashSet                 as Set
 -- lens
 import           Control.Lens                 hiding (argument, (.=))
 
+-- aeson
+import qualified Data.Aeson as Json
+
 -- mtl
 import           Control.Monad.Reader
 
@@ -270,7 +273,7 @@ runCommand classloader (Command _ fmt tp) = do
       Csv _ fn ->
         BL.putStr . Csv.encode . fn
       Json fn ->
-        BL.putStrLn . fn
+        BL.putStrLn . Json.encode . fn
 
     inClasspool :: forall m. (MonadReader Config m, MonadIO m) => (forall r. ClassReader r => CachedClassPoolT r m ()) -> m ()
     inClasspool dothis = do

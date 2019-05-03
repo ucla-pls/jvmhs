@@ -49,12 +49,11 @@ instance Csv.DefaultOrdered MethodMetric where
   headerOrder = Csv.genericHeaderOrder (Csv.defaultOptions { Csv.fieldLabelModifier = Json.camelTo2 '_' . drop 2 })
 
 
-
 methodmetricCmd :: CommandSpec
 methodmetricCmd = CommandSpec
   "method-metrics"
   "A stream of method metrics."
-  [ Json Json.encode
+  [ Json id
   , Csv (Csv.headerOrder (undefined :: MethodMetric)) (map Csv.toRecord)
   ]
   (Stream $ Classes fn)

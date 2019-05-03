@@ -155,7 +155,11 @@ footerFromCommands :: [CommandSpec] -> D.Doc
 footerFromCommands cmds =
   D.nest 2 $
   D.text "Commands:"
-  D.<$> "Here is a list of all commands. "
+  D.<$> D.string (
+  "Here is a list of all commands."
+  ++ " A command can be written as the first matching prefix,"
+  ++ " and the format after a '+'.")
+  D.<$> D.indent 2 ("Examples:" D.<$> D.indent 2 ("'li+c' = list-classes+csv" D.<$> "'d' = decompile+json"))
   D.<$> D.empty
   D.<$> joinFormats cmds formatCommand
 

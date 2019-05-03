@@ -69,7 +69,7 @@ instance Csv.DefaultOrdered ClassMetric where
 classmetricsCmd :: CommandSpec
 classmetricsCmd = CommandSpec "class-metrics"
   "A stream of metrics for the classes."
-  [ Json Json.encode
+  [ Json id
   , Csv (Csv.headerOrder (undefined :: ClassMetric)) ((:[]) . Csv.toRecord)
   ]
   . Stream $ ClassBytes fn

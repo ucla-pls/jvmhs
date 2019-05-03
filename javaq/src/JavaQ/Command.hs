@@ -30,6 +30,9 @@ import qualified Data.ByteString.Lazy.Char8   as BL
 -- lens
 import           Control.Lens                 hiding (argument, (.=))
 
+-- aeson
+import qualified Data.Aeson as Json
+
 -- text
 import qualified Data.Text                    as Text
 
@@ -42,10 +45,10 @@ import qualified Text.PrettyPrint.ANSI.Leijen as D
 -- jvmhs
 import           Jvmhs
 
-data Format a
-  = Txt (a -> Text.Text)
-  | Csv Csv.Header (a -> [Csv.Record])
-  | Json (a -> BL.ByteString)
+data Format a where
+  Txt :: (a -> Text.Text) -> Format a
+  Csv :: Csv.Header -> (a -> [Csv.Record]) -> Format a
+  Json :: Json.ToJSON b => (a -> b) -> Format a
 
 formatName :: Format a -> Text.Text
 formatName = \case

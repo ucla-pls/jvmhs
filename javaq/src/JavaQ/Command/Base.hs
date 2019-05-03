@@ -10,9 +10,6 @@ Base
 -}
 module JavaQ.Command.Base where
 
--- aeson
-import qualified Data.Aeson                   as Json
-
 -- lens
 import           Control.Lens                 hiding (argument, (.=))
 
@@ -41,9 +38,9 @@ listMethodsCmd :: CommandSpec
 listMethodsCmd = CommandSpec
   "list-methods"
   "A stream of method names."
-  [ Txt ( Text.intercalate "\n"
-          . map (\(c, m) -> view fullyQualifiedName c <> "." <> methodNameToText m :: Text.Text)
-        )
+  [ Txt $
+    Text.intercalate "\n"
+    . map (\(c, m) -> view fullyQualifiedName c <> "." <> methodNameToText m)
   , Csv (Csv.header ["class", "name"]) (map Csv.toRecord)
   ]
   (Stream $ Classes (toListOf classAbsMethodNames))
@@ -52,9 +49,9 @@ listFieldsCmd :: CommandSpec
 listFieldsCmd = CommandSpec
   "list-fields"
   "A stream of field names."
-  [ Txt ( Text.intercalate "\n"
-          . map (\(c, m) -> view fullyQualifiedName c <> "." <> fieldNameToText m)
-        )
+  [ Txt
+    $ Text.intercalate "\n"
+    . map (\(c, m) -> view fullyQualifiedName c <> "." <> fieldNameToText m)
   , Csv (Csv.header ["class", "name"]) (map Csv.toRecord)
   ]
   (Stream $ Classes (toListOf classAbsFieldNames))
@@ -72,7 +69,7 @@ containersCmd = CommandSpec "containers"
 decompileCmd :: CommandSpec
 decompileCmd = CommandSpec "decompile"
   "A stream of decompiled classes."
-  [ Json Json.encode
+  [ Json id
   ]
   . Stream
   $ Classes id
