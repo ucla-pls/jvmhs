@@ -21,6 +21,7 @@ import qualified Data.Csv                     as Csv
 
 -- jvmhs
 import           Jvmhs
+import           Jvmhs.Data.Named
 
 -- javaq
 import JavaQ.Command
@@ -31,30 +32,25 @@ listClassesCmd = CommandSpec "list-classes"
   [ Txt (view fullyQualifiedName)
   , Csv (Csv.header ["name"]) (\a -> [Csv.record [ Csv.toField a ]])
   ]
-  . Stream
-  $ Containers fst
+  . Stream $ ClassNames const
 
 listMethodsCmd :: CommandSpec
 listMethodsCmd = CommandSpec
   "list-methods"
   "A stream of method names."
-  [ Txt $
-    Text.intercalate "\n"
-    . map (\(c, m) -> view fullyQualifiedName c <> "." <> methodNameToText m)
-  , Csv (Csv.header ["class", "name"]) (map Csv.toRecord)
+  [ Txt (\(c, m) -> view fullyQualifiedName c <> "." <> methodNameToText m)
+  , Csv (Csv.header ["class", "name"]) ((:[]) . Csv.toRecord)
   ]
-  (Stream $ Classes (toListOf classAbsMethodNames))
+  . Stream $ Methods (\cn m -> (cn, m ^. name))
 
 listFieldsCmd :: CommandSpec
 listFieldsCmd = CommandSpec
   "list-fields"
   "A stream of field names."
-  [ Txt
-    $ Text.intercalate "\n"
-    . map (\(c, m) -> view fullyQualifiedName c <> "." <> fieldNameToText m)
-  , Csv (Csv.header ["class", "name"]) (map Csv.toRecord)
+  [ Txt (\(c, f) -> view fullyQualifiedName c <> "." <> fieldNameToText f)
+  , Csv (Csv.header ["class", "name"]) ((:[]) . Csv.toRecord)
   ]
-  (Stream $ Classes (toListOf classAbsFieldNames))
+  . Stream $ Fields (\cn f -> (cn, f ^. name))
 
 
 containersCmd :: CommandSpec
@@ -64,7 +60,7 @@ containersCmd = CommandSpec "containers"
   , Csv (Csv.header ["name", "container"]) (\a -> [Csv.toRecord a])
   ]
   . Stream
-  $ Containers id
+  $ ClassNames (,)
 
 decompileCmd :: CommandSpec
 decompileCmd = CommandSpec "decompile"

@@ -174,7 +174,15 @@ footerFromCommands cmds =
 
     formatCommandType :: [Format a] -> CommandType a -> D.Doc
     formatCommandType fmts = \case
-      Stream _ ->
-        "stream" D.<+> D.tupled (map formatFormat fmts)
+      Stream a ->
+        "stream" D.<+> D.brackets (formatIterator a) D.<+> D.tupled (map formatFormat fmts)
+
+    formatIterator :: Iterator a -> D.Doc
+    formatIterator = \case
+      ClassNames _ -> "classnames"
+      ClassFiles _ -> "classfiles"
+      Classes _ -> "classes"
+      Methods _ -> "methods"
+      Fields _ -> "fields"
 
     formatFormat = doc . formatName

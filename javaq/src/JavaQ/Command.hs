@@ -57,12 +57,17 @@ formatName = \case
   Json _ -> "json"
 
 data CommandType a where
-  Stream :: StreamFunction a -> CommandType a
+  Stream :: Iterator a -> CommandType a
+  -- Accumulator :: Iterator m -> a -> (a -> m -> a) -> CommandType a
+  -- Fold :: Monoid m => Iterator m -> CommandType m
 
-data StreamFunction a
-  = Containers ((ClassName, ClassContainer) -> a)
-  | ClassBytes ((ClassName, BL.ByteString) -> a)
+data Iterator a
+  = ClassNames (ClassName -> ClassContainer -> a)
+  | ClassFiles (ClassName -> ClassContainer -> BL.ByteString -> a)
   | Classes (Class -> a)
+  | Methods (ClassName -> Method -> a)
+  | Fields  (ClassName -> Field -> a)
+
 
 -- | The `Command` is about how to query the code.
 data CommandSpec = forall a. CommandSpec

@@ -242,26 +242,38 @@ runConfig = runReaderT $ do
 runCommand :: ClassLoader -> Command -> ReaderT Config IO ()
 runCommand classloader (Command _ fmt tp) = do
   inClasspool $ case tp of
-    Stream (Containers fn) -> do
+    Stream (ClassNames fn) -> do
       r <- classReader <$> CachedClassPoolT ask
       liftIO $ do
-        c <- classes r
         preludeFormat fmt
-        mapM_ (applyFormat fmt . fn) c
+        mapM_ (applyFormat fmt . uncurry fn) =<< classes r
+
+    Stream (ClassFiles fn) -> do
+      r <- classReader <$> CachedClassPoolT ask
+      liftIO $ do
+        clss <- classes r
+        preludeFormat fmt
+        forM_ clss $ \(cn, cc) -> do
+          getClassBytes r cn >>= \case
+            Right cls -> applyFormat fmt $ fn cn cc cls
+            Left msg -> hPrint stderr msg
 
     Stream (Classes fn) -> do
       liftIO $ preludeFormat fmt
       streamClasses (liftIO . applyFormat fmt . fn)
 
-    Stream (ClassBytes fn) -> do
-      r <- classReader <$> CachedClassPoolT ask
-      liftIO $ do
-        clss <- classes r
-        preludeFormat fmt
-        forM_ clss $ \(cn, _) -> do
-          getClassBytes r cn >>= \case
-            Right cls -> applyFormat fmt $ fn (cn, cls)
-            Left msg -> hPrint stderr msg
+    Stream (Methods fn) -> do
+      liftIO $ preludeFormat fmt
+      streamClasses $ \cls -> liftIO $ do
+        forMOf_ (classMethodList.folded) cls $ \m ->
+          applyFormat fmt (fn (cls^.className) m)
+
+    Stream (Fields fn) -> do
+      liftIO $ preludeFormat fmt
+      streamClasses $ \cls -> liftIO $ do
+        forMOf_ (classFieldList.folded) cls $ \f ->
+          applyFormat fmt (fn (cls^.className) f)
+
   where
     preludeFormat = \case
       Csv h _ ->
