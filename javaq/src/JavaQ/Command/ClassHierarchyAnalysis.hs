@@ -11,7 +11,7 @@
 {-# LANGUAGE TemplateHaskell           #-}
 {-# LANGUAGE TupleSections             #-}
 {-# LANGUAGE TypeFamilies              #-}
-module JavaQ.CHA where
+module JavaQ.Command.ClassHierarchyAnalysis where
 
 -- base
 import           Data.Maybe
@@ -31,7 +31,7 @@ import           Control.Lens        hiding (argument, (.=))
 import           Jvmhs
 import           Jvmhs.Data.Named
 
-import           JavaQ.HR
+import           JavaQ.Command.Hierarchy
 
 import           Debug.Trace         as T
 

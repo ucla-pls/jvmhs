@@ -177,6 +177,9 @@ footerFromCommands cmds =
       Stream a ->
         "stream" D.<+> D.brackets (formatIterator a) D.<+> D.tupled (map formatFormat fmts)
 
+      Accumulator a _ _  ->
+        "accum" D.<+> D.brackets (formatIterator a) D.<+> D.tupled (map formatFormat fmts)
+
     formatIterator :: Iterator a -> D.Doc
     formatIterator = \case
       ClassNames _ -> "classnames"

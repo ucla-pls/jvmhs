@@ -58,7 +58,7 @@ formatName = \case
 
 data CommandType a where
   Stream :: Iterator a -> CommandType a
-  -- Accumulator :: Iterator m -> a -> (a -> m -> a) -> CommandType a
+  Accumulator :: Iterator m -> a -> (a -> m -> a) -> CommandType a
   -- Fold :: Monoid m => Iterator m -> CommandType m
 
 data Iterator a

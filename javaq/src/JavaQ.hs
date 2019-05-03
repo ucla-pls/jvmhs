@@ -31,6 +31,7 @@ import qualified Data.Aeson as Json
 
 -- mtl
 import           Control.Monad.Reader
+import           Control.Monad.State
 
 -- text
 import qualified Data.Text.IO                 as Text
@@ -47,6 +48,7 @@ import           JavaQ.Command
 import           JavaQ.Command.Base
 import           JavaQ.Command.ClassMetric
 import           JavaQ.Command.MethodMetric
+import           JavaQ.Command.Hierarchy
 
 main :: IO ()
 main = do
@@ -58,6 +60,7 @@ main = do
     , decompileCmd
     , classmetricsCmd
     , methodmetricCmd
+    , hierarchyCmd
     ]
   runConfig config
 
@@ -175,7 +178,7 @@ main = do
 --         <> "nodes" .= nonodes
 --         <> "edges" .= (grph^.innerGraph.to FGL.size)
 --         <> "scc" .= noscc
---         <> "out_degree" .= meanOf (graphContexts.to FGL.outdeg')
+  --         <> "out_degree" .= meanOf (graphContexts.to FGL.outdeg')
 --         <> "in_degree" .= meanOf (graphContexts.to FGL.indeg')
 --     ]
 --   , Format "hierarchy" "Outputs the class relation relation" hierarchy
@@ -241,14 +244,14 @@ runConfig = runReaderT $ do
 
 runCommand :: ClassLoader -> Command -> ReaderT Config IO ()
 runCommand classloader (Command _ fmt tp) = do
-  inClasspool $ case tp of
-    Stream (ClassNames fn) -> do
+  case tp of
+    Stream (ClassNames fn) -> inClasspool $ do
       r <- classReader <$> CachedClassPoolT ask
       liftIO $ do
         preludeFormat fmt
         mapM_ (applyFormat fmt . uncurry fn) =<< classes r
 
-    Stream (ClassFiles fn) -> do
+    Stream (ClassFiles fn) -> inClasspool $ do
       r <- classReader <$> CachedClassPoolT ask
       liftIO $ do
         clss <- classes r
@@ -258,21 +261,35 @@ runCommand classloader (Command _ fmt tp) = do
             Right cls -> applyFormat fmt $ fn cn cc cls
             Left msg -> hPrint stderr msg
 
-    Stream (Classes fn) -> do
+    Stream (Classes fn) -> inClasspool $  do
       liftIO $ preludeFormat fmt
       streamClasses (liftIO . applyFormat fmt . fn)
 
-    Stream (Methods fn) -> do
+    Stream (Methods fn) -> inClasspool $ do
       liftIO $ preludeFormat fmt
       streamClasses $ \cls -> liftIO $ do
         forMOf_ (classMethodList.folded) cls $ \m ->
           applyFormat fmt (fn (cls^.className) m)
 
-    Stream (Fields fn) -> do
+    Stream (Fields fn) -> inClasspool $ do
       liftIO $ preludeFormat fmt
       streamClasses $ \cls -> liftIO $ do
         forMOf_ (classFieldList.folded) cls $ \f ->
           applyFormat fmt (fn (cls^.className) f)
+
+    Accumulator (Classes fn) initial acc -> do
+      liftIO $ preludeFormat fmt
+      (r, _) <- flip execStateT (initial, 0 :: Int) $ inClasspool $ do
+        r <- classReader <$> CachedClassPoolT ask
+        count <- length <$> liftIO (classes r)
+        streamClasses $ \cls -> do
+          modify' (\(s, n) -> (acc s (fn cls), (n+1)))
+          n <- gets snd
+          when (n `mod` 100 == 0) $
+            liftIO . hPutStrLn stderr $ show n ++ "/" ++ show count ++ "\r"
+      liftIO $ applyFormat fmt r
+
+    Accumulator _ _ _ -> return ()
 
   where
     preludeFormat = \case
