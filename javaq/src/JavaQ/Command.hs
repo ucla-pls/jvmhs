@@ -27,9 +27,6 @@ import           Data.HexString
 -- bytestring
 import qualified Data.ByteString.Lazy.Char8   as BL
 
--- aeson
-import qualified Data.Aeson                   as Json
-
 -- lens
 import           Control.Lens                 hiding (argument, (.=))
 
@@ -90,34 +87,14 @@ instance Show Command where
 doc :: Text.Text -> D.Doc
 doc = D.text . Text.unpack
 
-classnameCmd :: CommandSpec
-classnameCmd = CommandSpec "list"
-  "A stream of class names."
-  [ Txt (view fullyQualifiedName)
-  , Csv (Csv.header ["name"]) (\a -> [Csv.record [ Csv.toField a ]])
-  ]
-  . Stream
-  $ Containers fst
-
-containersCmd :: CommandSpec
-containersCmd = CommandSpec "containers"
-  "A stream of class names and their containers."
-  [ Txt (\(a, c) -> view fullyQualifiedName a <> "\t" <> Text.pack (classContainerFilePath c))
-  , Csv (Csv.header ["name", "container"]) (\a -> [Csv.toRecord a])
-  ]
-  . Stream
-  $ Containers id
-
-decompileCmd :: CommandSpec
-decompileCmd = CommandSpec "decompile"
-  "A stream of decompiled classes."
-  [ Json Json.encode
-  ]
-  . Stream
-  $ Classes id
-
 instance Csv.ToField ClassName where
   toField = Csv.toField . view fullyQualifiedName
+
+instance Csv.ToField MethodName where
+  toField = Csv.toField . methodNameToText
+
+instance Csv.ToField FieldName where
+  toField = Csv.toField . fieldNameToText
 
 instance Csv.ToField ClassContainer where
   toField = Csv.toField . classContainerFilePath

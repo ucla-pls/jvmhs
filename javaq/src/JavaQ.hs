@@ -41,75 +41,20 @@ import           Jvmhs
 -- javaq
 import           JavaQ.Config
 import           JavaQ.Command
+import           JavaQ.Command.Base
 import           JavaQ.Command.ClassMetric
-
--- data OutputFormat
---   = Stream (StreamFunction (ReaderT Config IO))
---   | Aggregate ([ClassPoolReadError] -> ClassPoolT (ReaderT Config IO) ())
---   | Folding (FoldFunction (ReaderT Config IO))
---   | Group [Format]
-
--- data FoldFunction m
---   = forall r. (ToJSON r, FromJSON r, Monoid r) => MonoidalFoldClass (Class -> m r)
---   | forall r. (ToJSON r, FromJSON r)           => FoldClass r (r -> Class -> m r)
-
--- data StreamFunction m
---   = StreamContainer ( (ClassName, ClassContainer) -> m () )
---   | StreamClassName ( ClassName -> m () )
---   | StreamClass ( Class -> m () )
-
--- data Format = Format
---   { formatName        :: Text.Text
---   , formatDescription :: D.Doc
---   , formatType        :: OutputFormat
-  -- }
--- instance Show Format where
---   show x = "Format { formatName = " ++ show (formatName x) ++ " , ...}"
-
-
-
--- footerFromFormats :: [Format] -> D.Doc
--- footerFromFormats fts =
---   D.nest 2 $
---     D.text "Formats:"
---     D.<$> "Here is a list of all formats that can be used with the"
---     D.<+> "with the --format option."
---     D.<$> D.empty
---     D.<$> joinFormats fts (formatFormatter "")
---   where
---     joinFormats fs fn =
---       D.vcat . map ((<> D.line) . fn) $ fs
-
---     formatFormatter prefix (Format name desc type_) =
---       D.nest 2 $
---       let
---         nameDoc = prefix D.<> doc name
---         title = D.green (nameDoc D.<> D.colon)
---       in case type_ of
---         Stream _ ->
---           title D.<+> D.parens "stream"
---           D.<$> desc
---         Aggregate _ ->
---           title D.<+> D.parens "aggregate"
---           D.<$> desc
---         Folding _ ->
---           title D.<+> D.parens "fold"
---           D.<$> desc
---         Group fmts ->
---           let prefix' = prefix D.<> doc name D.<> "-"
---           in
---             title D.<+> D.parens ("default:" D.<+> (prefix' D.<> (doc . formatName . head $ fmts)))
---             D.<$> desc
---             D.<$> D.empty
---             D.<$> joinFormats fmts (formatFormatter (prefix D.<> doc name D.<> "-"))
+import           JavaQ.Command.MethodMetric
 
 main :: IO ()
 main = do
   config <- getConfig
-    [ classnameCmd
+    [ listClassesCmd
+    , listMethodsCmd
+    , listFieldsCmd
     , containersCmd
     , decompileCmd
     , classmetricsCmd
+    , methodmetricCmd
     ]
   runConfig config
 

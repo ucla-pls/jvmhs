@@ -21,15 +21,15 @@ import           Data.HexString
 -- cryptohash-sha256
 import           Crypto.Hash.SHA256           as SHA256
 
--- aeson
-import qualified Data.Aeson                   as Json
-import qualified Data.Aeson.TH                as Json
-
 -- lens
 import           Control.Lens                 hiding (argument, (.=))
 
 -- text
 import qualified Data.Text                    as Text
+
+-- aeson
+import qualified Data.Aeson                   as Json
+import qualified Data.Aeson.TH                as Json
 
 -- cassava
 import qualified Data.Csv                     as Csv
