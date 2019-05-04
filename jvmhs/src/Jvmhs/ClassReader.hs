@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE TemplateHaskell      #-}
@@ -41,6 +42,7 @@ module Jvmhs.ClassReader
   , convertClass
 
   , ClassContainer (..)
+  , classContainerFilePath
 
   , CFolder (..)
   , toFilePath
@@ -81,10 +83,10 @@ import           System.FilePath
 import           System.Process
 
 -- mtl
-import Control.Monad.Except
+import           Control.Monad.Except
 
 -- unordered-containers
-import qualified Data.HashMap.Strict             as Map
+import qualified Data.HashMap.Strict  as Map
 
 -- zip-archive
 import           Codec.Archive.Zip
@@ -463,6 +465,11 @@ paths
   -> f ClassLoader
 paths = lib <> ext <> classpath
 
+classContainerFilePath :: ClassContainer -> FilePath
+classContainerFilePath = \case
+  CCFolder (CFolder fp)           -> fp
+  CCJar (CJar fp _)               -> fp
+  CCEntry (CEntry (CJar fp _, _)) -> fp
 
 -- | Get all the containers in a class loader
 containers :: ClassLoader -> IO [ ClassContainer ]

@@ -44,6 +44,7 @@ module Jvmhs.Data.Type
   , methodNameDescriptor
   , methodArgumentTypes
   , methodReturnType
+  , methodNameToText
 
   , MethodDescriptor
   , methodDArguments
@@ -55,6 +56,7 @@ module Jvmhs.Data.Type
   , fieldNameId
   , fieldNameDescriptor
   , fieldType
+  , fieldNameToText
 
   , FieldDescriptor
   , fieldDType

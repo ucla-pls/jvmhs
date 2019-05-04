@@ -116,7 +116,9 @@ module Jvmhs.Data.Class
 import           Control.Monad
 import           Data.Either
 import           Data.Maybe
-import qualified Data.Set                                as Set
+import           Data.Word
+import           GHC.Generics                            (Generic)
+import           Unsafe.Coerce
 
 -- deep-seq
 import           Control.DeepSeq
@@ -131,10 +133,8 @@ import           Data.Aeson.TH
 -- text
 import qualified Data.Text                               as Text
 
--- base
-import           Data.Word
-import           GHC.Generics                            (Generic)
-import           Unsafe.Coerce
+-- containers
+import qualified Data.Set                                as Set
 
 -- unordered-containers
 import qualified Data.HashMap.Strict                     as HashMap
@@ -148,11 +148,11 @@ import qualified Language.JVM.Attribute.EnclosingMethod  as B
 import qualified Language.JVM.Attribute.Exceptions       as B
 import qualified Language.JVM.Attribute.InnerClasses     as B
 
+-- jvmhs
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Signature
 import           Jvmhs.Data.Type
-
 import           Jvmhs.Data.Named
 
 data InnerClass = InnerClass
