@@ -285,7 +285,7 @@ runCommand classloader (Command _ fmt tp) = do
         streamClasses $ \cls -> do
           modify' (\(s, n) -> (acc s (fn cls), (n+1)))
           n <- gets snd
-          when (n `mod` 100 == 0) $
+          when (n `mod` 1000 == 0) $
             liftIO . hPutStrLn stderr $ show n ++ "/" ++ show count ++ "\r"
       liftIO $ applyFormat fmt r
 
