@@ -285,8 +285,9 @@ runCommand classloader (Command _ fmt tp) = do
         streamClasses $ \cls -> do
           modify' (\(s, n) -> (acc s (fn cls), (n+1)))
           n <- gets snd
-          when (n `mod` 1000 == 0) $
-            liftIO . hPutStrLn stderr $ show n ++ "/" ++ show count ++ "\r"
+          when (n `mod` 100 == 0) . liftIO $ do
+            hPutStr stderr $ show n ++ "/" ++ show count ++ "\r"
+            hFlush stderr
       liftIO $ applyFormat fmt r
 
     Accumulator _ _ _ -> return ()
@@ -304,7 +305,10 @@ runCommand classloader (Command _ fmt tp) = do
       Json fn ->
         BL.putStrLn . Json.encode . fn
 
-    inClasspool :: forall m. (MonadReader Config m, MonadIO m) => (forall r. ClassReader r => CachedClassPoolT r m ()) -> m ()
+    inClasspool ::
+      forall m. (MonadReader Config m, MonadIO m)
+      => (forall r. ClassReader r => CachedClassPoolT r m ())
+      -> m ()
     inClasspool dothis = do
       preloaded' <- liftIO ( preload classloader )
       isFast <- view $ cfgFast
