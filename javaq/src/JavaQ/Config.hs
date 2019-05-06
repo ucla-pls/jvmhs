@@ -53,11 +53,16 @@ data Config = Config
   , _cfgUseStdlib      :: !Bool
   , _cfgFast           :: !Bool
   , _cfgCommand        :: !Command
+  , _cfgCommandConfig  :: !CommandConfig
   , _cfgComputeClosure :: !Bool
   , _cfgClassNames     :: !([ ClassName ])
   } deriving (Show)
 
 makeLenses ''Config
+
+instance HasCommandConfig Config where
+  commandConfig = cfgCommandConfig
+
 
 parseConfig :: (Maybe ClassPath) -> FilePath -> [CommandSpec] -> Parser Config
 parseConfig mcp jre cmds = do
@@ -92,6 +97,14 @@ parseConfig mcp jre cmds = do
       "Do not read any attributes, including the byte code instructions. "
       <> "This can be much faster but it changes the behavior of some commands."
       )
+
+  _cfgCommandConfig <- do
+    _cfgHierarchy <- optional . option str
+      $ long "hierarchy"
+      <> hidden
+      <> help "The a file that contains the hierarchy, if already computed."
+
+    return $ CommandConfig {..}
 
   _cfgCommand <-
     argument (maybeReader $ findCommand cmds . Text.pack) $
@@ -159,7 +172,10 @@ footerFromCommands cmds =
   "Here is a list of all commands."
   ++ " A command can be written as the first matching prefix,"
   ++ " and the format after a '+'.")
-  D.<$> D.indent 2 ("Examples:" D.<$> D.indent 2 ("'li+c' = list-classes+csv" D.<$> "'d' = decompile+json"))
+  D.<$> D.indent 2 (
+    "Examples:"
+    D.<$> D.indent 2 ("'li+c' = list-classes+csv" D.<$> "'d' = decompile+json")
+    )
   D.<$> D.empty
   D.<$> joinFormats cmds formatCommand
 
@@ -179,6 +195,9 @@ footerFromCommands cmds =
 
       Accumulator a _ _  ->
         "accum" D.<+> D.brackets (formatIterator a) D.<+> D.tupled (map formatFormat fmts)
+
+      Algorithm _ ->
+        "algorithm" D.<+> D.tupled (map formatFormat fmts)
 
     formatIterator :: Iterator a -> D.Doc
     formatIterator = \case

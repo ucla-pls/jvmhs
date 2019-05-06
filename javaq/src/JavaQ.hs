@@ -292,6 +292,12 @@ runCommand classloader (Command _ fmt tp) = do
 
     Accumulator _ _ _ -> return ()
 
+
+    Algorithm fn -> do
+      inClasspool $ do
+        a <- fn
+        liftIO $ applyFormat fmt a
+
   where
     preludeFormat = \case
       Csv h _ ->

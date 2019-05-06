@@ -45,6 +45,9 @@ import qualified Text.PrettyPrint.ANSI.Leijen as D
 -- jvmhs
 import           Jvmhs
 
+-- mtl
+import Control.Monad.Reader
+
 data Format a where
   Txt :: (a -> Text.Text) -> Format a
   Csv :: Csv.Header -> (a -> [Csv.Record]) -> Format a
@@ -56,10 +59,20 @@ formatName = \case
   Csv _ _ -> "csv"
   Json _ -> "json"
 
+data CommandConfig = CommandConfig
+  { _cfgHierarchy :: Maybe FilePath
+  } deriving (Show)
+
+makeClassy ''CommandConfig
+
 data CommandType a where
   Stream :: Iterator a -> CommandType a
   Accumulator :: Iterator m -> a -> (a -> m -> a) -> CommandType a
   -- Fold :: Monoid m => Iterator m -> CommandType m
+  Algorithm ::
+    (forall m c. (HasCommandConfig c, MonadIO m, MonadReader c m, MonadClassPool m) => m a)
+    -> CommandType a
+
 
 data Iterator a
   = ClassNames (ClassName -> ClassContainer -> a)

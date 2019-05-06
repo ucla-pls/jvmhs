@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
@@ -41,7 +42,7 @@ module Jvmhs.Data.Code
   , verificationTypeInfo
   , VerificationTypeInfo
 
-  , ByteCodeOpr
+  , ByteCodeInst
   )
   where
 
@@ -66,7 +67,7 @@ import qualified Language.JVM.Attribute.StackMapTable as B
 
 import           Jvmhs.Data.Type
 
-type ByteCodeOpr = B.ByteCodeOpr B.High
+type ByteCodeInst = B.ByteCodeInst B.High
 -- type LineNumberTable = B.LineNumberTable B.High
 type StackMapTable = B.StackMapTable B.High
 type VerificationTypeInfo = B.VerificationTypeInfo B.High
@@ -74,7 +75,7 @@ type VerificationTypeInfo = B.VerificationTypeInfo B.High
 data Code = Code
   { _codeMaxStack       :: !Word16
   , _codeMaxLocals      :: !Word16
-  , _codeByteCode       :: !(V.Vector ByteCodeOpr)
+  , _codeByteCode       :: !(V.Vector ByteCodeInst)
   , _codeExceptionTable :: ![ExceptionHandler]
   , _codeStackMap       :: !(Maybe StackMapTable)
   } deriving (Show, Eq, Generic, NFData)
@@ -95,7 +96,7 @@ fromBinaryCode =
   Code
     <$> B.codeMaxStack
     <*> B.codeMaxLocals
-    <*> B.codeByteCodeOprs
+    <*> B.codeByteCodeInsts
     <*> fmap (view $ from _Binary) . B.unSizedList . B.codeExceptionTable
     <*> B.codeStackMapTable
 
@@ -104,7 +105,7 @@ toBinaryCode c =
   B.Code
    (c^.codeMaxStack)
    (c^.codeMaxLocals)
-   (B.ByteCode $ c^.codeByteCode)
+   (B.ByteCode $ (0, c^.codeByteCode))
    (B.SizedList $ c^..codeExceptionTable.folded._Binary)
    (B.CodeAttributes (maybe [] (:[]) $ c^.codeStackMap) [] [])
 
@@ -128,7 +129,7 @@ instance FromJVMBinary (B.ExceptionTable B.High) ExceptionHandler where
 traverseCode ::
      (Traversal' Word16 a)
   -> (Traversal' Word16 a)
-  -> (Traversal' (V.Vector ByteCodeOpr) a)
+  -> (Traversal' (V.Vector ByteCodeInst) a)
   -> (Traversal' [ExceptionHandler] a)
   -> (Traversal' (Maybe StackMapTable) a)
   -> Traversal' Code a
@@ -166,10 +167,12 @@ verificationTypeInfo g (B.StackMapTable s) =
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
 
-instance ToJSON ByteCodeOpr where
-  toJSON bopr =
-    object $ ("opc" .= byteCodeOprOpCode bopr) : case bopr of
-
+instance ToJSON ByteCodeInst where
+  toJSON bopr = 
+    object $
+    ("opc" .= byteCodeOprOpCode (B.opcode bopr)) :
+    ("off" .= B.offset bopr) : 
+    case B.opcode bopr of
     B.ArrayLoad arrType ->
       [ "type" .= fromArrayType arrType
       ]
@@ -281,11 +284,11 @@ instance ToJSON ByteCodeOpr where
       []
 
     B.CheckCast ref ->
-      [ "classname" .= ref
+      [ "class" .= ref
       ]
 
     B.InstanceOf ref ->
-      [ "classname" .= ref
+      [ "class" .= ref
       ]
 
     B.Monitor enter ->
@@ -318,7 +321,7 @@ instance ToJSON ByteCodeOpr where
       []
 
 
-byteCodeOprOpCode :: ByteCodeOpr -> Text.Text
+byteCodeOprOpCode :: B.ByteCodeOpr B.High -> Text.Text
 byteCodeOprOpCode = \case
     B.ArrayLoad  _          -> "array_load"
     B.ArrayStore  _         -> "array_store"
@@ -407,13 +410,13 @@ instance ToJSON (B.WordSize) where
 instance ToJSON (B.CastOpr) where
   toJSON = \case
     B.CastDown smallarithmetictype -> object
-      [ "cast_type" .= String "down"
-      , "to_type" .= fromSmallArithmeticType smallarithmetictype
+      [ "kind" .= String "down"
+      , "to" .= fromSmallArithmeticType smallarithmetictype
       ]
     B.CastTo fromtype totype -> object
-      [ "cast_type" .= String "to"
-      , "from_type" .= fromArithmeticType fromtype
-      , "to_type" .= fromArithmeticType totype
+      [ "kind" .= String "to"
+      , "from" .= fromArithmeticType fromtype
+      , "to" .= fromArithmeticType totype
       ]
 
 
@@ -432,39 +435,6 @@ instance ToJSON (B.SwitchTable B.High) where
       [ "switch_low" .= switchLow
       , "offsets" .= switchOffsets
       ]
-
-
-instance ToJSON (B.AbsVariableMethodId B.High) where
-  toJSON = \case
-    B.VInterfaceMethodId interface_method -> object
-      [ "kind" .= String "interface_method"
-      , "method" .= interface_method
-      ]
-    B.VMethodId (B.InClass a b) -> object
-      [ "kind" .= String "method"
-      , "class" .= B.classNameAsText a
-      , "method" .= methodIDToText b
-      ]
-
-instance ToJSON (B.AbsInterfaceMethodId B.High) where
-  toJSON interfacemethod = object
-      [ "type" .= String "abs_interface_method"
-      , "method" .= interfacemethod
-      ]
-
-
-instance ToJSON (B.InvokeDynamic B.High) where
-  toJSON (B.InvokeDynamic attrIndex method) = object
-      [ "attr_index" .= attrIndex
-      , "method" .= method
-      ]
-
-instance ToJSON (B.MethodId) where
-  toJSON (B.MethodId name) = object
-      [ "signature" .= B.typeToText name
-      ]
-
-
 
 getListOfPairsFromBConstant :: Maybe JValue -> [Pair]
 getListOfPairsFromBConstant = \case
@@ -486,30 +456,29 @@ getListOfPairsFromBConstant = \case
       ]
     Just (VString a) ->
       [ "type" .= STRef
-      , "classname" .= String "java/lang/String"
+      , "class" .= String "java/lang/String"
       , "value" .= a
       ]
     Just (VClass a) ->
       [ "type" .= STRef
-      , "classname" .= String "java/lang/Class"
+      , "class" .= String "java/lang/Class"
       , "value" .= a
       ]
     Just (VMethodType a) ->
       [ "type" .= STRef
-      , "classname" .= String "java/lang/invoke/MethodType" 
+      , "class" .= String "java/lang/invoke/MethodType" 
       , "value" .= a
       ]
     Just (VMethodHandle a) ->
       [ "type" .= STRef
-      , "classname" .= String "java/lang/invoke/MethodHandle" 
+      , "class" .= String "java/lang/invoke/MethodHandle" 
       , "value" .= a
       ]
     Nothing ->
       [ "type" .= STRef
-      , "classname" .= String "java/lang/Object" 
+      , "class" .= String "java/lang/Object" 
       , "value" .= Null
       ]
-
 
 methodIDToText :: B.MethodId -> Text.Text
 methodIDToText (B.MethodId name) =
@@ -518,13 +487,6 @@ methodIDToText (B.MethodId name) =
 nameAndTypeFromFieldId :: B.FieldId -> Text.Text
 nameAndTypeFromFieldId (B.FieldId name) =
   B.typeToText name
-
-
-getInClassMethod ::B.AbsMethodId B.High -> [Pair]
-getInClassMethod (B.InClass a b) =
-  [ "class" .= B.classNameAsText a
-  , "method" .= methodIDToText b
-  ]
 
 getInvocationAttributes :: B.Invocation B.High -> [Pair]
 getInvocationAttributes = \case
@@ -554,31 +516,26 @@ getAbsInterfaceMethodId :: B.AbsInterfaceMethodId B.High -> [Pair]
 getAbsInterfaceMethodId (B.AbsInterfaceMethodId interfaceMethodId) 
     = getInClassMethod interfaceMethodId
 
-
 getAbsVariableMethodId :: B.AbsVariableMethodId B.High -> [Pair]
 getAbsVariableMethodId = \case
-  B.VInterfaceMethodId a ->
-    [ "method" .= a
-    ]
-  B.VMethodId abs' ->
-    getInClassMethod abs'
+  B.VInterfaceMethodId (B.AbsInterfaceMethodId a) ->
+    ("interf" .= True) : getInClassMethod a
+  B.VMethodId a ->
+    ("interf" .= False) : getInClassMethod a
+
+
+getInClassMethod ::B.AbsMethodId B.High -> [Pair]
+getInClassMethod (B.InClass a b) =
+  [ "class" .= B.classNameAsText a
+  , "method" .= methodIDToText b
+  ]
 
 getInvokeDynamicMethod :: B.InvokeDynamic B.High -> [Pair]
 getInvokeDynamicMethod = \case 
   (B.InvokeDynamic attrIndex methodid) ->
-    [ "attr_index" .= attrIndex
+    [ "attr" .= attrIndex
     , "method" .= methodIDToText methodid
     ]
-
--- getArrayType :: B.ExactArrayType B.High -> [Pair]
--- getArrayType t =
---   ( "type" .= fromExactArrayType t
---   ) : case t of
---     B.EARef ref -> [ "array_ref" .= ref]
---     _ -> []
-
- 
-
 
 -- * Type Conversion
 
@@ -605,18 +562,6 @@ instance ToJSON SimpleType where
     STFloat -> "F"
     STDouble -> "D"
     STRef -> "R"
-
--- fromExactArrayType :: B.ExactArrayType B.High -> SimpleType
--- fromExactArrayType = \case
---   B.EABoolean -> STBoolean
---   B.EAByte -> STByte
---   B.EAChar -> STChar
---   B.EAShort -> STShort
---   B.EAInt -> STInteger
---   B.EALong -> STLong
---   B.EAFloat -> STFloat
---   B.EADouble -> STDouble
---   B.EARef _ -> STRef
 
 fromSmallArithmeticType :: B.SmallArithmeticType -> SimpleType
 fromSmallArithmeticType = \case
@@ -664,7 +609,7 @@ getTypeInfo = \case
   B.VTNull -> ["type" .= String "null"]
   B.VTObject ref ->
     [ "type" .= String "object"
-    , "class_ref" .= ref
+    , "class" .= ref
     ]
   B.VTUninitialized offset ->
     [ "type" .= String "uninitialized"
@@ -673,8 +618,6 @@ getTypeInfo = \case
   B.VTUninitializedThis  -> 
     [ "type" .= String "uninitialized_this"
     ]
-
-
 
 
 getFrameDetails :: B.StackMapFrameType B.High -> [Pair]

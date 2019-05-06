@@ -1,4 +1,4 @@
-resolver: lts-12.26
+resolver: lts-12.24
 packages:
 - jvmhs
 - javaq
@@ -10,11 +10,15 @@ packages:
       - reduce
       - reduce-util
   extra-dep: true
+- location: 
+    git: https://github.com/ucla-pls/jvm-binary.git
+    commit: e55478b1a663196a85c8328ed5374b44a4f1d629
+  extra-dep: true
 extra-deps: 
   - fgl-visualize-0.1.0.1
   - dotgen-0.4.2
   - mtl-2.2.2
-  - jvm-binary-0.3.0
+    # - jvm-binary-0.3.0
 flags: {}
 extra-package-dbs:
 build:

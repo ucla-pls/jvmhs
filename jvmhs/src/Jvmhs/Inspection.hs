@@ -110,9 +110,9 @@ instance Inspectable Code where
       nothing
       nothing
 
-instance Inspectable ByteCodeOpr where
-  classNames g o =
-    case o of
+instance Inspectable ByteCodeInst where
+  classNames g (B.ByteCodeInst off i) =
+    B.ByteCodeInst off <$> case i of
       B.Push c            -> B.Push <$> (traverse . classNames) g c
       B.Get fa c          -> B.Get fa <$> classNames g c
       B.Put fa c          -> B.Put fa <$> classNames g c
@@ -120,12 +120,12 @@ instance Inspectable ByteCodeOpr where
       B.New c             -> B.New <$> classNames g c
       B.CheckCast c       -> B.CheckCast <$> classNames g c
       B.InstanceOf c      -> B.InstanceOf <$> classNames g c
-      _                   -> pure o
+      _                   -> pure i
 
-  methodNames g o =
-    case o of
+  methodNames g (B.ByteCodeInst off i) =
+    B.ByteCodeInst off <$> case i of
       B.Invoke r -> B.Invoke <$> methodNames g r
-      _          -> pure o
+      _          -> pure i
 
 instance Inspectable ExceptionHandler where
   classNames =

@@ -25,6 +25,9 @@ import           Control.Monad.Reader
 -- filepath
 import           System.FilePath
 
+-- -- directory
+-- import           System.Directory
+
 -- cassava
 import qualified Data.Csv                              as C
 
@@ -56,6 +59,9 @@ import           UnliftIO.Directory
 
 -- text
 import qualified Data.Text.Lazy.Builder as Builder
+
+-- time
+import Data.Time.Clock.System
 
 -- base
 import           Data.Foldable
@@ -101,6 +107,7 @@ data Config = Config
   , _cfgJreFolder        :: !(Maybe FilePath)
   , _cfgTarget           :: !FilePath
   , _cfgOutput           :: !(Maybe FilePath)
+  , _cfgRecursive        :: !Bool
   , _cfgStrategy         :: !Strategy
   , _cfgReducerName      :: !ReducerName
   , _cfgPredicateOptions :: !PredicateOptions
@@ -148,6 +155,12 @@ configParser =
       <> metavar "FILE"
       <> help "the path output folder."
     ) <|> pure Nothing)
+
+    <*> switch
+    ( long "recursive" <> short 'r'
+      <> help "remove other files and reduce internal jars."
+    )
+
     <*> option strategyReader
     ( short 'S'
       <> long "strategy"
@@ -165,11 +178,12 @@ configParser =
       <> help "the core classes to not reduce."
       )
 
-    mkConfig l cores cp stdlib jre target output strat rname mkPredOpt = do
+    mkConfig l cores cp stdlib jre target output recur strat rname mkPredOpt = do
       classCore <- readClassNames cores
       predOpt <- mkPredOpt
       return $ Config l classCore
         cp stdlib jre target output
+        recur
         strat
         rname predOpt
 
@@ -194,7 +208,25 @@ main = do
 run :: ReaderT Config IO ()
 run = do
   workFolder <- view $ cfgPredicateOptions . to predOptWorkFolder
-  (toClassList -> clss, textra) <- unpackTarget (workFolder </> "unpacked")
+  (tclss, textra') <- unpackTarget (workFolder </> "unpacked")
+  let clss = toClassList tclss
+
+  textra <- view cfgRecursive >>= \case
+    True -> L.phase "remove extra files" $ do
+      let extras = toFileList textra'
+      predOpt' <- view cfgPredicateOptions
+      let predOpt = predOpt' { predOptWorkFolder = workFolder </> "extra-files" }
+      toPredicateM predOpt (fromDirTree "classes" . (tclss <>)  . fromJust . fromFileList . unCount) (counted extras) >>= \case
+        Just predicate -> do
+          rname <- view cfgReducerName
+          reduce rname Nothing predicate counted extras >>= \case
+            Just reduction -> do
+              return . fromJust . fromFileList . unCount $ reduction
+            Nothing -> do
+              failwith "The reduced result did not satisfy the predicate (flaky?)"
+        Nothing ->
+          failwith "Could not satisify the predicate."
+    False -> return $ textra'
 
   classreader <- preloadClasses
   void . flip runCachedClassPoolT (defaultFromReader classreader) $ do
@@ -202,23 +234,31 @@ run = do
       Just predicate -> do
         t' <- fromMaybe (fromClasses clss) <$> classReduction predicate clss
         liftRIO (runPredicateM predicate t') >>= \case
-          True -> outputResults textra (ccContent t')
+          True -> outputResults workFolder textra (ccContent t')
           False ->
             failwith "The reduced result did not satisfy the predicate (flaky?)"
       Nothing -> do
-        failwith "Could not satisfy predicate."
+        failwith "Could not satisfy the predicate."
   where
     failwith ::
       (HasLogger env, MonadReader env m, MonadIO m)
       => Builder.Builder
-      -> m ()
+      -> m a
     failwith msg = do
       L.err msg
       liftIO $ exitWith (ExitFailure 1)
 
-    outputResults textra t' = view cfgOutput >>= \case
-      Just output ->
-        liftIO.writeTreeWith copySame $ output :/ classesToFiles textra t'
+    outputResults workFolder textra t' =
+      view cfgOutput >>= \case
+      Just output
+        | isJar output -> liftIO $ do
+            let tmpFolder = (workFolder </> output)
+            writeTreeWith copySame $ tmpFolder :/ classesToFiles textra t'
+            arc <- withCurrentDirectory tmpFolder $ do
+              addFilesToArchive [OptRecursive] emptyArchive ["."]
+            BL.writeFile output (fromArchive arc)
+        | otherwise -> liftIO $ do
+          writeTreeWith copySame $ output :/ classesToFiles textra t'
       Nothing ->
         L.warn "Did not output to output."
 
