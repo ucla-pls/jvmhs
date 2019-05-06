@@ -49,6 +49,7 @@ import           JavaQ.Command.Base
 import           JavaQ.Command.ClassMetric
 import           JavaQ.Command.MethodMetric
 import           JavaQ.Command.Hierarchy
+import           JavaQ.Command.ClassHierarchyAnalysis
 
 main :: IO ()
 main = do
@@ -61,6 +62,7 @@ main = do
     , classmetricsCmd
     , methodmetricCmd
     , hierarchyCmd
+    , chaCmd
     ]
   runConfig config
 

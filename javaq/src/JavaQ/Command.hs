@@ -73,7 +73,6 @@ data CommandType a where
     (forall m c. (HasCommandConfig c, MonadIO m, MonadReader c m, MonadClassPool m) => m a)
     -> CommandType a
 
-
 data Iterator a
   = ClassNames (ClassName -> ClassContainer -> a)
   | ClassFiles (ClassName -> ClassContainer -> BL.ByteString -> a)

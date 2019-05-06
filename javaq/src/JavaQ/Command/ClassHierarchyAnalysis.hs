@@ -20,6 +20,9 @@ import           Data.Maybe
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.HashSet        as Set
 
+-- mtl
+import Control.Monad.Reader
+
 -- aeson
 import           Data.Aeson
 import           Data.Aeson.TH
@@ -32,6 +35,7 @@ import           Jvmhs
 import           Jvmhs.Data.Named
 
 import           JavaQ.Command.Hierarchy
+import           JavaQ.Command
 
 import           Debug.Trace         as T
 
@@ -95,3 +99,17 @@ getClassOrder (HR hr) = []
     --   chi ^. hrCallableMethods
 
 $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''CHAInfo)
+
+
+chaCmd :: CommandSpec
+chaCmd = CommandSpec
+  "cha"
+  "Cha ..."
+  [ Json id ]
+  (Algorithm computeCha)
+
+computeCha :: (HasCommandConfig c, MonadIO m, MonadReader c m, MonadClassPool m) => m String
+computeCha = do
+  mc <- getClass "java/lang/Object"
+  mf <- view cfgHierarchy
+  return (show mf ++ maybe "no" (const "yes") mc)
