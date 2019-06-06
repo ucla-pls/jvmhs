@@ -225,17 +225,6 @@ instance Inspectable (B.AbsMethodId B.High) where
     (\(cn', ci') -> B.InClass (cn' ^. _Binary) ( ci' ^. _Binary))
     <$> g (cn ^. from _Binary, ci ^. from _Binary)
 
-instance Inspectable (B.AbsVariableMethodId B.High) where
-  classNames g o =
-    case o of
-      B.VInterfaceMethodId s -> B.VInterfaceMethodId <$> classNames g s
-      B.VMethodId s          -> B.VMethodId <$> classNames g s
-
-  methodNames g o =
-    case o of
-      B.VInterfaceMethodId s -> B.VInterfaceMethodId <$> methodNames g s
-      B.VMethodId s          -> B.VMethodId <$> methodNames g s
-
 instance Inspectable (B.InvokeDynamic B.High) where
   classNames g (B.InvokeDynamic i dr) =
     B.InvokeDynamic i <$> classNames g dr

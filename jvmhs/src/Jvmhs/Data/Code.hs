@@ -105,7 +105,7 @@ toBinaryCode c =
   B.Code
    (c^.codeMaxStack)
    (c^.codeMaxLocals)
-   (B.ByteCode $ (0, c^.codeByteCode))
+   (B.ByteCode 0 (c^.codeByteCode))
    (B.SizedList $ c^..codeExceptionTable.folded._Binary)
    (B.CodeAttributes (maybe [] (:[]) $ c^.codeStackMap) [] [])
 
@@ -168,10 +168,10 @@ $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
 
 instance ToJSON ByteCodeInst where
-  toJSON bopr = 
+  toJSON bopr =
     object $
     ("opc" .= byteCodeOprOpCode (B.opcode bopr)) :
-    ("off" .= B.offset bopr) : 
+    ("off" .= B.offset bopr) :
     case B.opcode bopr of
     B.ArrayLoad arrType ->
       [ "type" .= fromArrayType arrType
@@ -450,7 +450,7 @@ getListOfPairsFromBConstant = \case
       [ "type" .= STDouble
       , "value" .= a
       ]
-    Just (VLong a) -> 
+    Just (VLong a) ->
       [ "type" .= STLong
       , "value" .= a
       ]
@@ -466,17 +466,17 @@ getListOfPairsFromBConstant = \case
       ]
     Just (VMethodType a) ->
       [ "type" .= STRef
-      , "class" .= String "java/lang/invoke/MethodType" 
+      , "class" .= String "java/lang/invoke/MethodType"
       , "value" .= a
       ]
     Just (VMethodHandle a) ->
       [ "type" .= STRef
-      , "class" .= String "java/lang/invoke/MethodHandle" 
+      , "class" .= String "java/lang/invoke/MethodHandle"
       , "value" .= a
       ]
     Nothing ->
       [ "type" .= STRef
-      , "class" .= String "java/lang/Object" 
+      , "class" .= String "java/lang/Object"
       , "value" .= Null
       ]
 
@@ -492,7 +492,7 @@ getInvocationAttributes :: B.Invocation B.High -> [Pair]
 getInvocationAttributes = \case
     B.InvkSpecial avmi ->
       ("kind" .= String "special")
-      : getAbsVariableMethodId avmi
+      : getInClassMethod avmi
 
     B.InvkVirtual abs' ->
       ("kind" .= String "virtual")
@@ -500,7 +500,7 @@ getInvocationAttributes = \case
 
     B.InvkStatic avmi ->
       ("kind" .= String "static")
-     : getAbsVariableMethodId avmi
+      : getInClassMethod avmi
 
     B.InvkInterface count avmi ->
        ["kind" .= String "interface"
@@ -513,16 +513,8 @@ getInvocationAttributes = \case
 
 
 getAbsInterfaceMethodId :: B.AbsInterfaceMethodId B.High -> [Pair]
-getAbsInterfaceMethodId (B.AbsInterfaceMethodId interfaceMethodId) 
+getAbsInterfaceMethodId (B.AbsInterfaceMethodId interfaceMethodId)
     = getInClassMethod interfaceMethodId
-
-getAbsVariableMethodId :: B.AbsVariableMethodId B.High -> [Pair]
-getAbsVariableMethodId = \case
-  B.VInterfaceMethodId (B.AbsInterfaceMethodId a) ->
-    ("interf" .= True) : getInClassMethod a
-  B.VMethodId a ->
-    ("interf" .= False) : getInClassMethod a
-
 
 getInClassMethod ::B.AbsMethodId B.High -> [Pair]
 getInClassMethod (B.InClass a b) =
@@ -531,7 +523,7 @@ getInClassMethod (B.InClass a b) =
   ]
 
 getInvokeDynamicMethod :: B.InvokeDynamic B.High -> [Pair]
-getInvokeDynamicMethod = \case 
+getInvokeDynamicMethod = \case
   (B.InvokeDynamic attrIndex methodid) ->
     [ "attr" .= attrIndex
     , "method" .= methodIDToText methodid
@@ -615,7 +607,7 @@ getTypeInfo = \case
     [ "type" .= String "uninitialized"
     , "offset" .= offset
     ]
-  B.VTUninitializedThis  -> 
+  B.VTUninitializedThis  ->
     [ "type" .= String "uninitialized_this"
     ]
 
