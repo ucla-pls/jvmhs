@@ -490,16 +490,18 @@ nameAndTypeFromFieldId (B.FieldId name) =
 
 getInvocationAttributes :: B.Invocation B.High -> [Pair]
 getInvocationAttributes = \case
-    B.InvkSpecial avmi ->
+    B.InvkSpecial (B.AbsVariableMethodId b avmi) ->
       ("kind" .= String "special")
+      : ("interface" .= b)
       : getInClassMethod avmi
 
     B.InvkVirtual abs' ->
       ("kind" .= String "virtual")
       : getInClassMethod abs'
 
-    B.InvkStatic avmi ->
+    B.InvkStatic (B.AbsVariableMethodId b avmi) ->
       ("kind" .= String "static")
+      : ("interface" .= b)
       : getInClassMethod avmi
 
     B.InvkInterface count avmi ->

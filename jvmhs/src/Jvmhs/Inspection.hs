@@ -217,6 +217,13 @@ instance Inspectable (B.AbsInterfaceMethodId B.High) where
   methodNames g (B.AbsInterfaceMethodId x) =
     B.AbsInterfaceMethodId <$> methodNames g x
 
+instance Inspectable (B.AbsVariableMethodId B.High) where
+  classNames g (B.AbsVariableMethodId b x) =
+    B.AbsVariableMethodId b <$> classNames g x
+
+  methodNames g (B.AbsVariableMethodId b x) =
+    B.AbsVariableMethodId b <$> methodNames g x
+
 instance Inspectable (B.AbsMethodId B.High) where
   classNames g (B.InClass cn ci) =
     B.InClass <$> classNames g cn <*> classNames g ci
