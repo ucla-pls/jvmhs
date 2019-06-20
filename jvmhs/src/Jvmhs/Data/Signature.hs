@@ -3,7 +3,7 @@
 {-|
 Module      : Jvmhs.Data.Signature
 Copyright   : (c) Christian Gram Kalhauge, 2018
-License     : MIT
+License     : BSD3
 Maintainer  : kalhauge@cs.ucla.edu
 
 -}

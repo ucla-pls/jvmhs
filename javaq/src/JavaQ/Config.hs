@@ -14,7 +14,7 @@
 Module      : JavaQ.Config
 Description : The config data structure
 Copyright   : (c) Christian Kalhauge <kalhauge@cs.ucla.edu>
-License     : MIT
+License     : BSD3
 Maintainer  : kalhauge@cs.ucla.edu
 
 The config data structure

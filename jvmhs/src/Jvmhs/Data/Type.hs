@@ -16,7 +16,7 @@
 {-|
 Module : Jvmhs.Data.Type
 Copyright : (c) Christian Gram Kalhauge, 2018
-License  : MIT
+License  : BSD3
 Maintainer : kalhauge@cs.ucla.edu
 
 This module reexports the Types from the `jvm-binary` packages, and creates

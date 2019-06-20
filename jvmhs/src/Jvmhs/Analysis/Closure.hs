@@ -7,7 +7,7 @@
 {-|
 Module      : Jvmhs.Analysis.Closure
 Copyright   : (c) Christian Gram Kalhauge, 2018
-License     : MIT
+License     : BSD3
 Maintainer  : kalhuage@cs.ucla.edu
 
 The purpose of this module is to compute closures over some items. Closures

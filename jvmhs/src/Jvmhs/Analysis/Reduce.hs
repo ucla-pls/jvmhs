@@ -4,7 +4,7 @@
 {-
 Module      : Jvmhs.Analysis.Hierarchy
 Copyright   : (c) Christian Gram Kalhauge, 2017
-License     : MIT
+License     : BSD3
 Maintainer  : kalhuage@cs.ucla.edu
 
 This module defines the a class hierarchy analysis.

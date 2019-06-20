@@ -10,7 +10,7 @@
 {-|
 Module      : Jvmhs.Data.Named
 Copyright   : (c) Christian Gram Kalhauge, 2018
-License     : MIT
+License     : BSD3
 Maintainer  : kalhauge@cs.ucla.edu
 
 A named container of items. This can be used to make efficient NameSets and

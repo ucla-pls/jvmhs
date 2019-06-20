@@ -6,7 +6,7 @@
 Module      : Jvmhs.Data.CallSite
 Description : A description of a call-site
 Copyright   : (c) Christian Kalhauge <kalhauge@cs.ucla.edu>
-License     : MIT
+License     : BSD3
 Maintainer  : kalhauge@cs.ucla.edu
 
 A description of a call-site

@@ -5,7 +5,7 @@
 Module      : JavaQ.Command.ClassMetric
 Description : ClassMetric
 Copyright   : (c) Christian Kalhauge <kalhauge@cs.ucla.edu>
-License     : MIT
+License     : BSD3
 Maintainer  : kalhauge@cs.ucla.edu
 
 -}

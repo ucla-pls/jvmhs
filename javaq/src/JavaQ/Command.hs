@@ -14,7 +14,7 @@
 Module      : JavaQ.Command
 Description : A command is one of many queries
 Copyright   : (c) Christian Kalhauge <kalhauge@cs.ucla.edu>
-License     : MIT
+License     : BSD3
 Maintainer  : kalhauge@cs.ucla.edu
 
 A command is one of many queries

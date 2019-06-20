@@ -5,7 +5,7 @@
 {-|
 Module      : Jvmhs.Inspection
 Copyright   : (c) Christian Gram Kalhauge, 2018
-License     : MIT
+License     : BSD3
 Maintainer  : kalhuage@cs.ucla.edu
 
 This module inspects the bytecode data structure.
