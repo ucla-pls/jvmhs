@@ -310,17 +310,17 @@ classAbsFieldNames =
 -- asMethodId (cls, m) = inClass (cls ^.className) (m ^.methodId)
 
 traverseClass ::
-  (Traversal' ClassName a)
-  -> (Traversal' (Maybe ClassName) a)
-  -> (Traversal' (Set.Set CAccessFlag) a)
-  -> (Traversal' (HashSet.HashSet ClassName) a)
-  -> (Traversal' (HashMap.HashMap FieldName FieldContent) a)
-  -> (Traversal' (HashMap.HashMap MethodName MethodContent) a)
-  -> (Traversal' [ BootstrapMethod ] a)
-  -> (Traversal' (Maybe ClassSignature) a)
-  -> (Traversal' (Maybe (ClassName, Maybe MethodName)) a)
-  -> (Traversal' [ InnerClass ] a)
-  -> (Traversal' Class a)
+  Traversal' ClassName a
+  -> Traversal' (Maybe ClassName) a
+  -> Traversal' (Set.Set CAccessFlag) a
+  -> Traversal' (HashSet.HashSet ClassName) a
+  -> Traversal' (HashMap.HashMap FieldName FieldContent) a
+  -> Traversal' (HashMap.HashMap MethodName MethodContent) a
+  -> Traversal' [ BootstrapMethod ] a
+  -> Traversal' (Maybe ClassSignature) a
+  -> Traversal' (Maybe (ClassName, Maybe MethodName)) a
+  -> Traversal' [ InnerClass ] a
+  -> Traversal' Class a
 traverseClass tcn tsn taf tis tfs tms tbs tss tem tin g s =
   Class
   <$> (tcn g . _className $ s)
@@ -333,15 +333,15 @@ traverseClass tcn tsn taf tis tfs tms tbs tss tem tin g s =
   <*> (tss g . _classSignature $ s)
   <*> (tem g . _classEnclosingMethod $ s)
   <*> (tin g . _classInnerClasses $ s)
-  <*> (pure $ _classVersion s)
+  <*> pure (_classVersion s)
 {-# INLINE traverseClass #-}
 
 traverseField ::
-     (Traversal' Text.Text a)
-  -> (Traversal' FieldDescriptor a)
-  -> (Traversal' (Set.Set FAccessFlag) a)
-  -> (Traversal' (Maybe JValue) a)
-  -> (Traversal' (Maybe FieldSignature) a)
+     Traversal' Text.Text a
+  -> Traversal' FieldDescriptor a
+  -> Traversal' (Set.Set FAccessFlag) a
+  -> Traversal' (Maybe JValue) a
+  -> Traversal' (Maybe FieldSignature) a
   -> Traversal' Field a
 traverseField tfn tfd taf tjv ts g s =
   mkField
@@ -358,12 +358,12 @@ traverseField tfn tfd taf tjv ts g s =
 {-# INLINE traverseField #-}
 
 traverseMethod ::
-     (Traversal' Text.Text a)
-  -> (Traversal' MethodDescriptor a)
-  -> (Traversal' (Set.Set MAccessFlag) a)
-  -> (Traversal' (Maybe Code) a)
-  -> (Traversal' [ClassName] a)
-  -> (Traversal' (Maybe MethodSignature) a)
+     Traversal' Text.Text a
+  -> Traversal' MethodDescriptor a
+  -> Traversal' (Set.Set MAccessFlag) a
+  -> Traversal' (Maybe Code) a
+  -> Traversal' [ClassName] a
+  -> Traversal' (Maybe MethodSignature) a
   -> Traversal' Method a
 traverseMethod tfn tfd taf tc tex ts g s =
   mkMethod
@@ -435,11 +435,14 @@ instance FromJVMBinary (B.Field B.High) Field where
           <$> B.BitSet . view fieldAccessFlags
           <*> view (name.fieldNameId)
           <*> view (name.fieldNameDescriptor)
-          <*> ( B.FieldAttributes
-                  <$> maybe [] (:[])
-                      . fmap B.ConstantValue . view fieldValue
-                  <*> maybe [] (:[]) . fmap (Signature . fieldSignatureToText) . view fieldSignature
-                  <*> pure [] )
+          <*> ( do
+            faConstantValue <- maybeToList . fmap B.ConstantValue . view fieldValue
+            faSignature <- maybeToList . fmap (Signature . fieldSignatureToText) . view fieldSignature
+            pure $ B.emptyFieldAttributes
+              { B.faConstantValues = faConstantValue
+              , B.faSignatures = faSignature
+              }
+             )
 
 instance FromJVMBinary (B.Method B.High) Method where
   _Binary = iso toBMethod fromBMethod
@@ -460,15 +463,19 @@ instance FromJVMBinary (B.Method B.High) Method where
 
       toBMethod =
         B.Method
-          <$> unsafeCoerce . (view methodAccessFlags)
-          <*> (view $ name . methodNameId)
-          <*> (view $ name . methodNameDescriptor)
-          <*> ( B.MethodAttributes
-                  <$> maybe [] (:[]) . fmap toBinaryCode . (view methodCode)
-                  <*> compress (B.Exceptions . B.SizedList . map (view _Binary))
-                      . view methodExceptions
-                  <*> maybe [] (:[]) . fmap (Signature . methodSignatureToText) . (view methodSignature)
-                  <*> pure [] )
+          <$> unsafeCoerce . view methodAccessFlags
+          <*> view (name . methodNameId)
+          <*> view (name . methodNameDescriptor)
+          <*> ( do
+                 code <- maybeToList . fmap toBinaryCode . view methodCode
+                 exceptions <- compress (B.Exceptions . B.SizedList . map (view _Binary)) . view methodExceptions
+                 signatures <- maybeToList . fmap (Signature . methodSignatureToText) . view methodSignature
+                 pure $ B.emptyMethodAttributes
+                   { B.maCode = code
+                   , B.maExceptions = exceptions
+                   , B.maSignatures = signatures
+                   }
+             )
 
 instance FromJVMBinary (B.InnerClass B.High) InnerClass where
   _Binary = iso toBInnerClass fromBInnerClass
@@ -505,7 +512,7 @@ fromClassFile =
   <*> view asMethodMap . toListOf (folded.from _Binary) . B.cMethods
   <*> map fromBinaryBootstrapMethod . B.cBootstrapMethods
   <*> fmap (\(Signature a) -> fromRight (error $ "could not read " ++ show a) $ classSignatureFromText a) . B.cSignature
-  <*> fmap (\e -> (view (from _Binary) $ B.enclosingClassName e, fmap (view (from _Binary)) $ B.enclosingMethodName e)) . B.cEnclosingMethod
+  <*> fmap (\e -> (view (from _Binary) $ B.enclosingClassName e, view (from _Binary) <$> B.enclosingMethodName e)) . B.cEnclosingMethod
   <*> toListOf (folded.from _Binary) . B.cInnerClasses
   <*> (Just <$> ((,) <$> B.cMajorVersion <*> B.cMinorVersion))
 
@@ -513,9 +520,9 @@ fromClassFile =
 toClassFile :: Class -> B.ClassFile B.High
 toClassFile =
   B.ClassFile 0xCAFEBABE
-    <$> fromMaybe (0 :: Word16). fmap snd . _classVersion
-    <*> fromMaybe (52 :: Word16) . fmap fst . _classVersion
-    <*> (pure ())
+    <$> maybe (0 :: Word16) snd . _classVersion
+    <*> maybe (52 :: Word16) fst . _classVersion
+    <*> pure ()
     <*> B.BitSet . _classAccessFlags
 
     <*> view (className._Binary)
@@ -524,17 +531,31 @@ toClassFile =
     <*> B.SizedList . toListOf ( classInterfaces.folded._Binary )
     <*> B.SizedList . toListOf ( classFieldList.folded._Binary )
     <*> B.SizedList . toListOf ( classMethodList.folded._Binary )
-    <*> ( B.ClassAttributes
-            <$> compress (B.BootstrapMethods . B.SizedList)
-                . map toBinaryBootstrapMethod
-                . _classBootstrapMethods
-            <*> maybe [] (:[]) . fmap (Signature . classSignatureToText) . _classSignature
-            <*> maybe [] (:[]) . fmap (\(cn, em) -> B.EnclosingMethod (view _Binary cn) (fmap (view _Binary) em))
-                               . _classEnclosingMethod
-            <*> compress B.InnerClasses
-                 . map (view _Binary)
-                 . _classInnerClasses
-            <*> pure [])
+    <*> ( do
+           bootstrapmethods <-
+             compress (B.BootstrapMethods . B.SizedList)
+             . map toBinaryBootstrapMethod
+             . _classBootstrapMethods
+
+           signatures <- maybeToList
+             . fmap (Signature . classSignatureToText)
+             . _classSignature
+
+           enclosingMethod <- maybeToList
+             . fmap (\(cn, em) -> B.EnclosingMethod (view _Binary cn) (fmap (view _Binary) em))
+             . _classEnclosingMethod
+
+           innerClasses <- compress B.InnerClasses
+             . map (view _Binary)
+             . _classInnerClasses
+
+           pure $ B.emptyClassAttributes
+             { B.caBootstrapMethods = bootstrapmethods
+             , B.caSignature = signatures
+             , B.caEnclosingMethod = enclosingMethod
+             , B.caInnerClasses = innerClasses
+             }
+       )
 
 compress :: ([a] -> b) -> [a] -> [b]
 compress _ [] = []

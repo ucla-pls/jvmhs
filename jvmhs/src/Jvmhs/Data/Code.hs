@@ -46,24 +46,30 @@ module Jvmhs.Data.Code
   )
   where
 
-import           Control.DeepSeq
+-- base
+import Data.Maybe
+import           Data.Word
+import           GHC.Generics                         (Generic)
+
+-- nfdata
+import Control.DeepSeq
+
+-- lens
 import           Control.Lens                         hiding ((.=))
+
+-- aeson
 import           Data.Aeson
 import           Data.Aeson.TH
 import           Data.Aeson.Types
+
+-- text
 import qualified Data.Text                            as Text
 import qualified Data.Vector                          as V
-import           Data.Word
 
-import           GHC.Generics                         (Generic)
-
+-- jvm-binary
 import qualified Language.JVM                         as B
 import qualified Language.JVM.Attribute.Code          as B
 import qualified Language.JVM.Attribute.StackMapTable as B
--- import qualified Language.JVM.Constant                as B
--- import qualified Language.JVM.Stage                   as B
--- import qualified Language.JVM.Type                    as B
--- import qualified Language.JVM.Utils                   as B
 
 import           Jvmhs.Data.Type
 
@@ -107,7 +113,7 @@ toBinaryCode c =
    (c^.codeMaxLocals)
    (B.ByteCode 0 (c^.codeByteCode))
    (B.SizedList $ c^..codeExceptionTable.folded._Binary)
-   (B.CodeAttributes (maybe [] (:[]) $ c^.codeStackMap) [] [])
+   (B.emptyCodeAttributes { B.caStackMapTable = maybeToList $ c^.codeStackMap })
 
 instance FromJVMBinary (B.ExceptionTable B.High) ExceptionHandler where
   _Binary = iso toBinaryExceptionTable fromBinaryExceptionTable
@@ -127,11 +133,11 @@ instance FromJVMBinary (B.ExceptionTable B.High) ExceptionHandler where
         <*> fmap (view _Binary) . _ehCatchType
 
 traverseCode ::
-     (Traversal' Word16 a)
-  -> (Traversal' Word16 a)
-  -> (Traversal' (V.Vector ByteCodeInst) a)
-  -> (Traversal' [ExceptionHandler] a)
-  -> (Traversal' (Maybe StackMapTable) a)
+     Traversal' Word16 a
+  -> Traversal' Word16 a
+  -> Traversal' (V.Vector ByteCodeInst) a
+  -> Traversal' [ExceptionHandler] a
+  -> Traversal' (Maybe StackMapTable) a
   -> Traversal' Code a
 traverseCode tms tml tbc tet tst g (Code ms ml bc et st) =
     Code
@@ -360,7 +366,7 @@ byteCodeOprOpCode = \case
     B.Swap                  -> "swap"
 
 
-instance ToJSON (B.FieldAccess) where
+instance ToJSON B.FieldAccess where
   toJSON = Bool . \case
     B.FldStatic -> True
     B.FldField -> False
@@ -383,7 +389,7 @@ instance ToJSON (B.VerificationTypeInfo B.High) where
 instance ToJSON B.JRefType where
   toJSON = String . B.typeToText
 
-instance ToJSON (B.BinOpr) where
+instance ToJSON B.BinOpr where
   toJSON = String . \case
     B.Add -> "add"
     B.Sub -> "sub"
@@ -393,7 +399,7 @@ instance ToJSON (B.BinOpr) where
 
 
 
-instance ToJSON (B.BitOpr) where
+instance ToJSON B.BitOpr where
   toJSON = String . \case
     B.ShL -> "shl"
     B.ShR -> "shr"
@@ -402,12 +408,12 @@ instance ToJSON (B.BitOpr) where
     B.Or -> "or"
     B.XOr -> "xor"
 
-instance ToJSON (B.WordSize) where
+instance ToJSON B.WordSize where
   toJSON = \case
     B.One -> Number 1
     B.Two -> Number 2
 
-instance ToJSON (B.CastOpr) where
+instance ToJSON B.CastOpr where
   toJSON = \case
     B.CastDown smallarithmetictype -> object
       [ "kind" .= String "down"
@@ -419,9 +425,7 @@ instance ToJSON (B.CastOpr) where
       , "to" .= fromArithmeticType totype
       ]
 
-
-
-instance ToJSON (B.CmpOpr) where
+instance ToJSON B.CmpOpr where
   toJSON = String . \case
     B.CEq -> "eq"
     B.CNe -> "ne"

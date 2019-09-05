@@ -9,7 +9,7 @@ packages:
 extra-deps: 
   - fgl-visualize-0.1.0.1
   - dotgen-0.4.2
-  - jvm-binary-0.5.0
+  - jvm-binary-0.6.0
 flags: {}
 extra-package-dbs:
 build:

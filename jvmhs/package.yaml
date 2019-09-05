@@ -21,7 +21,7 @@ extra-source-files:
 
 dependencies:
   - base >= 4.10 && < 4.12
-  - jvm-binary >= 0.5.0 && < 0.6.0
+  - jvm-binary >= 0.6.0 && < 0.7.0
   - lens
   - aeson
   - lens-action
