@@ -9,3 +9,4 @@ jvmhs/test/regression
 cabal.config
 .DS_Store
 tags
+*.class

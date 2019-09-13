@@ -51,14 +51,12 @@ tests:
     main: Spec.hs
     dependencies:
       - jvmhs
+      - hspec
       - tasty
-      - tasty-hspec
-      - tasty-hunit
-      - tasty-discover
-      - tasty-quickcheck
       - QuickCheck
       - filepath
       - directory
       - text
       - generic-random
+      - hspec-discover
       - hspec-expectations-pretty-diff

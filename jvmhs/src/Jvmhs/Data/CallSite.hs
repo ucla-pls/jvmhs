@@ -20,7 +20,6 @@ import           GHC.Generics                            (Generic)
 -- deep-seq
 import           Control.DeepSeq
 
-import Jvmhs.Data.Code
 import Jvmhs.Data.Named
 import Jvmhs.Data.Type
 

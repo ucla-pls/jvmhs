@@ -42,6 +42,8 @@ module Jvmhs.Data.Type
   , mkMethodName
   , methodNameId
   , methodNameDescriptor
+  , methodId
+  , methodDescriptor
   , methodArgumentTypes
   , methodReturnType
   , methodNameToText
@@ -87,6 +89,7 @@ module Jvmhs.Data.Type
   , AbsFieldName
 
   , B.JType (..)
+  , B.JBaseType (..)
   , B.JValue (..)
 
   , MAccessFlag (..)
@@ -137,7 +140,7 @@ class FromJVMBinary b n | n -> b where
 -- * ClassName
 newtype ClassName =
   ClassName (Name (B.ClassName))
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Eq, Ord, Generic)
   deriving anyclass NFData
 
 makeWrapped ''ClassName
@@ -194,6 +197,13 @@ strCls =
   view $ to B.strCls . from _Binary
 {-# INLINABLE strCls #-}
 
+
+instance Show ClassName where
+  showsPrec d n =
+      showsPrec d (view fullyQualifiedName n)
+
+
+
 instance ToJSON ClassName where
   toJSON = String . view fullyQualifiedName
 
@@ -232,9 +242,17 @@ methodNameId :: Lens' MethodName Text.Text
 methodNameId = _Binary . _Wrapped . ntName
 {-# INLINE methodNameId #-}
 
+methodId :: HasName MethodName e => Lens' e Text.Text
+methodId = name . methodNameId
+{-# INLINE methodId #-}
+
 methodNameDescriptor :: Lens' MethodName MethodDescriptor
 methodNameDescriptor = _Binary . _Wrapped . ntDescriptor
 {-# INLINE methodNameDescriptor #-}
+
+methodDescriptor :: HasName MethodName e => Lens' e MethodDescriptor
+methodDescriptor = name . methodNameDescriptor
+{-# INLINE methodDescriptor #-}
 
 -- | Get the type of field
 methodArgumentTypes :: HasName MethodName e => Lens' e [B.JType]

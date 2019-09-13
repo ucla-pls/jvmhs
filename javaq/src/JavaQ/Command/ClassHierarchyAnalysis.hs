@@ -13,9 +13,6 @@
 {-# LANGUAGE TypeFamilies              #-}
 module JavaQ.Command.ClassHierarchyAnalysis where
 
--- base
-import           Data.Maybe
-
 -- unordered
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.HashSet        as Set
@@ -32,12 +29,9 @@ import           Control.Lens        hiding (argument, (.=))
 
 -- jvmhs
 import           Jvmhs
-import           Jvmhs.Data.Named
 
 import           JavaQ.Command.Hierarchy
 import           JavaQ.Command
-
-import           Debug.Trace         as T
 
 newtype CHA = CHA { getClassHierarchyAnalysis :: HashMap.HashMap ClassName CHAInfo }
   deriving (Show, Eq)
@@ -68,7 +62,7 @@ emptyCHAInfo =
 
 -- topological sort on classes
 getClassOrder :: HR -> [ClassName]
-getClassOrder (HR hr) = []
+getClassOrder (HR _) = []
 
 -- buildMethods :: HR -> CHA
 -- buildMethods (HR hm) = CHA hm

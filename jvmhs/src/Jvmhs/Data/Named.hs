@@ -39,7 +39,12 @@ import qualified Data.HashMap.Strict as Map
 import Data.Hashable
 
 data Name n = Name { nameHash :: !Int, innerName :: !n }
-  deriving (Show, Eq, Ord, NFData, Generic)
+  deriving (Eq, Ord, NFData, Generic)
+
+instance Show n => Show (Name n) where
+  showsPrec d (Name _ n) =
+    showParen (d > 10) $
+      showString "mkName " . showsPrec d n
 
 mkName :: Hashable n => n -> Name n
 mkName n =

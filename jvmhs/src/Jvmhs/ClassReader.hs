@@ -36,6 +36,8 @@ module Jvmhs.ClassReader
   , writeClass
   , writeClasses
   , writeBytesToFilePath
+
+  , serializeClass
   , deserializeClass
 
   , readClassFile'
@@ -221,9 +223,13 @@ readClassFile m cn = do
   b <- ExceptT $ getClassBytes (classReader m) cn
   readClassBytes m b
 
-deserializeClass :: Class -> BL.ByteString
-deserializeClass =
+serializeClass :: Class -> BL.ByteString
+serializeClass =
   B.writeClassFile . toClassFile
+
+deserializeClass :: Bool -> BL.ByteString -> Either ClassReadError Class
+deserializeClass keep bs =
+  fromClassFile <$> readClassFile' keep bs
 
 -- | Write a class to a folder
 writeClass ::
@@ -241,7 +247,7 @@ writeClasses ::
   -> f Class
   -> IO ()
 writeClasses fp clss = do
-  let results = (\cls -> (cls^.className, deserializeClass cls)) <$> clss
+  let results = (\cls -> (cls^.className, serializeClass cls)) <$> clss
   writeBytesToFilePath fp results
 
 writeBytesToFilePath ::

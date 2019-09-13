@@ -509,7 +509,7 @@ instance (ClassReader r, MonadIO m) => MonadClassPool (CachedClassPoolT r m) whe
     where
       helper Nothing = (Nothing, Nothing)
       helper (Just (CSPure cs)) =
-        let bs = deserializeClass cs in
+        let bs = serializeClass cs in
         (Just bs, Just (CSSaved cs bs))
       helper this@(Just (CSSaved _ bs)) =
         (Just bs, this)
