@@ -12,5 +12,5 @@ spec = do
   describe "stub"
     $ useOutputFolder "test/output/stub"
     $ forEveryClassIt "can stub all methods" $ \cls -> do
-      let cls' = cls & classMethodList . traverse %~ stub
+      let cls' = cls & classMethods . traverse %~ stub
       writeClass "test/output/stub" cls'

@@ -51,11 +51,7 @@ module Jvmhs.Data.Class
   , isInterface
   , dependencies
   , classField
-  , classFieldList
-  -- , classFieldIds
   , classMethod
-  , classMethodList
-  -- , classMethodIds
 
   -- ** Field
 
@@ -71,7 +67,7 @@ module Jvmhs.Data.Class
   , traverseField
   -- , asFieldId
 
-  , mapAsFieldList
+  --, mapAsFieldList
 
   , Method (..)
   , MethodContent (..)
@@ -90,7 +86,7 @@ module Jvmhs.Data.Class
   , traverseMethod
   -- , asMethodId
 
-  , mapAsMethodList
+  -- , mapAsMethodList
 
   , InnerClass (..)
   , innerClass
@@ -131,7 +127,7 @@ import           Unsafe.Coerce
 import           Control.DeepSeq
 
 -- lens
-import           Control.Lens
+import           Control.Lens hiding ((.=))
 
 -- aeson
 import           Data.Aeson
@@ -182,11 +178,11 @@ data Class = Class
   -- ^ the name of the super class
   , _classAccessFlags      :: Set.Set CAccessFlag
   -- ^ access flags of the class
-  , _classInterfaces       :: HashSet.HashSet ClassName
+  , _classInterfaces       :: [ ClassName ]
   -- ^ a list of interfaces implemented by the class
-  , _classFields           :: HashMap.HashMap FieldName FieldContent
+  , _classFields           :: [ Field ]
   -- ^ a list of fields
-  , _classMethods          :: HashMap.HashMap MethodName MethodContent
+  , _classMethods          :: [ Method ]
   -- ^ a list of methods
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
@@ -271,71 +267,19 @@ instance HasMethodContent Method where
 
 classAbsMethodNames :: Fold Class AbsMethodName
 classAbsMethodNames =
-  (selfIndex <. classMethodList.folded).withIndex.to (\(a, b) -> (a ^. name, b ^. name))
+  (selfIndex <. classMethods.folded).withIndex.to (\(a, b) -> (a ^. name, b ^. name))
 
 classAbsFieldNames :: Fold Class AbsFieldName
 classAbsFieldNames =
-  (selfIndex <. classFieldList.folded).withIndex.to (\(a, b) -> (a ^. name, b ^. name))
-
-
--- fieldId :: Lens' Field FieldId
--- fieldId = _Wrapped . _1
-
--- fieldContent :: Lens' Field FieldContent
--- fieldContent = _Wrapped . _2
-
--- fieldName :: Lens' Field Text.Text
--- fieldName = fieldId . fieldIdName
-
--- fieldDescriptor :: Lens' Field FieldDescriptor
--- fieldDescriptor = fieldId . fieldIdDescriptor
-
--- fieldAccessFlags :: Lens' Field (Set.Set FAccessFlag)
--- fieldAccessFlags = fieldContent . fieldCAccessFlags
-
--- fieldValue :: Lens' Field (Maybe JValue)
--- fieldValue = fieldContent . fieldCValue
-
--- fieldSignature :: Lens' Field (Maybe FieldSignature)
--- fieldSignature = fieldContent . fieldCSignature
-
--- asFieldId :: (Class, Field) -> AbsFieldId
--- asFieldId (cls, m) = inClass (cls ^.className) (m ^.fieldId)
-
--- methodId :: Lens' Method MethodId
--- methodId = _Wrapped . _1
-
--- methodContent :: Lens' Method MethodContent
--- methodContent = _Wrapped . _2
-
--- methodName :: Lens' Method Text.Text
--- methodName = methodId . methodIdName
-
--- methodDescriptor :: Lens' Method MethodDescriptor
--- methodDescriptor = methodId . methodIdDescriptor
-
--- methodAccessFlags :: Lens' Method (Set.Set MAccessFlag)
--- methodAccessFlags = methodContent . methodCAccessFlags
-
--- methodCode :: Lens' Method (Maybe Code)
--- methodCode = methodContent . methodCCode
-
--- methodExceptions :: Lens' Method [ClassName]
--- methodExceptions = methodContent . methodCExceptions
-
--- methodSignature :: Lens' Method (Maybe MethodSignature)
--- methodSignature = methodContent . methodCSignature
-
--- asMethodId :: (Class, Method) -> AbsMethodId
--- asMethodId (cls, m) = inClass (cls ^.className) (m ^.methodId)
+  (selfIndex <. classFields.folded).withIndex.to (\(a, b) -> (a ^. name, b ^. name))
 
 traverseClass ::
   Traversal' ClassName a
   -> Traversal' (Maybe ClassName) a
   -> Traversal' (Set.Set CAccessFlag) a
-  -> Traversal' (HashSet.HashSet ClassName) a
-  -> Traversal' (HashMap.HashMap FieldName FieldContent) a
-  -> Traversal' (HashMap.HashMap MethodName MethodContent) a
+  -> Traversal' [ ClassName ] a
+  -> Traversal' [ Field ] a
+  -> Traversal' [ Method ] a
   -> Traversal' [ BootstrapMethod ] a
   -> Traversal' (Maybe ClassSignature) a
   -> Traversal' (Maybe (ClassName, Maybe MethodName)) a
@@ -410,28 +354,28 @@ traverseMethod tfn tfd taf tc tex ts tano g s =
 -- mapAsList :: Ord a => Iso' (Map.Map a b) [(a,b)]
 -- mapAsList = iso Map.toList Map.fromList
 
-mapAsFieldList :: Lens' (HashMap.HashMap FieldName FieldContent) [Field]
-mapAsFieldList = namedMapAsList . coerced
+-- mapAsFieldList :: Lens' (HashMap.HashMap FieldName FieldContent) [Field]
+-- mapAsFieldList = namedMapAsList . coerced
 
-mapAsMethodList :: Lens' (HashMap.HashMap MethodName MethodContent) [Method]
-mapAsMethodList = namedMapAsList . coerced
+-- mapAsMethodList :: Lens' (HashMap.HashMap MethodName MethodContent) [Method]
+-- mapAsMethodList = namedMapAsList . coerced
 
-classMethodList :: Lens' Class [Method]
-classMethodList = classMethods . mapAsMethodList
+-- classMethodList :: Lens' Class [Method]
+-- classMethodList = classMethods . mapAsMethodList
 
-classFieldList :: Lens' Class [Field]
-classFieldList = classFields . mapAsFieldList
+-- classFieldList :: Lens' Class [Field]
+-- classFieldList = classFields . mapAsFieldList
 
 classField :: FieldName -> Getter Class (Maybe Field)
-classField fid = classFields . at fid . to (fmap $ mkField fid)
+classField fid = classFields . to (find (\a -> a ^. name == fid))
 
 classMethod :: MethodName -> Getter Class (Maybe Method)
-classMethod mid = classMethods . at mid . to (fmap $ mkMethod mid)
+classMethod mid = classMethods . to (find (\a -> a ^. name == mid))
 
 -- | The dependencies of a class
 dependencies :: Class -> [ ClassName ]
 dependencies cls =
-  cls ^.. classSuper ._Just ++ cls ^.. classInterfaces . folded
+  cls ^.. classSuper ._Just ++ cls ^. classInterfaces
 
 -- | Check if a class is an interface
 isInterface :: Class -> Bool
@@ -601,13 +545,13 @@ fromClassFile = do
     B.cAccessFlags
 
   _classInterfaces <-
-    HashSet.fromList . toListOf (folded.from _Binary) . B.cInterfaces
+    toListOf (folded.from _Binary) . B.cInterfaces
 
   _classFields <-
-    view asFieldMap . toListOf (folded.from _Binary) . B.cFields
+    toListOf (folded.from _Binary) . B.cFields
 
   _classMethods <-
-    view asMethodMap . toListOf (folded.from _Binary) . B.cMethods
+    toListOf (folded.from _Binary) . B.cMethods
 
   _classBootstrapMethods <-
     map fromBinaryBootstrapMethod . B.cBootstrapMethods
@@ -656,8 +600,8 @@ toClassFile =
     <*> view _Binary . fromMaybe "java/lang/Object" . _classSuper
 
     <*> B.SizedList . toListOf ( classInterfaces.folded._Binary )
-    <*> B.SizedList . toListOf ( classFieldList.folded._Binary )
-    <*> B.SizedList . toListOf ( classMethodList.folded._Binary )
+    <*> B.SizedList . toListOf ( classFields.folded._Binary )
+    <*> B.SizedList . toListOf ( classMethods.folded._Binary )
     <*> ( do
            caBootstrapMethods <-
              compress (B.BootstrapMethods . B.SizedList)
@@ -702,6 +646,14 @@ compress f as = [f as]
 -- | An Isomorphism between classfiles and checked classes.
 isoBinary :: Iso' (B.ClassFile B.High) Class
 isoBinary = iso fromClassFile toClassFile
+
+instance ToJSON Field where
+  toJSON (Field f) =
+    object [ "name" .= (f ^. name), "content" .= (f ^. content)]
+
+instance ToJSON Method where
+  toJSON (Method m) =
+    object [ "name" .= (m ^. name), "content" .= (m ^. content)]
 
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''MethodContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''FieldContent)

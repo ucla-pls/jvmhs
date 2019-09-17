@@ -71,6 +71,7 @@ import           Jvmhs.ClassPool
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Graph
 import           Jvmhs.Data.Type
+import           Jvmhs.Data.Named
 
 -- import qualified Data.Set.Lens       as S
 
@@ -93,9 +94,13 @@ $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''Hierar
 toStub :: Class -> HierarchyStub
 toStub cls = HierarchyStub
   (cls ^. classSuper)
-  (cls ^. classInterfaces)
-  (cls ^. classMethods & traverse %~ views methodAccessFlags (Data.Set.member MAbstract))
-  (cls ^. classFields . to fromMap')
+  (S.fromList $ cls ^. classInterfaces)
+  (M.fromList
+   $ cls ^.. classMethods
+   . folded
+   . to (\m -> (m^.name, m ^. methodAccessFlags . contains MAbstract))
+  )
+  (S.fromList $ cls ^.. classFields . folded . name)
 
 type HierarchyStubs = M.HashMap ClassName HierarchyStub
 

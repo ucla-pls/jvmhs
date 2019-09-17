@@ -45,9 +45,9 @@ instance Inspectable Class where
   classNames =
     traverseClass
       id (traverse.id) nothing
-      (iso HashSet.toList HashSet.fromList . traverse)
-      (mapAsFieldList.traverse.classNames)
-      (mapAsMethodList.traverse.classNames)
+      traverse
+      (traverse.classNames)
+      (traverse.classNames)
       (traverse.classNames)
       (traverse.classNames)
       (traverse.tuple id (_Just.classNames))

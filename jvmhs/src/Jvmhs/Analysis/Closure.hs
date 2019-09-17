@@ -104,7 +104,11 @@ mkCallGraph ::
   -> m ([AbsMethodName], CallGraph)
 mkCallGraph hry = do
   methods <- concat <$>
-    mapClasses (\c -> [((c ^. name, m ^. name), S.fromList $ toListOf methodNames m) | m <- c^.classMethodList])
+    mapClasses (
+    \c ->
+      [((c ^. name, m ^. name), S.fromList $ toListOf methodNames m)
+      | m <- c^.classMethods
+      ])
   let (missing, edges) = partitionEithers $
           methods ^.. folded
                     . to (\(mid, m) -> [(mid,,()) <$> getDeclartion mid' | mid' <- S.toList m ])
