@@ -103,4 +103,4 @@ findUsedClasses  =
           (traverse.classNames)
           nothing
           (traverse.tuple id (traverse.classNames))
-          (traverse.classNames)) cls
+          (traverse.classNames) nothing) cls

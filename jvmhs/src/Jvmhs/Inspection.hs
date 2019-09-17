@@ -23,6 +23,7 @@ import           Control.Lens
 
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
+import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.Signature
 import           Jvmhs.Data.Type
 
@@ -51,6 +52,7 @@ instance Inspectable Class where
       (traverse.classNames)
       (traverse.tuple id (_Just.classNames))
       (traverse.classNames)
+      classNames
 
 tuple :: Traversal' a b -> Traversal' c b -> Traversal' (a,c) b
 tuple fl fr g s = (,) <$> (fl g . fst $ s) <*> (fr g . snd $ s)
@@ -63,6 +65,7 @@ instance Inspectable Field where
       nothing
       (traverse.classNames)
       (traverse.classNames)
+      classNames
 
 instance Inspectable InnerClass where
   classNames g s =
@@ -71,6 +74,9 @@ instance Inspectable InnerClass where
       <*> (traverse g . _innerOuterClass $ s)
       <*> (pure . _innerClassName $ s)
       <*> (pure . _innerAccessFlags $ s)
+
+instance Inspectable Annotations where
+  classNames _ = pure
 
 instance Inspectable Method where
   classNames =
@@ -81,6 +87,7 @@ instance Inspectable Method where
       (traverse.classNames)
       traverse
       (traverse.classNames)
+      classNames
 
   methodNames =
     traverseMethod
@@ -88,6 +95,7 @@ instance Inspectable Method where
       nothing
       nothing
       (traverse.methodNames)
+      nothing
       nothing
       nothing
 

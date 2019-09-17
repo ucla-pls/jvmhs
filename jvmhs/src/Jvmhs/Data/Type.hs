@@ -120,7 +120,6 @@ import qualified Data.ByteString.Char8   as C
 import           Data.Hashable
 
 -- base
-import           Data.Char
 import           Data.String
 import qualified Data.Text               as Text
 import           GHC.Generics            (Generic)
@@ -411,6 +410,10 @@ instance Hashable B.JType where
 --     (\(B.FieldId nt) -> B.ntDescriptor nt)
 --     (\(B.FieldId nt) a -> mkFieldId (B.ntName nt) a)
 
+parseJType :: Text.Text -> Parser B.JType
+parseJType e = do
+  let Right x = B.typeFromText e
+  return $ x
 
 parseFieldName :: Text.Text -> Parser FieldName
 parseFieldName e = do
@@ -451,6 +454,12 @@ fieldNameToText =
   view (_Binary . _Wrapped . to B.typeToText)
 
 -- -- * Instances
+
+instance ToJSON B.JType where
+  toJSON = String . B.typeToText
+
+instance FromJSON B.JType where
+  parseJSON = withText "JType" parseJType
 
 instance ToJSON FieldName where
   toJSON = String . fieldNameToText
@@ -504,6 +513,6 @@ $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''MAccessFla
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''ICAccessFlag)
 $(deriveToJSON (defaultOptions
                  { sumEncoding             = ObjectWithSingleField
-                 , constructorTagModifier  = map toLower . drop 1
+                 , constructorTagModifier  = camelTo2 '_' . drop 1
                  }
                ) ''B.JValue)
