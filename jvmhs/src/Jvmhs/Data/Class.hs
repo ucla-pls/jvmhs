@@ -57,31 +57,14 @@ module Jvmhs.Data.Class
 
   , Field (..)
   , FieldContent (..)
-  , fieldAccessFlags
-  -- , fieldName
-  -- , fieldDescriptor
-  , fieldValue
-  , fieldType
-  , fieldAnnotations
-  -- , fieldId
+  , HasFieldContent (..)
   , traverseField
-  -- , asFieldId
-
-  --, mapAsFieldList
 
   , Method (..)
   , MethodContent (..)
-  , methodAccessFlags
-  -- , methodCAccessFlags
-  -- , methodName
-  -- , methodDescriptor
-  , methodCode
-  -- , methodCCode
-  , methodExceptions
-  -- , methodCExceptions
+  , HasMethodContent (..)
   , methodReturnType
   , methodArgumentTypes
-  , methodAnnotations
   -- , methodId
   , traverseMethod
   -- , asMethodId
@@ -140,8 +123,8 @@ import qualified Data.Text                               as Text
 import qualified Data.Set                                as Set
 
 -- unordered-containers
-import qualified Data.HashMap.Strict                     as HashMap
-import qualified Data.HashSet                            as HashSet
+-- import qualified Data.HashMap.Strict                     as HashMap
+-- import qualified Data.HashSet                            as HashSet
 
 -- jvm-binary
 import qualified Language.JVM                            as B
@@ -524,11 +507,11 @@ instance FromJVMBinary (B.InnerClass B.High) InnerClass where
           <*> _innerClassName
           <*> B.BitSet . _innerAccessFlags
 
-asMethodMap :: Lens' [Method] (HashMap.HashMap MethodName MethodContent)
-asMethodMap = coerced . from namedMapAsList
+-- asMethodMap :: Lens' [Method] (HashMap.HashMap MethodName MethodContent)
+-- asMethodMap = coerced . from namedMapAsList
 
-asFieldMap :: Lens' [Field] (HashMap.HashMap FieldName FieldContent)
-asFieldMap = coerced . from namedMapAsList
+-- asFieldMap :: Lens' [Field] (HashMap.HashMap FieldName FieldContent)
+-- asFieldMap = coerced . from namedMapAsList
 
 fromClassFile :: B.ClassFile B.High -> Class
 fromClassFile = do
