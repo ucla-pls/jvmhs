@@ -175,18 +175,18 @@ definitions ::
   -> S.HashSet ClassName
 definitions hry mid =
   S.fromList
-  . toListOf (folded.filtered (methodDefinedIn hry $ mid^._2))
+  . toListOf (folded.filtered (methodDefinedIn hry $ mid^.inClassId))
   . implementations hry
-  $ mid^._1
+  $ mid^.inClassName
 
 declaration ::
   Hierarchy
   -> AbsMethodName
   -> Maybe AbsMethodName
 declaration hry mid =
-  (\a -> mid & _1.~ a) <$> go (mid ^. _1)
+  (\a -> mid & inClassName .~ a) <$> go (mid ^. inClassName)
   where
-    ii = mid ^. _2
+    ii = mid ^. relMethodName
     go cn =
       case hry ^. hryStubs.at cn of
         Nothing -> Nothing
@@ -198,19 +198,21 @@ declaration hry mid =
 
 isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
 isAbstract hry mid =
-  hry ^? hryStubs . at (mid^._1) . _Just . hryMethods . at (mid^._2) ._Just
+  hry ^? hryStubs
+    . at (mid^.inClassName) . _Just
+    . hryMethods . at (mid^.inClassId) ._Just
 
 isRequired ::
   Hierarchy
   -> AbsMethodName
   -> Bool
 isRequired hry mid
-  | mid ^. _2 == "<init>:()V" = True
+  | mid ^. relMethodName.methodId == "<init>:()V" = True
   | otherwise =
-    case hry ^. hryStubs.at (mid ^. _1) of
+    case hry ^. hryStubs.at (mid ^. inClassName) of
       Nothing -> False
       Just stub ->
-        case stub ^? hrySuper._Just.to (declaration hry.flip (set _1) mid)._Just of
+        case stub ^? hrySuper._Just.to (declaration hry.flip (set inClassName) mid)._Just of
           Just w -> fromMaybe True (isAbstract hry w)
           Nothing ->
             orOf (hryInterfaces.folded.to go) stub
@@ -219,7 +221,10 @@ isRequired hry mid
       case hry ^. hryStubs.at cn of
         Nothing -> True
         Just stub ->
-          orOf (hryMethods.at(mid^. _2)._Just <> hryInterfaces.folded.to go) stub
+          orOf ( hryMethods
+                 . at(mid^. relMethodName)
+                 . _Just <> hryInterfaces.folded.to go
+               ) stub
 
 requiredMethods ::
   Hierarchy
@@ -242,4 +247,4 @@ callSites ::
   -> AbsMethodName
   -> [ AbsMethodName ]
 callSites hry mid =
-  definitions hry mid ^.. folded . to (\cn -> mid & _1 .~ cn)
+  definitions hry mid ^.. folded . to (\cn -> mid & inClassName .~ cn)

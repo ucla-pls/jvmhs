@@ -48,6 +48,8 @@ module Jvmhs.Data.Type
   , methodReturnType
   , methodNameToText
 
+  , mkAbsMethodName
+
   , MethodDescriptor
   , methodDArguments
   , methodDReturnType
@@ -60,8 +62,16 @@ module Jvmhs.Data.Type
   , fieldType
   , fieldNameToText
 
+  , mkAbsFieldName
+
   , FieldDescriptor
   , fieldDType
+
+
+  , InClass
+  , inClassName
+  , inClassId
+
 
   -- , MethodDescriptor (..)
 
@@ -86,7 +96,10 @@ module Jvmhs.Data.Type
   -- , inClassToText
 
   , AbsMethodName
+  , relMethodName
+
   , AbsFieldName
+  , relFieldName
 
   , B.JType (..)
   , B.JBaseType (..)
@@ -201,8 +214,6 @@ instance Show ClassName where
   showsPrec d n =
       showsPrec d (view fullyQualifiedName n)
 
-
-
 instance ToJSON ClassName where
   toJSON = String . view fullyQualifiedName
 
@@ -303,8 +314,6 @@ instance IsString MethodName where
   fromString = view $ to fromString . from _Binary
 
 
-type AbsMethodName = (ClassName, MethodName)
-
 -- * FieldName
 
 newtype FieldName =
@@ -361,13 +370,13 @@ instance IsString FieldName where
   fromString = view $ to fromString . from _Binary
 
 
-type AbsFieldName = (ClassName, FieldName)
-
 -- * JType
 
 instance Hashable B.JType where
   hashWithSalt i b =
     i `hashWithSalt` (B.typeToText b)
+
+
 
 
 -- -- * FieldDescriptor
@@ -425,19 +434,45 @@ parseMethodName e = do
   let Right x = B.typeFromText e
   return $ ( B.MethodId x ^. from _Binary)
 
--- type InClass a = B.InClass a B.High
+type InClass a = B.InClass a B.High
 
--- inClass :: ClassName -> a -> InClass a
--- inClass = B.InClass
 
--- type AbsFieldId = B.AbsFieldId B.High
--- type AbsMethodId = B.AbsMethodId B.High
+inClassName :: Lens' (InClass a) ClassName
+inClassName =
+  lens
+  (\(B.InClass cn _) -> cn ^. from _Binary)
+  (\(B.InClass _ i) cn -> B.InClass (cn ^. _Binary) i)
 
--- inClassName :: Lens' (InClass a) ClassName
--- inClassName = lens (\(B.InClass cn _) -> cn) (\(B.InClass _ i) cn -> inClass cn i)
+inClassId :: FromJVMBinary a a' => Lens' (InClass a) a'
+inClassId =
+  lens
+  (\(B.InClass _ i) -> i ^. from _Binary )
+  (\(B.InClass cn _) i -> B.InClass cn (i ^._Binary))
 
--- inId :: Lens' (InClass a) a
--- inId = lens (\(B.InClass _ i) -> i) (\(B.InClass cn _) i -> inClass cn i)
+
+
+type AbsMethodName = B.AbsMethodId B.High
+
+mkAbsMethodName :: ClassName -> MethodName -> AbsMethodName
+mkAbsMethodName cn m = B.InClass (cn^._Binary) (m^._Binary)
+
+relMethodName :: Lens' AbsMethodName MethodName
+relMethodName = inClassId
+
+instance HasName MethodName AbsMethodName where
+  name = relMethodName
+
+
+type AbsFieldName = B.AbsFieldId B.High
+
+mkAbsFieldName :: ClassName -> FieldName -> AbsFieldName
+mkAbsFieldName cn f = B.InClass (cn^._Binary) (f^._Binary)
+
+relFieldName :: Lens' AbsFieldName FieldName
+relFieldName = inClassId
+
+instance HasName FieldName AbsFieldName where
+  name = relFieldName
 
 -- deriving instance Ord AbsMethodId
 -- deriving instance Ord AbsFieldId

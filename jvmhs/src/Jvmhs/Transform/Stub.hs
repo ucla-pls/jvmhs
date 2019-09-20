@@ -34,13 +34,46 @@ import Jvmhs.Data.Type
 -- | If the method has a code and it is not a constructor then stub it.
 stub :: Method -> Method
 stub m
-  | isConstructor m = m
+  | isConstructor m =
+    m & methodCode . _Just .~ makeConstructorStub
+        (mkAbsMethodName "java/lang/Object" "<init>:()V")
+        requiredLocals
   | otherwise =
     m & methodCode . _Just .~ makeStub requiredLocals (m ^. methodReturnType)
   where
     requiredLocals =
       (if not $ m ^. methodAccessFlags . contains MStatic then (+ 1) else id)
       (sumOf (methodArgumentTypes.folded.to typeSize) m)
+
+defaultValue :: JType -> Maybe B.JValue
+defaultValue = \case
+  JTRef _ -> Nothing
+  JTBase a -> Just $ case a of
+    JTInt     -> B.VInteger 0
+    JTShort   -> B.VInteger 0
+    JTByte    -> B.VInteger 0
+    JTChar    -> B.VInteger 0
+    JTBoolean -> B.VInteger 0
+    JTLong    -> B.VLong 0
+    JTFloat   -> B.VFloat 0
+    JTDouble  -> B.VDouble 0
+
+pushDefaultValueT :: JType -> B.ByteCodeOpr B.High
+pushDefaultValueT = B.Push . defaultValue
+
+returnT :: JType -> B.ByteCodeOpr B.High
+returnT = B.Return . Just . \case
+ JTRef _  -> B.LRef
+ JTBase a -> case a of
+   JTInt     -> B.LInt
+   JTShort   -> B.LInt
+   JTByte    -> B.LInt
+   JTChar    -> B.LInt
+   JTBoolean -> B.LInt
+   JTLong    -> B.LLong
+   JTFloat   -> B.LFloat
+   JTDouble  -> B.LDouble
+
 
 -- | Create a new code instance with the given return type.
 makeStub :: Word16 -> Maybe JType -> Code
@@ -49,20 +82,29 @@ makeStub requiredLocals jt = Code
   , _codeMaxLocals = requiredLocals
   , _codeByteCode = V.fromList . map (B.ByteCodeInst 0) $ case jt of
       Nothing -> [ B.Return Nothing ]
-      Just (JTBase a) -> case a of
-        JTInt     -> return0Int
-        JTShort   -> return0Int
-        JTByte    -> return0Int
-        JTChar    -> return0Int
-        JTBoolean -> return0Int
-        JTLong    -> [ B.Push (Just (B.VLong 0)), B.Return (Just B.LLong)]
-        JTFloat   -> [ B.Push (Just (B.VFloat 0)), B.Return (Just B.LFloat)]
-        JTDouble  -> [ B.Push (Just (B.VDouble 0)), B.Return (Just B.LDouble)]
-      Just (JTRef _) -> [ B.Push Nothing, B.Return (Just B.LRef)]
+      Just r -> [ pushDefaultValueT r , returnT r ]
   , _codeExceptionTable = []
   , _codeStackMap = Nothing
   }
-  where return0Int = [ B.Push (Just (B.VInteger 0)), B.Return (Just B.LInt)]
+
+-- | Create a constructor stub
+makeConstructorStub :: AbsMethodName -> Word16 -> Code
+makeConstructorStub m requiredLocals = Code
+  { _codeMaxStack = 1 + sum (map typeSize arguments)
+  , _codeMaxLocals = requiredLocals
+  , _codeByteCode = V.fromList . map (B.ByteCodeInst 0) $
+    [ B.Load B.LRef 0
+    ] ++
+    [ pushDefaultValueT t
+    | t <- arguments
+    ]
+    ++
+    [ B.Invoke (B.InvkSpecial (B.AbsVariableMethodId False m))
+    , B.Return Nothing
+    ]
+  , _codeExceptionTable = []
+  , _codeStackMap = Nothing
+  } where arguments = m ^. methodArgumentTypes
 
 -- | A Type in Java have different sizes.
 typeSize :: JType -> Word16

@@ -18,13 +18,13 @@ closures adds items until everything that needs to be added have been added.
 module Jvmhs.Analysis.Closure
   ( computeClassClosure
   , computeClassClosureM
-  , computeMethodClosure
+  -- , computeMethodClosure
 
   , ClassGraph
   , mkClassGraph
 
-  , CallGraph
-  , mkCallGraph
+  -- , CallGraph
+  -- , mkCallGraph
 
   ) where
 
@@ -94,51 +94,51 @@ computeClassClosureM cls fm =
           front = S.fromList $ toListOf (folded.classNames) exists
         go (known', unknown') (front `S.difference` known')
 
-
 type CallGraph = Graph AbsMethodName ()
 
--- | Given a foldable structure over 'AbsMethodName's compute a CallGraph.
-mkCallGraph ::
-  forall m. (MonadClassPool m)
-  => Hierarchy
-  -> m ([AbsMethodName], CallGraph)
-mkCallGraph hry = do
-  methods <- concat <$>
-    mapClasses (
-    \c ->
-      [((c ^. name, m ^. name), S.fromList $ toListOf methodNames m)
-      | m <- c^.classMethods
-      ])
-  let (missing, edges) = partitionEithers $
-          methods ^.. folded
-                    . to (\(mid, m) -> [(mid,,()) <$> getDeclartion mid' | mid' <- S.toList m ])
-                    . folded
-  return (missing, mkGraph (methods^..folded._1) edges)
-  where
-    getDeclartion mid =
-      case declaration hry mid of
-        Just x  -> Right x
-        Nothing -> Left mid
+-- -- | Given a foldable structure over 'AbsMethodName's compute a CallGraph.
+-- mkCallGraph ::
+--   forall m. (MonadClassPool m)
+--   => Hierarchy
+--   -> m ([AbsMethodName], CallGraph)
+-- mkCallGraph hry = do
+--   methods <- concat <$>
+--     mapClasses (
+--     \c ->
+--       [((c ^. name, m ^. name), S.fromList $ toListOf methodNames m)
+--       | m <- c^.classMethods
+--       ])
+--   let (missing, edges) = partitionEithers $
+--           methods
+--           ^.. folded
+--           . to (\(mid, m) -> [(mid,,()) <$> getDeclartion mid' | mid' <- S.toList m ])
+--           . folded
+--   return (missing, mkGraph (methods^..folded.relMethodName) edges)
+--   where
+--     getDeclartion mid =
+--       case declaration hry mid of
+--         Just x  -> Right x
+--         Nothing -> Left mid
 
 
--- | Computes the method closure
-computeMethodClosure ::
-  forall m. MonadClassPool m
-  => Hierarchy
-  -> S.HashSet AbsMethodName
-  -> m (S.HashSet AbsMethodName)
-computeMethodClosure hry =
-  go S.empty
-  where
-    go !known !wave
-      | S.null wave = do
-          return known
-      | otherwise = do
-          -- First get all possible implementation
-          let mths = setOf (folded . to (callSites hry) . folded) wave
-          impls <- mths ^!! folded.(selfIndex <. act getMethod . folded) . withIndex
-          let
-            found = S.fromList $ toListOf (folded . _1) impls
-            known' = known `S.union` found
-            front = S.fromList $ toListOf (folded . _2 . methodNames) impls
-          go known' (front `S.difference` known')
+-- -- | Computes the method closure
+-- computeMethodClosure ::
+--   forall m. MonadClassPool m
+--   => Hierarchy
+--   -> S.HashSet AbsMethodName
+--   -> m (S.HashSet AbsMethodName)
+-- computeMethodClosure hry =
+--   go S.empty
+--   where
+--     go !known !wave
+--       | S.null wave = do
+--           return known
+--       | otherwise = do
+--           -- First get all possible implementation
+--           let mths = setOf (folded . to (callSites hry) . folded) wave
+--           impls <- mths ^!! folded.(selfIndex <. act getMethod . folded) . withIndex
+--           let
+--             found = S.fromList $ toListOf (folded . _1) impls
+--             known' = known `S.union` found
+--             front = S.fromList $ toListOf (folded . _2 . methodNames) impls
+--           go known' (front `S.difference` known')

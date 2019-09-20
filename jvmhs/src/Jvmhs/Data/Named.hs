@@ -38,7 +38,7 @@ import qualified Data.HashMap.Strict as Map
 -- hashable
 import Data.Hashable
 
-data Name n = Name { nameHash :: !Int, innerName :: !n }
+data Name n = Name { nameHash :: Int, innerName :: !n }
   deriving (Eq, Ord, NFData, Generic)
 
 instance Show n => Show (Name n) where

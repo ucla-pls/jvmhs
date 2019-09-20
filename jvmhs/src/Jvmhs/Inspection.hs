@@ -229,16 +229,16 @@ instance Inspectable (B.AbsVariableMethodId B.High) where
   classNames g (B.AbsVariableMethodId b x) =
     B.AbsVariableMethodId b <$> classNames g x
 
-  methodNames g (B.AbsVariableMethodId b x) =
-    B.AbsVariableMethodId b <$> methodNames g x
+  -- methodNames g (B.AbsVariableMethodId b x) =
+  --   B.AbsVariableMethodId b <$> methodNames g x
 
 instance Inspectable (B.AbsMethodId B.High) where
   classNames g (B.InClass cn ci) =
     B.InClass <$> classNames g cn <*> classNames g ci
 
-  methodNames g (B.InClass cn ci) =
-    (\(cn', ci') -> B.InClass (cn' ^. _Binary) ( ci' ^. _Binary))
-    <$> g (cn ^. from _Binary, ci ^. from _Binary)
+  -- methodNames g (B.InClass cn ci) =
+  --   (\(cn', ci') -> B.InClass (cn' ^. _Binary) ( ci' ^. _Binary))
+  --   <$> g (cn ^. from _Binary, ci ^. from _Binary)
 
 instance Inspectable (B.InvokeDynamic B.High) where
   classNames g (B.InvokeDynamic i dr) =

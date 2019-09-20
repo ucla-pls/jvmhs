@@ -250,11 +250,15 @@ instance HasMethodContent Method where
 
 classAbsMethodNames :: Fold Class AbsMethodName
 classAbsMethodNames =
-  (selfIndex <. classMethods.folded).withIndex.to (\(a, b) -> (a ^. name, b ^. name))
+  (selfIndex <. classMethods.folded)
+  . withIndex
+  . to (\(a, b) -> mkAbsMethodName (a ^. name) (b ^. name))
 
 classAbsFieldNames :: Fold Class AbsFieldName
 classAbsFieldNames =
-  (selfIndex <. classFields.folded).withIndex.to (\(a, b) -> (a ^. name, b ^. name))
+  (selfIndex <. classFields.folded)
+  . withIndex
+  . to (\(a, b) -> mkAbsFieldName (a ^. name) (b ^. name))
 
 traverseClass ::
   Traversal' ClassName a
