@@ -2,14 +2,10 @@ resolver: lts-12.26
 packages:
 - jvmhs
 - javaq
-# - location:
-#     git: https://github.com/ucla-pls/jvm-binary.git
-#     commit: 380cc509836a5d1374a402f05496de4af9325585
-#   extra-dep: true
 extra-deps: 
   - fgl-visualize-0.1.0.1
   - dotgen-0.4.2
-  - jvm-binary-0.6.1
+  - jvm-binary-0.7.0
 flags: {}
 extra-package-dbs:
 build:
