@@ -83,8 +83,8 @@ classmetricsCmd = CommandSpec "class-metrics"
             { cmName = cn
             , cmSize = ln
             , cmSha256 = fromBytes hsh
-            , cmFields = cls ^. classFieldList.to length
-            , cmMethods = cls ^. classMethodList.to length
+            , cmFields = cls ^. classFields.to length
+            , cmMethods = cls ^. classMethods.to length
             , cmInstructions =
                 sumOf (classMethods.folded.methodCode._Just.codeByteCode.to V.length) cls
             , cmErrors = if cn /= cls ^.className then 1 else 0

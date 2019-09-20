@@ -270,13 +270,13 @@ runCommand classloader (Command _ fmt tp) = do
     Stream (Methods fn) -> inClasspool $ do
       liftIO $ preludeFormat fmt
       streamClasses $ \cls -> liftIO $ do
-        forMOf_ (classMethodList.folded) cls $ \m ->
+        forMOf_ (classMethods.folded) cls $ \m ->
           applyFormat fmt (fn (cls^.className) m)
 
     Stream (Fields fn) -> inClasspool $ do
       liftIO $ preludeFormat fmt
       streamClasses $ \cls -> liftIO $ do
-        forMOf_ (classFieldList.folded) cls $ \f ->
+        forMOf_ (classFields.folded) cls $ \f ->
           applyFormat fmt (fn (cls^.className) f)
 
     Accumulator (Classes fn) initial acc -> do

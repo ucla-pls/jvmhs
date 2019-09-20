@@ -60,5 +60,5 @@ methodmetricCmd = CommandSpec
   where
     fn cls =
       [ MethodMetric (cls ^. className) mn
-      | Method (Named mn _) <- cls ^. classMethodList
+      | Method (Named mn _) <- cls ^. classMethods
       ]

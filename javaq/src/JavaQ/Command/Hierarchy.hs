@@ -82,7 +82,7 @@ addNode (HR hm) cls = HR hm'
 
     -- get all interfaces and then parent interfaces' interfaces
     interfaces =
-      cls ^. classInterfaces.(id <> folded.lookupCls.hrImplements)
+      cls ^. classInterfaces.(to Set.fromList <> folded.lookupCls.hrImplements)
 
     extendedBy = Set.singleton (cls ^. className) <> hi ^. hrExtendedBy
     implementedBy = Set.singleton (cls ^. className) <> hi ^. hrImplementedBy

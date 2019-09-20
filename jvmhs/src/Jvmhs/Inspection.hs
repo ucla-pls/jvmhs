@@ -16,7 +16,6 @@ module Jvmhs.Inspection
   where
 
 -- import qualified Data.Set                             as Set
-import qualified Data.HashSet                         as HashSet
 import qualified Data.Text                            as Text
 
 import           Control.Lens

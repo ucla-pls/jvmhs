@@ -74,7 +74,6 @@ returnT = B.Return . Just . \case
    JTFloat   -> B.LFloat
    JTDouble  -> B.LDouble
 
-
 -- | Create a new code instance with the given return type.
 makeStub :: Word16 -> Maybe JType -> Code
 makeStub requiredLocals jt = Code

@@ -59,7 +59,6 @@ import           Control.Monad
 import           Data.Functor
 import           Data.Hashable
 import           Data.Maybe
-import qualified Data.Set
 import           GHC.Generics        (Generic)
 
 -- unordered-containers
@@ -149,7 +148,7 @@ getHierarchyWithStubs =
 calculateHierarchy ::
   HierarchyStubs
   -> ([ClassName], Hierarchy)
-calculateHierarchy stubs = do
+calculateHierarchy stubs =
   (missed, Hierarchy stubs (mkGraph nodes edges))
   where
     (nodes, edges) = stubs ^. ifolded.withIndex.to collection
@@ -198,9 +197,7 @@ declaration hry mid =
 
 isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
 isAbstract hry mid =
-  hry ^? hryStubs
-    . at (mid^.inClassName) . _Just
-    . hryMethods . at (mid^.inClassId) ._Just
+  hry ^? hryStubs . ix (mid^.inClassName) . hryMethods . ix (mid^.inClassId)
 
 isRequired ::
   Hierarchy
@@ -221,9 +218,8 @@ isRequired hry mid
       case hry ^. hryStubs.at cn of
         Nothing -> True
         Just stub ->
-          orOf ( hryMethods
-                 . at(mid^. relMethodName)
-                 . _Just <> hryInterfaces.folded.to go
+          orOf ( hryMethods . ix (mid^. relMethodName)
+                 <> hryInterfaces.folded.to go
                ) stub
 
 requiredMethods ::

@@ -36,15 +36,11 @@ import           Control.Lens.Action
 -- unordered-collections
 import qualified Data.HashSet                 as S
 
-import           Data.Set.Lens            (setOf)
-
-import           Jvmhs.Analysis.Hierarchy
 import           Jvmhs.ClassPool
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Graph
 import           Jvmhs.Data.Type
 import           Jvmhs.Inspection
-import           Jvmhs.Data.Named
 
 type ClassGraph = Graph ClassName ()
 
@@ -94,7 +90,7 @@ computeClassClosureM cls fm =
           front = S.fromList $ toListOf (folded.classNames) exists
         go (known', unknown') (front `S.difference` known')
 
-type CallGraph = Graph AbsMethodName ()
+-- type CallGraph = Graph AbsMethodName ()
 
 -- -- | Given a foldable structure over 'AbsMethodName's compute a CallGraph.
 -- mkCallGraph ::
