@@ -12,7 +12,12 @@ github: ucla-pls/jvmhs
 description: |
   A library to sematically read a class from a file.
 
-ghc-options: -Wall
+ghc-options: 
+ - -Wall
+ - -Wcompat
+ - -Wincomplete-record-updates
+ - -Wincomplete-uni-patterns
+ - -Wredundant-constraints
 
 extra-source-files:
   - LICENSE

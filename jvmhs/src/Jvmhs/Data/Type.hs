@@ -49,6 +49,7 @@ module Jvmhs.Data.Type
   , methodNameToText
 
   , mkAbsMethodName
+  , absMethodNameToText
 
   , MethodDescriptor
   , methodDArguments
@@ -63,6 +64,7 @@ module Jvmhs.Data.Type
   , fieldNameToText
 
   , mkAbsFieldName
+  , absFieldNameToText
 
   , FieldDescriptor
   , fieldDType
@@ -449,8 +451,6 @@ inClassId =
   (\(B.InClass _ i) -> i ^. from _Binary )
   (\(B.InClass cn _) i -> B.InClass cn (i ^._Binary))
 
-
-
 type AbsMethodName = B.AbsMethodId B.High
 
 mkAbsMethodName :: ClassName -> MethodName -> AbsMethodName
@@ -458,6 +458,10 @@ mkAbsMethodName cn m = B.InClass (cn^._Binary) (m^._Binary)
 
 relMethodName :: Lens' AbsMethodName MethodName
 relMethodName = inClassId
+
+absMethodNameToText :: AbsMethodName -> Text.Text
+absMethodNameToText (B.InClass cn i) =
+  B.typeToText cn <> ":" <> methodNameToText (review _Binary i)
 
 instance HasName MethodName AbsMethodName where
   name = relMethodName
@@ -470,6 +474,11 @@ mkAbsFieldName cn f = B.InClass (cn^._Binary) (f^._Binary)
 
 relFieldName :: Lens' AbsFieldName FieldName
 relFieldName = inClassId
+
+absFieldNameToText :: AbsFieldName -> Text.Text
+absFieldNameToText (B.InClass cn i) =
+  B.typeToText cn <> ":" <> fieldNameToText (review _Binary i)
+
 
 instance HasName FieldName AbsFieldName where
   name = relFieldName
