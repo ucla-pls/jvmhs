@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TupleSections              #-}
@@ -56,6 +57,7 @@ import           Data.Aeson.TH
 
 -- base
 import           Control.Monad
+import qualified Data.List as L
 import           Data.Functor
 import           Data.Hashable
 import           Data.Maybe
@@ -78,20 +80,33 @@ import           Jvmhs.Data.Named
 fromMap' :: M.HashMap k v -> S.HashSet k
 fromMap' m = S.fromMap $ m $> ()
 
+data HierarchyType
+  = HInterface
+  | HAbstract
+  | HPlain
+  deriving (Show, Eq)
+
 -- | A hierarchy stub, is the only information needed to calculate the
 -- hierarchy. The benifit is that this can be loaded up front.
 data HierarchyStub = HierarchyStub
-  { _hrySuper      :: Maybe ClassName
+  { _hryType       :: HierarchyType
+  , _hrySuper      :: Maybe ClassName
   , _hryInterfaces :: S.HashSet ClassName
   , _hryMethods    :: M.HashMap MethodName Bool
   , _hryFields     :: S.HashSet FieldName
   } deriving (Show, Eq)
 
 makeLenses ''HierarchyStub
+$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''HierarchyType)
 $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''HierarchyStub)
 
 toStub :: Class -> HierarchyStub
 toStub cls = HierarchyStub
+  ( if
+      | cls ^. classAccessFlags . contains CInterface -> HInterface
+      | cls ^. classAccessFlags . contains CAbstract -> HAbstract
+      | otherwise -> HPlain
+  )
   (cls ^. classSuper)
   (S.fromList $ cls ^. classInterfaces)
   (M.fromList
@@ -178,6 +193,7 @@ definitions hry mid =
   . implementations hry
   $ mid^.inClassName
 
+-- Retruns
 declaration ::
   Hierarchy
   -> AbsMethodName
@@ -195,32 +211,74 @@ declaration hry mid =
              <> (hrySuper.folded.to go._Just)
              <> (hryInterfaces.folded.to go._Just)
 
-isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
-isAbstract hry mid =
-  hry ^? hryStubs . ix (mid^.inClassName) . hryMethods . ix (mid^.inClassId)
+-- isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
+-- isAbstract hry mid =
+--   hry ^? hryStubs . ix (mid^.inClassName) . hryMethods . ix (mid^.inClassId)
+
+-- higherMethods :: Hierarchy -> MethodName -> Fold ClassName AbsMethodName
+-- higherMethods hry =
+
+-- | A fold of all abstract super classes, this includes classes and
+-- intefaces
+abstractedSuperClasses :: HierarchyStub -> Hierarchy -> [HierarchyStub]
+abstractedSuperClasses stub h =
+  toListOf (
+    (hrySuper._Just <> hryInterfaces.folded)
+    . folding (\cn -> h ^? hryStubs.ix cn)
+    . filtered (\n -> n ^. hryType `L.elem` [HInterface, HAbstract])
+    ) stub
+
 
 isRequired ::
   Hierarchy
   -> AbsMethodName
   -> Bool
-isRequired hry mid
-  | mid ^. relMethodName.methodId == "<init>:()V" = True
-  | otherwise =
-    case hry ^. hryStubs.at (mid ^. inClassName) of
-      Nothing -> False
-      Just stub ->
-        case stub ^? hrySuper._Just.to (declaration hry.flip (set inClassName) mid)._Just of
-          Just w -> fromMaybe True (isAbstract hry w)
-          Nothing ->
-            orOf (hryInterfaces.folded.to go) stub
+isRequired hry m =
+  maybe False isAbstractInSupers $ hry ^. hryStubs.at (m ^.inClassName)
   where
-    go cn =
-      case hry ^. hryStubs.at cn of
-        Nothing -> True
-        Just stub ->
-          orOf ( hryMethods . ix (mid^. relMethodName)
-                 <> hryInterfaces.folded.to go
-               ) stub
+    isAbstractInSupers :: HierarchyStub -> Bool
+    isAbstractInSupers stb =
+      or (map hasAbstract $ abstractedSuperClasses stb hry)
+
+    hasAbstract :: HierarchyStub -> Bool
+    hasAbstract stb =
+      fromMaybe (isAbstractInSupers stb) $ stb ^. hryMethods.at mid
+
+    mid = m ^. relMethodName
+
+  -- where go
+
+
+  -- | mid ^. relMethodName.methodId == "<init>:()V" = True
+--   | otherwise =
+--     orOf
+--     (
+--       hryStubs
+--       . ix (mid ^. inClassName)
+--       . ( hrySuper._Just.to (isAbstractIn (mid ^. relMethodName))
+--         )
+--     )
+
+--     case hry ^.
+--       Nothing -> False
+--       Just stub ->
+--         orOf
+--         ( hrySuper._Just.to (declaration hry.flip (set inClassName) mid)._Just
+--         )
+--         case stub ^?  of
+--           Just w -> fromMaybe True (isAbstract hry w)
+--           Nothing ->
+--             orOf (hryInterfaces.folded.to go) stub
+--   where
+--     go cn =
+--       case hry ^. hryStubs.at cn of
+--         Nothing -> True
+--         Just stub ->
+--           orOf ( hryMethods . ix (mid^. relMethodName)
+--                  <> hryInterfaces.folded.to go
+--                ) stub
+
+
 
 requiredMethods ::
   Hierarchy

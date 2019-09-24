@@ -43,7 +43,7 @@ nothing = const pure
 instance Inspectable Class where
   classNames =
     traverseClass
-      id (traverse.id) nothing
+      id traverse nothing
       traverse
       (traverse.classNames)
       (traverse.classNames)
@@ -140,7 +140,7 @@ instance Inspectable ExceptionHandler where
       nothing
       nothing
       nothing
-      (traverse.id)
+      traverse
 
 instance Inspectable StackMapTable where
   classNames =
@@ -175,7 +175,7 @@ instance Inspectable (B.Invocation B.High) where
       B.InvkInterface w r -> B.InvkInterface w <$> methodNames g r
       B.InvkDynamic r     -> B.InvkDynamic <$> methodNames g r
 
-instance Inspectable (B.JRefType) where
+instance Inspectable B.JRefType where
   classNames g a =
     case a of
       B.JTClass x -> B.JTClass <$> classNames g x
