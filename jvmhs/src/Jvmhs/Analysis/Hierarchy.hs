@@ -26,6 +26,8 @@ module Jvmhs.Analysis.Hierarchy
   , hryFields
   , hryMethods
 
+  , HierarchyType (..)
+
   , HierarchyStubs
 
   , toStub
@@ -43,6 +45,7 @@ module Jvmhs.Analysis.Hierarchy
   -- ** Methods
   , definitions
   , declaration
+  , declarations
   , callSites
   , requiredMethods
   ) where
@@ -183,6 +186,7 @@ implementations ::
 implementations hry =
   revReachable (hry ^. hryGraph)
 
+-- | Return a set of classes that implements a method.
 definitions ::
   Hierarchy
   -> AbsMethodName
@@ -193,7 +197,8 @@ definitions hry mid =
   . implementations hry
   $ mid^.inClassName
 
--- | Returns the possible declaration of the code
+-- | Returns the possible declaration of a method. It might return
+-- itself if it is not abstracts
 declaration ::
   Hierarchy
   -> AbsMethodName
@@ -203,13 +208,38 @@ declaration hry mid =
   where
     ii = mid ^. relMethodName
     go cn =
+      firstOf
+      ( hryStubs.ix cn .
+        ( hryMethods.ix ii.like cn
+          <> hrySuper.folded.to go._Just
+          <> hryInterfaces.folded.to go._Just
+        )
+      ) hry
+
+-- | Return a list of abstract methods that declares the method, but not the
+-- method itself. If a method is defined above this, no declaration above this 
+-- is used.
+declarations :: Hierarchy -> AbsMethodName -> [AbsMethodName]
+declarations hry m =
+  hry ^.. hryStubs . ix (m ^.inClassName) . folding abstractsInSupers
+  where
+    abstractsInSupers = toListOf $
+      (hrySuper._Just <> hryInterfaces.folded)
+      . folding abstractsInClass
+
+    abstractsInClass cn =
       case hry ^. hryStubs.at cn of
-        Nothing -> Nothing
-        Just stub ->
-          flip firstOf stub $
-             (hryMethods.at ii._Just.like cn)
-             <> (hrySuper.folded.to go._Just)
-             <> (hryInterfaces.folded.to go._Just)
+        Just stb ->
+          case stb ^. hryMethods.at mid of
+            Just True -> [mkAbsMethodName cn mid]
+            _ | stb ^. hryType `L.elem` [HInterface, HAbstract]
+                -> abstractsInSupers stb
+              | otherwise
+                -> []
+        Nothing -> []
+
+    mid = m ^. relMethodName
+
 
 -- isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
 -- isAbstract hry mid =
@@ -227,6 +257,7 @@ abstractedSuperClasses stub h =
     . folding (\cn -> h ^? hryStubs.ix cn)
     . filtered (\n -> n ^. hryType `L.elem` [HInterface, HAbstract])
     ) stub
+
 
 
 isRequired ::
