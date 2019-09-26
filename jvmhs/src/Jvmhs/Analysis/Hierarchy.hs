@@ -107,8 +107,8 @@ toStub cls = HierarchyStub
       | cls ^. classAccessFlags . contains CAbstract -> HAbstract
       | otherwise -> HPlain
   )
-  (cls ^. classSuper)
-  (S.fromList $ cls ^. classInterfaces)
+  (cls ^? classSuper._Just.classTypeName)
+  (S.fromList $ cls ^.. classInterfaces.folded.classTypeName)
   (M.fromList
    $ cls ^.. classMethods
    . folded
@@ -193,7 +193,7 @@ definitions hry mid =
   . implementations hry
   $ mid^.inClassName
 
--- Retruns
+-- | Returns the possible declaration of the code
 declaration ::
   Hierarchy
   -> AbsMethodName

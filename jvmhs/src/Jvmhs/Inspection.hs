@@ -43,8 +43,9 @@ nothing = const pure
 instance Inspectable Class where
   classNames =
     traverseClass
-      id traverse nothing
-      traverse
+      id (traverse.classNames)
+      nothing
+      (traverse.classNames)
       (traverse.classNames)
       (traverse.classNames)
       (traverse.classNames)

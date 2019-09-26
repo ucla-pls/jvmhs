@@ -78,11 +78,11 @@ addNode (HR hm) cls = HR hm'
 
     -- Creates list of superclasses for node class
     superclasses =
-      cls ^.. classSuper._Just.(id <> lookupCls.hrSuperclasses.folded)
+      cls ^.. classSuper._Just.classTypeName.(id <> lookupCls.hrSuperclasses.folded)
 
     -- get all interfaces and then parent interfaces' interfaces
     interfaces =
-      cls ^. classInterfaces.(to Set.fromList <> folded.lookupCls.hrImplements)
+      cls ^. classInterfaces.folded.classTypeName.(to Set.singleton <> lookupCls.hrImplements)
 
     extendedBy = Set.singleton (cls ^. className) <> hi ^. hrExtendedBy
     implementedBy = Set.singleton (cls ^. className) <> hi ^. hrImplementedBy

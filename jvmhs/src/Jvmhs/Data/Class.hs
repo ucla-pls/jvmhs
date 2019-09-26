@@ -14,7 +14,7 @@
 {-|
 Module      : Jvmhs.Data.Class
 Copyright   : (c) Christian Gram Kalhauge, 2018
-License     : BSD3
+License     : BSD-3-Clause
 Maintainer  : kalhauge@cs.ucla.edu
 
 This module contains an syntaxtic interpretation of the class
@@ -29,23 +29,14 @@ module Jvmhs.Data.Class
     -- ** Class
     Class (..)
   , className
-  , classSuper
-  , classAccessFlags
-  , classInterfaces
-  , classFields
-  , classMethods
-  , classBootstrapMethods
-  , classSignature
-  , classEnclosingMethod
-  , classInnerClasses
-  , classAnnotations
-  , classVersion
+  , classTypeName
+  -- , className
+  , HasClassContent (..)
 
   , classAbsFieldNames
   , classAbsMethodNames
 
   , traverseClass
-
 
   -- *** Helpers
   , isInterface
@@ -56,11 +47,13 @@ module Jvmhs.Data.Class
   -- ** Field
 
   , Field (..)
+  , fieldName
   , FieldContent (..)
   , HasFieldContent (..)
   , traverseField
 
   , Method (..)
+  , methodName
   , MethodContent (..)
   , HasMethodContent (..)
   , methodReturnType
@@ -143,25 +136,28 @@ import           Jvmhs.Data.Signature
 import           Jvmhs.Data.Type
 import           Jvmhs.Data.Named
 
-
+-- | An inner class
 data InnerClass = InnerClass
   { _innerClass       :: ClassName
   -- ^ The name of the inner class
   , _innerOuterClass  :: Maybe ClassName
-  -- ^ The other class
+  -- ^ The name of the other class.
   , _innerClassName   :: Maybe Text.Text
+  -- ^ The name of the inner class, as to be prependend to the
+  -- outer class.
   , _innerAccessFlags :: Set.Set ICAccessFlag
+  -- ^ The access flags of the inner class.
   } deriving (Eq, Show, Generic, NFData)
 
 -- | This is the class
-data Class = Class
-  { _className             :: ClassName
-  -- ^ the name of the class
-  , _classSuper            :: Maybe ClassName
-  -- ^ the name of the super class
-  , _classAccessFlags      :: Set.Set CAccessFlag
+data ClassContent = ClassContent
+  { _classAccessFlags      :: Set.Set CAccessFlag
   -- ^ access flags of the class
-  , _classInterfaces       :: [ ClassName ]
+  , _classTypeParameters   :: [ TypeParameter ]
+  -- ^ the type parameters of the class
+  , _classSuper            :: Maybe ClassType
+  -- ^ the superclass of the class
+  , _classInterfaces       :: [ ClassType ]
   -- ^ a list of interfaces implemented by the class
   , _classFields           :: [ Field ]
   -- ^ a list of fields
@@ -169,11 +165,9 @@ data Class = Class
   -- ^ a list of methods
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
-  , _classSignature        :: Maybe ClassSignature
-  -- ^ the class signature
   , _classEnclosingMethod  :: Maybe (ClassName, Maybe MethodName)
   -- ^ maybe an enclosing class and method
-  , _classInnerClasses     :: [InnerClass]
+  , _classInnerClasses     :: [ InnerClass ]
   -- ^ a list of inner classes
   , _classAnnotations      :: Annotations
   -- ^ the annotations of the class
@@ -181,6 +175,22 @@ data Class = Class
   -- ^ the version of the class file
   } deriving (Eq, Show, Generic, NFData)
 
+-- | A Class is an id and some content
+newtype Class = Class (Named ClassName ClassContent)
+  deriving (Show, Eq, Generic)
+  deriving anyclass (NFData)
+
+instance HasName ClassName Class where
+  name = className
+
+-- | Get the name
+className :: Lens' Class ClassName
+className = lens
+  (\(Class (Named cn _)) -> cn)
+  (\(Class (Named _ a)) cn -> mkClass cn a)
+
+mkClass :: ClassName -> ClassContent -> Class
+mkClass cid cc = Class $ Named cid cc
 
 -- | A Field is an id and some content
 newtype Field = Field (Named FieldName FieldContent)
@@ -189,6 +199,9 @@ newtype Field = Field (Named FieldName FieldContent)
 
 mkField :: FieldName -> FieldContent -> Field
 mkField fid fc = Field $  Named fid fc
+
+fieldName :: Lens' Field FieldName
+fieldName = name
 
 instance HasName FieldName Field where
   name = _Wrapped . name
@@ -213,6 +226,9 @@ newtype Method = Method (Named MethodName MethodContent)
 mkMethod :: MethodName -> MethodContent -> Method
 mkMethod mid mc = Method $ Named mid mc
 
+methodName :: Lens' Method MethodName
+methodName = name
+
 instance HasName MethodName Method where
   name = _Wrapped . name
 
@@ -230,17 +246,18 @@ data MethodContent = MethodContent
   -- ^ the annotations of the method
   } deriving (Eq, Show, Generic, NFData)
 
-makeLenses ''Class
 makeLenses ''InnerClass
 
+makeClassy ''ClassContent
 makeClassy ''FieldContent
 makeClassy ''MethodContent
 
+makeWrapped ''Class
 makeWrapped ''Field
 makeWrapped ''Method
 
-instance HasName ClassName Class where
-  name = className
+instance HasClassContent Class where
+  classContent = _Wrapped . content
 
 instance HasFieldContent Field where
   fieldContent = _Wrapped . content
@@ -262,31 +279,34 @@ classAbsFieldNames =
 
 traverseClass ::
   Traversal' ClassName a
-  -> Traversal' (Maybe ClassName) a
+  -> Traversal' (Maybe ClassType) a
   -> Traversal' (Set.Set CAccessFlag) a
-  -> Traversal' [ ClassName ] a
+  -> Traversal' [ TypeParameter ] a
+  -> Traversal' [ ClassType ] a
   -> Traversal' [ Field ] a
   -> Traversal' [ Method ] a
   -> Traversal' [ BootstrapMethod ] a
-  -> Traversal' (Maybe ClassSignature) a
   -> Traversal' (Maybe (ClassName, Maybe MethodName)) a
   -> Traversal' [ InnerClass ] a
   -> Traversal' Annotations a
   -> Traversal' Class a
-traverseClass tcn tsn taf tis tfs tms tbs tss tem tin tano g s =
-  Class
-  <$> (tcn g . _className $ s)
-  <*> (tsn g . _classSuper $ s)
-  <*> (taf g . _classAccessFlags $ s)
-  <*> (tis g . _classInterfaces $ s)
-  <*> (tfs g . _classFields $ s)
-  <*> (tms g . _classMethods $ s)
-  <*> (tbs g . _classBootstrapMethods $ s)
-  <*> (tss g . _classSignature $ s)
-  <*> (tem g . _classEnclosingMethod $ s)
-  <*> (tin g . _classInnerClasses $ s)
-  <*> (tano g . _classAnnotations $ s)
-  <*> pure (_classVersion s)
+traverseClass tcn tsn taf ttp tis tfs tms tbs tem tin tano g s =
+  mkClass
+  <$> (tcn g . view className $ s)
+  <*>
+  ( ClassContent
+    <$> (taf g . view classAccessFlags $ s)
+    <*> (ttp g . view classTypeParameters $ s)
+    <*> (tsn g . view classSuper $ s)
+    <*> (tis g . view classInterfaces $ s)
+    <*> (tfs g . view classFields $ s)
+    <*> (tms g . view classMethods $ s)
+    <*> (tbs g . view classBootstrapMethods $ s)
+    <*> (tem g . view classEnclosingMethod $ s)
+    <*> (tin g . view classInnerClasses $ s)
+    <*> (tano g . view classAnnotations $ s)
+    <*> pure (view classVersion s)
+  )
 {-# INLINE traverseClass #-}
 
 traverseField ::
@@ -361,8 +381,8 @@ classMethod mid = classMethods . to (find (\a -> a ^. name == mid))
 
 -- | The dependencies of a class
 dependencies :: Class -> [ ClassName ]
-dependencies cls =
-  cls ^.. classSuper ._Just ++ cls ^. classInterfaces
+dependencies =
+  toListOf $ (classSuper._Just <> classInterfaces.folded).classTypeName
 
 -- | Check if a class is an interface
 isInterface :: Class -> Bool
@@ -522,17 +542,30 @@ fromClassFile = do
   _className <-
     view (from _Binary) . B.cThisClass
 
-  _classSuper <-
-    (\x -> if B.cThisClass x == "java/lang/Object"
-      then Nothing
-      else Just (view (from _Binary) $ B.cSuperClass x)
-    )
+  classSignature <-
+    fmap (\(Signature a) ->
+            fromRight (error $ "could not read " ++ show a) $ classSignatureFromText a
+         ) . B.cSignature
+
+  let _classTypeParameters = concat (fmap csTypeParameters classSignature)
+
+  _classSuper <- \cls ->
+    case fmap csSuperclassSignature classSignature of
+      Just sp -> Just sp
+      Nothing
+        | B.cThisClass cls == "java/lang/Object" ->
+          Nothing
+        | otherwise ->
+          Just $ ClassType (B.cSuperClass cls) []
 
   _classAccessFlags <-
     B.cAccessFlags
 
-  _classInterfaces <-
-    toListOf (folded.from _Binary) . B.cInterfaces
+  _classInterfaces <- \cls ->
+    case fmap csInterfaceSignatures classSignature of
+      Just sp -> sp
+      Nothing ->
+        [ ClassType i [] | i <- toListOf (folding B.cInterfaces) cls ]
 
   _classFields <-
     toListOf (folded.from _Binary) . B.cFields
@@ -542,11 +575,6 @@ fromClassFile = do
 
   _classBootstrapMethods <-
     map fromBinaryBootstrapMethod . B.cBootstrapMethods
-
-  _classSignature <-
-    fmap (\(Signature a) ->
-            fromRight (error $ "could not read " ++ show a) $ classSignatureFromText a
-         ) . B.cSignature
 
   _classEnclosingMethod <-
     fmap (\e ->
@@ -565,7 +593,7 @@ fromClassFile = do
   _classVersion  <-
     Just <$> ((,) <$> B.cMajorVersion <*> B.cMinorVersion)
 
-  pure $ Class {..}
+  pure $ Class (Named _className (ClassContent {..}))
 
 readAnnotations ::
   [B.RuntimeVisibleAnnotations B.High] ->
@@ -576,17 +604,21 @@ readAnnotations vis invis =
   (concatMap (toList . B.asListOfRuntimeInvisibleAnnotations) $ invis)
 
 toClassFile :: Class -> B.ClassFile B.High
-toClassFile =
+toClassFile = do
+
+
   B.ClassFile 0xCAFEBABE
-    <$> maybe (0 :: Word16) snd . _classVersion
-    <*> maybe (52 :: Word16) fst . _classVersion
+    <$> maybe (0 :: Word16) snd . view classVersion
+    <*> maybe (52 :: Word16) fst . view classVersion
     <*> pure ()
-    <*> B.BitSet . _classAccessFlags
+    <*> B.BitSet . view classAccessFlags
 
     <*> view (className._Binary)
-    <*> view _Binary . fromMaybe "java/lang/Object" . _classSuper
+    <*> view _Binary
+      . maybe "java/lang/Object" (view classTypeName)
+      . view classSuper
 
-    <*> B.SizedList . toListOf ( classInterfaces.folded._Binary )
+    <*> B.SizedList . toListOf ( classInterfaces.folded.classTypeName._Binary)
     <*> B.SizedList . toListOf ( classFields.folded._Binary )
     <*> B.SizedList . toListOf ( classMethods.folded._Binary )
     <*> ( do
@@ -598,7 +630,13 @@ toClassFile =
            caSignature <-
              maybeToList
              . fmap (Signature . classSignatureToText)
-             . view classSignature
+             . (\cls ->
+                 case cls^.classSuper of
+                   Just x ->
+                     Just $ ClassSignature (cls^.classTypeParameters) x (cls^.classInterfaces)
+                   Nothing ->
+                     Nothing
+               )
 
            caEnclosingMethod <-
              maybeToList
@@ -642,9 +680,13 @@ instance ToJSON Method where
   toJSON (Method m) =
     object [ "name" .= (m ^. name), "content" .= (m ^. content)]
 
+instance ToJSON Class where
+  toJSON cls@(Class c) =
+    object [ "name" .= (cls ^. name), "content" .= (c ^. content)]
+
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''MethodContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''FieldContent)
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
+$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''ClassContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''InnerClass)
 
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
