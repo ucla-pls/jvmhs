@@ -14,10 +14,10 @@ description: |
 
 ghc-options: 
  - -Wall
- - -Wcompat
- - -Wincomplete-record-updates
- - -Wincomplete-uni-patterns
- - -Wredundant-constraints
+ # - -Wcompat
+ # - -Wincomplete-record-updates
+ # - -Wincomplete-uni-patterns
+ # - -Wredundant-constraints
 
 extra-source-files:
   - LICENSE
