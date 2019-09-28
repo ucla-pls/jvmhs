@@ -280,7 +280,7 @@ isRequired hry m =
   -- where go
 
 
-  -- | mid ^. relMethodName.methodId == "<init>:()V" = True
+--   | mid ^. relMethodName.methodId == "<init>:()V" = True
 --   | otherwise =
 --     orOf
 --     (
