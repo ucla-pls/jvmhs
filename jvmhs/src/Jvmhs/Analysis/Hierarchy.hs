@@ -46,6 +46,8 @@ module Jvmhs.Analysis.Hierarchy
   , definitions
   , declaration
   , declarations
+  , isAbstract
+  , abstractDeclaration
   , callSites
   , requiredMethods
   ) where
@@ -198,7 +200,7 @@ definitions hry mid =
   $ mid^.inClassName
 
 -- | Returns the possible declaration of a method. It might return
--- itself if it is not abstracts
+-- itself
 declaration ::
   Hierarchy
   -> AbsMethodName
@@ -215,6 +217,15 @@ declaration hry mid =
           <> hryInterfaces.folded.to go._Just
         )
       ) hry
+
+-- | Checks if the method or any of it's supermethods is declared abstractly.
+-- This methods stops on the first declared method.
+abstractDeclaration ::
+  Hierarchy
+  -> AbsMethodName
+  -> Bool
+abstractDeclaration hry mid =
+  fromMaybe False (declaration hry mid >>= isAbstract hry)
 
 -- | Return a list of abstract methods that declares the method, but not the
 -- method itself. If a method is defined above this, no declaration above this 
@@ -241,9 +252,9 @@ declarations hry m =
     mid = m ^. relMethodName
 
 
--- isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
--- isAbstract hry mid =
---   hry ^? hryStubs . ix (mid^.inClassName) . hryMethods . ix (mid^.inClassId)
+isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
+isAbstract hry mid =
+  hry ^? hryStubs . ix (mid^.inClassName) . hryMethods . ix (mid^.inClassId)
 
 -- higherMethods :: Hierarchy -> MethodName -> Fold ClassName AbsMethodName
 -- higherMethods hry =
@@ -257,8 +268,6 @@ abstractedSuperClasses stub h =
     . folding (\cn -> h ^? hryStubs.ix cn)
     . filtered (\n -> n ^. hryType `L.elem` [HInterface, HAbstract])
     ) stub
-
-
 
 isRequired ::
   Hierarchy
