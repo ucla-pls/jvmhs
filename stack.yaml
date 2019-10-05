@@ -2,20 +2,12 @@ resolver: lts-12.26
 packages:
 - jvmhs
 - javaq
-<<<<<<< HEAD
 extra-deps: 
-=======
-  #- jreduce
-  # - location:
-  #     git: git@bitbucket.org:ucla-pls/reduce.git
-  #     commit: d74c8853aee45e86f0dc7e1113f2cc47a4ec23c4
-  #   extra-dep: true
 - location:
     git: https://github.com/ucla-pls/jvm-binary.git
     commit: 059dce79b204cee348995d506f7a93c16e5e4d11
   extra-dep: true
 extra-deps:
->>>>>>> remove jreduce from dependencies
   - fgl-visualize-0.1.0.1
   - dotgen-0.4.2
   - jvm-binary-0.7.0
