@@ -14,3 +14,5 @@ dist-newstyle
 .ghc.*
 
 result
+/jvmhs/stdlib-stubs.json
+/jvmhs/failure.txt

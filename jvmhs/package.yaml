@@ -1,9 +1,8 @@
 name: jvmhs
 version: '0.0.1'
 author: Christian Gram Kalhauge
-maintainer: Christian Gram Kalhauge <kalhauge@cs.ucla.edu>
+maintainer: "Christian Gram Kalhauge <kalhauge@cs.ucla.edu>"
 synopsis: A library for reading Java class-files
-
 license: BSD3
 license-file: LICENSE
 category: Language, Java, JVM
@@ -13,11 +12,11 @@ description: |
   A library to sematically read a class from a file.
 
 ghc-options: 
- - -Wall
- # - -Wcompat
- # - -Wincomplete-record-updates
- # - -Wincomplete-uni-patterns
- # - -Wredundant-constraints
+- -Wall
+# - -Wcompat
+# - -Wincomplete-record-updates
+# - -Wincomplete-uni-patterns
+# - -Wredundant-constraints
 
 extra-source-files:
   - LICENSE

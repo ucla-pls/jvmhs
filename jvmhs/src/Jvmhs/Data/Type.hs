@@ -241,7 +241,7 @@ ntDescriptor = lens B.ntDescriptor (\a b -> a { B.ntDescriptor = b })
 
 newtype MethodName =
   MethodName (Name (B.MethodId))
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Eq, Ord, Generic)
   deriving anyclass NFData
 
 makeWrapped ''MethodName
@@ -316,6 +316,7 @@ instance IsString MethodName where
   fromString = view $ to fromString . from _Binary
 
 
+
 -- * FieldName
 
 newtype FieldName =
@@ -377,7 +378,6 @@ instance IsString FieldName where
 instance Hashable B.JType where
   hashWithSalt i b =
     i `hashWithSalt` (B.typeToText b)
-
 
 
 
@@ -550,6 +550,8 @@ instance ToJSON BS.ByteString where
 instance ToJSON (B.MethodHandle B.High) where
   toJSON _ = String "MethodHandle"
 
+instance Show MethodName where
+  show = Text.unpack . methodNameToText
 
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''CAccessFlag)
 $(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''FAccessFlag)

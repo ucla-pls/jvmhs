@@ -47,6 +47,7 @@ module Jvmhs.Analysis.Hierarchy
   , declaration
   , declarations
   , isAbstract
+  , isSubclassOf
   , abstractDeclaration
   , callSites
   , requiredMethods
@@ -250,6 +251,11 @@ declarations hry m =
         Nothing -> []
 
     mid = m ^. relMethodName
+
+
+isSubclassOf :: Hierarchy -> ClassName -> ClassName -> Bool
+isSubclassOf hry cn1 cn2 =
+  cn1 `L.elem` implementations hry cn2
 
 
 isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
