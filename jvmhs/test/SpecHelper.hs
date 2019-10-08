@@ -36,6 +36,7 @@ module SpecHelper
 
 import Text.Printf
 import Control.Monad
+import Control.Exception
 
 import Test.Hspec
 import Test.Hspec.QuickCheck
@@ -159,13 +160,13 @@ withJREClassMethods cn n fn = do
       let mn = mkAbsMethodName (cls^.className) (m^.methodName)
       it (printf "%s (%s)" n (show mn)) $ fn mn m
 
-getJREHierachy :: FilePath -> IO Hierarchy
+getJREHierachy :: FilePath -> IO (Maybe Hierarchy)
 getJREHierachy fp = do
   doesFileExist fp >>= \case
     True -> do
       Just stubs <- fmap decode $ BL.readFile fp
-      return . snd $ calculateHierarchy stubs
-    False -> do
+      return . Just . snd $ calculateHierarchy stubs
+    False -> fmap (either (\(SomeException _) -> Nothing) Just). try $ do
       r <- preload =<< fromClassPath []
       (_, st) <- loadClassPoolState (defaultFromReader r)
       hry <- fmap fst . flip runClassPoolT st . fmap snd $ getHierarchy

@@ -23,36 +23,25 @@ import           SpecHelper
 spec :: Spec
 spec = do
   describe "typecheck" $ do
-    beforeMethod "Simple.main:([Ljava/lang/String;)V" $
-      it "can typecheck" $ \m -> do
-      let
-        Just code = m ^? methodCode._Just
-        (_, hry) = calculateHierarchy mempty
-      x <- typeCheckDebug hry "Simple.main:([Ljava/lang/String;)V" True code
-      x `shouldSatisfy` isRight
+    mhry <- runIO $ getJREHierachy "stdlib-stubs.json"
+    forM_ mhry $ \hry -> do
+      withJREClassMethods "java/lang/String" "can typecheck" $
+        doesTypeCheck hry
 
+      withJREClassMethods "java/lang/Object" "can typecheck" $
+        doesTypeCheck hry
 
+      withJREClassMethods "java/util/ArrayList" "can typecheck" $
+        doesTypeCheck hry
 
-  describe "typecheck on all" $ do
-    hry <- runIO $ getJREHierachy "stdlib-stubs.json"
+      withJREClassMethods "java/util/HashMap" "can typecheck" $
+        doesTypeCheck hry
 
-    withJREClassMethods "java/lang/String" "can typecheck" $
-      doesTypeCheck hry
+      withJREClassMethods "java/lang/Enum" "can typecheck" $
+        doesTypeCheck hry
 
-    withJREClassMethods "java/lang/Object" "can typecheck" $
-      doesTypeCheck hry
-
-    withJREClassMethods "java/util/ArrayList" "can typecheck" $
-      doesTypeCheck hry
-
-    withJREClassMethods "java/util/HashMap" "can typecheck" $
-      doesTypeCheck hry
-
-    withJREClassMethods "java/lang/Enum" "can typecheck" $
-      doesTypeCheck hry
-
-    withJREClassMethods "java/util/function/BiConsumer" "can typecheck" $
-      doesTypeCheck hry
+      withJREClassMethods "java/util/function/BiConsumer" "can typecheck" $
+        doesTypeCheck hry
 
   where
     doesTypeCheck :: Hierarchy -> AbsMethodName -> Method -> IO ()
