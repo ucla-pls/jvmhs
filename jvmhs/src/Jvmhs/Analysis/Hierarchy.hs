@@ -19,6 +19,7 @@ module Jvmhs.Analysis.Hierarchy
     Hierarchy (..)
   , hryStubs
   , hryGraph
+  , HEdge (..)
 
   , HierarchyStub (..)
   , hrySuper
@@ -48,6 +49,7 @@ module Jvmhs.Analysis.Hierarchy
   , declarations
   , isAbstract
   , isSubclassOf
+  , subclassPath
   , abstractDeclaration
   , callSites
   , requiredMethods
@@ -256,6 +258,24 @@ declarations hry m =
 isSubclassOf :: Hierarchy -> ClassName -> ClassName -> Bool
 isSubclassOf hry cn1 cn2 =
   cn1 `L.elem` implementations hry cn2
+
+
+-- | Finds the path from a subclass A to the superclass B
+subclassPath :: Hierarchy -> ClassName -> ClassName -> Maybe [(ClassName, ClassName, HEdge)]
+subclassPath hry a' b = go a'
+  where
+    imps = S.fromList $ implementations hry b
+    go a
+      | a == b = Just []
+      | otherwise =
+        case findOf (hryStubs.ix a.hrySuper._Just) (`S.member` imps) hry of
+          Just c -> ((a, c, Extend):) <$> go c
+          Nothing ->
+            case findOf (hryStubs.ix a.hryInterfaces.folded) (`S.member` imps) hry of
+              Just c -> ((a, c, Implement):) <$> go c
+              Nothing -> Nothing
+
+
 
 
 isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
