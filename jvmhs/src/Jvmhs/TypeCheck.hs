@@ -26,15 +26,22 @@ module Jvmhs.TypeCheck
   , B.VerificationTypeInfo (..)
 
   , AsTypeInfo (..)
+  , AsLocalType (..)
 
   , typecheck
   , TypeChecker
-  , HasTypeCheckState (..)
   , Checkable (..)
 
   , typeCheck
   , typeCheckDebug
   , TypeCheckState (..)
+  , HasTypeCheckState (..)
+
+  , _VTObject
+  , _JTArray
+  , _JTClass
+  , _JTRef
+  , _JTBase
   ) where
 
 -- base
