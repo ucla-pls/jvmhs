@@ -53,7 +53,7 @@ library:
 tests:
   jvmhs-test:
     source-dirs: test
-    main: Spec.hs
+    main: Main.hs
     dependencies:
       - jvmhs
       - hspec
