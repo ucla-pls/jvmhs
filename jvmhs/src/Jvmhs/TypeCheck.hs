@@ -29,6 +29,7 @@ module Jvmhs.TypeCheck
 
   , typecheck
   , TypeChecker
+  , HasTypeCheckState (..)
   , Checkable (..)
 
   , typeCheck
