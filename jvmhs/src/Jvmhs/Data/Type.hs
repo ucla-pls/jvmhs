@@ -466,7 +466,6 @@ absMethodNameToText (B.InClass cn i) =
 instance HasName MethodName AbsMethodName where
   name = relMethodName
 
-
 type AbsFieldName = B.AbsFieldId B.High
 
 mkAbsFieldName :: ClassName -> FieldName -> AbsFieldName

@@ -51,6 +51,9 @@ spec = do
     withJREClassMethods "java/lang/Enum" "can typecheck" $
       doesTypeCheck hry
 
+    withJREClassMethods "java/util/function/BiConsumer" "can typecheck" $
+      doesTypeCheck hry
+
   where
     doesTypeCheck :: Hierarchy -> AbsMethodName -> Method -> IO ()
     doesTypeCheck hry mn mth =

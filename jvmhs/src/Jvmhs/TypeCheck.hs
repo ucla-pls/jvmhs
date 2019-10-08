@@ -28,7 +28,6 @@ module Jvmhs.TypeCheck
   , AsTypeInfo (..)
 
   , typecheck
-  , runTypeChecker
   , TypeChecker
   , Checkable (..)
 
@@ -69,7 +68,7 @@ import qualified Language.JVM as B
 
 -- jvmhs
 -- import Jvmhs.Data.Class
--- import Jvmhs.Data.Named
+import Jvmhs.Data.Named
 import Jvmhs.Data.Code
 import Jvmhs.Data.Type
 import Jvmhs.Analysis.Hierarchy
@@ -214,8 +213,8 @@ makeClassy ''TypeCheckState
 
 getLocal :: TypeChecker m => LocalAddress -> m TypeInfo
 getLocal addr = do
-  let index = fromIntegral addr
-  use (tcLocals . at index) >>= \case
+  let idx = fromIntegral addr
+  use (tcLocals . at idx) >>= \case
     Just l ->
       return l
     Nothing ->
@@ -227,8 +226,7 @@ putLocal ::
   -> LocalAddress
   -> m ()
 putLocal a i = do
-  let index = fromIntegral i
-  tcLocals . at index .= Just (asTypeInfo a)
+  tcLocals . at (fromIntegral i) .= Just (asTypeInfo a)
 
 pop :: TypeChecker m => m TypeInfo
 pop = use tcStack >>= \case
@@ -333,9 +331,6 @@ unlessM mbool munit = mbool >>= \case
 -- whenM :: Monad m => m Bool -> m () -> m ()
 -- whenM = unlessM . (not <$>)
 
-runTypeChecker hry m =
-  runState (runExceptT (runReaderT m hry))
-
 typeCheck ::
   Hierarchy
   -- ^ A class hierarchy.
@@ -358,9 +353,9 @@ typeCheck hry mn isStatic code = V.createT (runExceptT go) where
     entries <- VM.replicate (V.length $ code ^.codeByteCode) defaultState
     iforMOf_ (codeByteCode.folded.to B.opcode) code $ \i a -> withExceptT (i,) $ do
       setExceptionState code entries i
-      state <- VM.read entries i
-      state' <- execStateT (runReaderT (typecheck a) hry) (state & tcNexts .~ [i + 1])
-      runReaderT (updateStates entries state') hry
+      s1 <- VM.read entries i
+      s2 <- execStateT (runReaderT (typecheck a) hry) (s1 & tcNexts .~ [i + 1])
+      runReaderT (updateStates entries s2) hry
 
     return entries
 
@@ -382,21 +377,21 @@ typeCheckDebug hry mn isStatic code = mapM V.freeze =<< runExceptT go where
     entries <- VM.replicate (V.length $ code ^.codeByteCode) defaultState
     iforMOf_ (codeByteCode.folded.to B.opcode) code $ \i a -> withExceptT (i,) $ do
       setExceptionState code entries i
-      state <- VM.read entries i
-      debugInfo state i a
-      state' <- execStateT (runReaderT (typecheck a) hry) (state & tcNexts .~ [i + 1])
-      runReaderT (updateStates entries state') hry
+      s1 <- VM.read entries i
+      debugInfo s1 i a
+      s2 <- execStateT (runReaderT (typecheck a) hry) (s1 & tcNexts .~ [i + 1])
+      runReaderT (updateStates entries s2) hry
 
     return entries
 
-  debugInfo state i a = liftIO $ do
+  debugInfo _state i a = liftIO $ do
     putStrLn ""
     putStrLn "Locals:"
-    iforM (state^.tcLocals) $ \i s ->
-      putStrLn ("  " <> show i <> ": " <> show s)
+    iforM_ (_state^.tcLocals) $ \idx s ->
+      putStrLn ("  " <> show idx <> ": " <> show s)
     putStrLn "Stack:"
-    iforM (state^.tcStack) $ \i s ->
-      putStrLn ("  " <> show i <> ": " <> show s)
+    iforM_ (_state^.tcStack) $ \idx s ->
+      putStrLn ("  " <> show idx <> ": " <> show s)
     putStrLn ""
     print (i, a)
 
@@ -422,12 +417,12 @@ updateStates ::
   => V.MVector (PrimState m) TypeCheckState
   -> TypeCheckState
   -> m ()
-updateStates entries state =
-  forM_ (state^.tcNexts) $ \i -> do
+updateStates entries _state =
+  forM_ (_state^.tcNexts) $ \i -> do
     prevState <- VM.read entries i
-    ask >>= \hry -> case (unifyState prevState state hry) of
+    ask >>= \hry -> case (unifyState prevState _state hry) of
       Just state' -> VM.write entries i state'
-      Nothing -> throwError (InconsistentStates i prevState state)
+      Nothing -> throwError (InconsistentStates i prevState _state)
 
 unifyState ::
   TypeCheckState
@@ -471,6 +466,7 @@ computeLocals mn isStatic = do
 
 -- | Given a single `Instruction` lets typecheck it.
 typecheck ::
+  forall m.
   (MonadState TypeCheckState m, MonadReader Hierarchy m, MonadError TypeCheckError m)
   => Instruction
   -> m ()
@@ -619,12 +615,16 @@ typecheck = \case
         popArguments m
         pop >>= (`checkSubtypeOf` m ^.inClassName)
         pushReturn m
-
+      InvkDynamic (B.InvokeDynamic _ m) -> do
+        popArguments (review _Binary m :: MethodName)
+        pushReturn (review _Binary m :: MethodName)
     where
+      popArguments :: HasName MethodName a => a -> m ()
       popArguments m =
-        forM_ (reverse $ m ^. methodArgumentTypes) $ \a -> do
-          pop >>= (`checkSubtypeOf` a)
+        forM_ (reverse $ m ^. methodArgumentTypes) $ \b -> do
+          pop >>= (`checkSubtypeOf` b)
 
+      pushReturn :: HasName MethodName a => a -> m ()
       pushReturn m =
         forMOf_ (methodReturnType._Just) m push
 
@@ -640,7 +640,7 @@ typecheck = \case
         B.JTArray b -> do
           check LInt =<< pop
           case b of
-            B.JTRef a -> popLengths a
+            B.JTRef a' -> popLengths a'
             _ -> return ()
 
 
@@ -805,108 +805,3 @@ typecheck = \case
       fail "Trying to swap a two sized value"
     push b
     push a
-
--- data Stack = Stack
---   { stackLocals :: V.Vector TypeInfo
---   , stackStack :: [TypeInfo]
---   } deriving (Show, Eq)
-
--- mkStack :: [TypeInfo] -> [TypeInfo] -> Stack
--- mkStack l s = Stack (V.fromList l) s
-
--- checkMethod :: Method -> Maybe (V.Vector Stack)
--- checkMethod (Method (Named n cnt)) =
---   case _methodCode cnt of
---     Just code ->
---       let types = n ^. methodArgumentTypes
---       in checkCode (Stack (V.fromList $ map typeInfoFromJType types) []) code
---     Nothing ->
---       undefined
---   where
---     typeInfoFromJType :: B.JType -> TypeInfo
---     typeInfoFromJType = \case
---       B.JTBase b ->
---         case b of
---           B.JTByte -> B.VTInteger
---           B.JTChar -> B.VTInteger
---           B.JTDouble -> B.VTDouble
---           B.JTFloat -> B.VTFloat
---           B.JTShort -> B.VTInteger
---           B.JTBoolean -> B.VTInteger
---           B.JTInt -> B.VTInteger
---           B.JTLong -> B.VTLong
---       B.JTRef a ->
---         B.VTObject a
-
--- checkCode :: Stack -> Code -> Maybe (V.Vector Stack)
--- checkCode stack code =
---   checkByteCodeOprs stack (fmap B.opcode . _codeByteCode $ code)
-
--- reduceStackMap :: V.Vector Stack -> Maybe StackMapTable
--- reduceStackMap _ = Nothing
---   -- B.StackMapTable (map toFullFrame . V.toList $ v)
---   -- where
---   --   toFullFrame (Stack l s) =
---   --     B.StackMapFrame 1
---   --     $ B.FullFrame (B.SizedList (V.toList l)) (B.SizedList s)
-
--- checkByteCodeOprs :: Stack -> V.Vector ByteCodeOpr -> Maybe (V.Vector Stack)
--- checkByteCodeOprs s v = do
---   V.fromList <$> puttogetter checkByteCodeOpr s (V.toList v)
---   where
---     puttogetter :: (b -> a -> Maybe a) -> a -> [b] -> Maybe [a]
---     puttogetter fn a ls =
---       case ls of
---         [] -> Just []
---         b:rest -> do
---           x <- fn b a
---           rst <- puttogetter fn x rest
---           return (x:rst)
-
--- checkByteCodeOpr :: ByteCodeOpr -> Stack -> Maybe Stack
--- checkByteCodeOpr opr stack =
---   case opr of
---     B.Nop -> Just stack
---     B.Push c -> justPush $ maybe B.VTNull typeInfoOf c
---     B.Load lt idx -> do
---       t <- stackLocals stack V.!? fromIntegral idx
---       guard (isLocalTypeEq lt t)
---       justPush t
-
---     B.Return mlt ->
---       case mlt of
---         Just lt ->
---           popIf (isLocalTypeEq lt)
---         Nothing ->
---           Just stack
---     _ -> Nothing
-
---   where
---     justPush i = Just $ push i stack
-
---     popIf fn =
---       case stackStack stack of
---         l:rest
---           | fn l ->
---               Just (stack { stackStack = rest })
---         _ -> Nothing
-
--- push :: TypeInfo -> Stack -> Stack
--- push i stack = stack { stackStack = i:(stackStack stack)}
-
--- typeInfoOf :: B.JValue -> TypeInfo
--- typeInfoOf = \case
---   B.VInteger _ -> B.VTInteger
---   B.VLong _ -> B.VTLong
---   B.VFloat _ ->B.VTFloat
---   B.VDouble _ -> B.VTDouble
---   B.VString _ -> B.VTObject (JTClass "java/lang/String")
---   B.VClass _ -> B.VTObject (JTClass "java/lang/Class")
---   B.VMethodType _ -> B.VTObject (JTClass "java/lang/invoke/MethodType")
---   B.VMethodHandle _ -> B.VTObject (JTClass "java/lang/invoke/MethodHandle")
-
--- isLocalTypeEq :: B.LocalType -> TypeInfo -> Bool
--- isLocalTypeEq a b =
---   case (a, b) of
---     (B.LInt, B.VTInteger) -> True
---     _ -> False

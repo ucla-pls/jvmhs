@@ -167,7 +167,7 @@ getJREHierachy fp = do
       return . snd $ calculateHierarchy stubs
     False -> do
       r <- preload =<< fromClassPath []
-      (errs, st) <- loadClassPoolState (defaultFromReader r)
+      (_, st) <- loadClassPoolState (defaultFromReader r)
       hry <- fmap fst . flip runClassPoolT st . fmap snd $ getHierarchy
       BL.writeFile fp $ encode (hry^.hryStubs)
       return hry

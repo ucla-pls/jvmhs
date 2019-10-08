@@ -45,6 +45,7 @@ dependencies:
   - fgl
   - fgl-visualize
   - attoparsec
+  - primitive
 
 library:
   source-dirs: src

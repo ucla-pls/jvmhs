@@ -2,8 +2,8 @@
 , deepseq, directory, fgl, fgl-visualize, filepath, generic-random
 , hashable, hpack, hspec, hspec-discover
 , hspec-expectations-pretty-diff, jvm-binary, lens, lens-action
-, mtl, process, QuickCheck, stdenv, tasty, text, transformers
-, unordered-containers, vector, zip-archive
+, mtl, primitive, process, QuickCheck, stdenv, tasty, text
+, transformers, unordered-containers, vector, zip-archive
 }:
 mkDerivation {
   pname = "jvmhs";
@@ -12,15 +12,16 @@ mkDerivation {
   libraryHaskellDepends = [
     aeson attoparsec base bytestring containers deepseq directory fgl
     fgl-visualize filepath hashable jvm-binary lens lens-action mtl
-    process text transformers unordered-containers vector zip-archive
+    primitive process text transformers unordered-containers vector
+    zip-archive
   ];
   libraryToolDepends = [ hpack ];
   testHaskellDepends = [
     aeson attoparsec base bytestring containers deepseq directory fgl
     fgl-visualize filepath generic-random hashable hspec hspec-discover
     hspec-expectations-pretty-diff jvm-binary lens lens-action mtl
-    process QuickCheck tasty text transformers unordered-containers
-    vector zip-archive
+    primitive process QuickCheck tasty text transformers
+    unordered-containers vector zip-archive
   ];
   testToolDepends = [ hspec-discover ];
   preConfigure = "hpack";
