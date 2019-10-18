@@ -283,6 +283,11 @@ instance ToJSON ByteCodeInst where
       [ "type" .= ref
       ]
 
+    B.NewArray (B.NewArrayType depth ref) ->
+      [ "depth" .= depth
+      , "arraytype" .= ref
+      ]
+
     B.ArrayLength ->
       []
 
@@ -352,6 +357,7 @@ byteCodeOprOpCode = \case
     B.Put  _ _              -> "put"
     B.Invoke  _             -> "invoke"
     B.New  _                -> "new"
+    B.NewArray  _           -> "new_array"
     B.ArrayLength           -> "array_length"
     B.Throw                 -> "throw"
     B.CheckCast  _          -> "check_cast"

@@ -10,6 +10,8 @@ module SpecHelper
   , liftIO
   , it
   , describe
+  , fdescribe
+  , xdescribe
   , SpecWith
   , Spec
   , before
@@ -123,51 +125,55 @@ useOutputFolder folder = beforeAll_ $ do
   createDirectoryIfMissing True folder
 
 beforeJREClassPool ::
-  CachedClassPoolT ClassLoader IO a
+  [String]
+  -> CachedClassPoolT ClassLoader IO a
   -> SpecWith a
   -> Spec
-beforeJREClassPool scpt =
+beforeJREClassPool cp scpt =
   beforeAll $ do
-    r <- fromClassPath []
+    r <- fromClassPath cp
     fst <$> runCachedClassPoolT scpt (defaultFromReader r)
 
 runJREClassPool ::
-  CachedClassPoolT ClassLoader IO a
+  [String]
+  -> CachedClassPoolT ClassLoader IO a
   -> IO a
-runJREClassPool scpt =
-  fmap fst . runCachedClassPoolT scpt . defaultFromReader =<< fromClassPath []
+runJREClassPool cp scpt =
+  fmap fst . runCachedClassPoolT scpt . defaultFromReader =<< fromClassPath cp
 
 withJREMethodIt ::
   (HasCallStack, Arg a ~ Method, Example a)
-  => AbsMethodName
+  => [String]
+  -> AbsMethodName
   -> String
   -> (AbsMethodName -> a)
   -> Spec
-withJREMethodIt mn n fn =
-  beforeJREClassPool (fmap fromJust $ getMethod mn) $ do
+withJREMethodIt cp mn n fn =
+  beforeJREClassPool cp (fmap fromJust $ getMethod mn) $ do
     it (printf "%s (%s)" n (show mn)) $ fn mn
 
 withJREClassMethods ::
   (HasCallStack, Example b)
-  => ClassName
+  => [String]
+  -> ClassName
   -> String
   -> (AbsMethodName -> Method -> b)
   -> SpecWith (Arg b)
-withJREClassMethods cn n fn = do
-  mcls <- runIO . runJREClassPool $ getClass cn
+withJREClassMethods cp cn n fn = do
+  mcls <- runIO . runJREClassPool cp $ getClass cn
   forM_ mcls $ \cls -> do
     forMOf_ (classMethods.folded) cls $ \m -> do
       let mn = mkAbsMethodName (cls^.className) (m^.methodName)
       it (printf "%s (%s)" n (show mn)) $ fn mn m
 
-getJREHierachy :: FilePath -> IO (Maybe Hierarchy)
-getJREHierachy fp = do
+getJREHierachy :: [String] -> FilePath -> IO (Maybe Hierarchy)
+getJREHierachy cp fp = do
   doesFileExist fp >>= \case
     True -> do
       Just stubs <- fmap decode $ BL.readFile fp
       return . Just . snd $ calculateHierarchy stubs
     False -> fmap (either (\(SomeException _) -> Nothing) Just). try $ do
-      r <- preload =<< fromClassPath []
+      r <- preload =<< fromClassPath cp
       (_, st) <- loadClassPoolState (defaultFromReader r)
       hry <- fmap fst . flip runClassPoolT st . fmap snd $ getHierarchy
       BL.writeFile fp $ encode (hry^.hryStubs)

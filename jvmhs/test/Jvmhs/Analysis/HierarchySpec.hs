@@ -9,7 +9,7 @@ import Jvmhs.Analysis.Hierarchy
 
 spec :: Spec
 spec = do
-  (runIO (getJREHierachy "stdlib-stubs.json") >>=) . mapM_ $ \hry -> do
+  (runIO (getJREHierachy [] "stdlib-stubs.json") >>=) . mapM_ $ \hry -> do
     describe "subclassPath" $ do
       it "should find path from 'java/util/ArrayList' to 'java/util/List'" $ do
         subclassPath hry "java/util/ArrayList" "java/util/List"

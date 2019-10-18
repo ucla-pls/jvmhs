@@ -126,6 +126,8 @@ instance Inspectable ByteCodeInst where
       B.Put fa c          -> B.Put fa <$> classNames g c
       B.Invoke r          -> B.Invoke <$> classNames g r
       B.New c             -> B.New <$> classNames g c
+      B.NewArray (B.NewArrayType n c)
+        -> B.NewArray . B.NewArrayType n <$> classNames g c
       B.CheckCast c       -> B.CheckCast <$> classNames g c
       B.InstanceOf c      -> B.InstanceOf <$> classNames g c
       _                   -> pure i

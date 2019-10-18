@@ -23,24 +23,35 @@ import           SpecHelper
 spec :: Spec
 spec = do
   describe "typecheck" $ do
-    mhry <- runIO $ getJREHierachy "stdlib-stubs.json"
+    mhry <- runIO $ getJREHierachy [] "stdlib-stubs.json"
     forM_ mhry $ \hry -> do
-      withJREClassMethods "java/lang/String" "can typecheck" $
+      withJREClassMethods [] "java/lang/String" "can typecheck" $
         doesTypeCheck hry
 
-      withJREClassMethods "java/lang/Object" "can typecheck" $
+      withJREClassMethods [] "java/lang/Object" "can typecheck" $
         doesTypeCheck hry
 
-      withJREClassMethods "java/util/ArrayList" "can typecheck" $
+      withJREClassMethods [] "java/util/ArrayList" "can typecheck" $
         doesTypeCheck hry
 
-      withJREClassMethods "java/util/HashMap" "can typecheck" $
+      withJREClassMethods [] "java/util/HashMap" "can typecheck" $
         doesTypeCheck hry
 
-      withJREClassMethods "java/lang/Enum" "can typecheck" $
+      withJREClassMethods [] "java/lang/Enum" "can typecheck" $
         doesTypeCheck hry
 
-      withJREClassMethods "java/util/function/BiConsumer" "can typecheck" $
+      withJREClassMethods [] "java/util/function/BiConsumer" "can typecheck" $
+        doesTypeCheck hry
+
+      withJREClassMethods [] "java/util/function/BiConsumer" "can typecheck" $
+        doesTypeCheck hry
+
+  describe "typecheck-local" $ do
+    let cp = ["test/data/bigtest/classes", "test/data/bigtest/lib"]
+    mhry <- runIO $ getJREHierachy cp "bigtest-stubs.json"
+
+    forM_ mhry $ \hry -> do
+      withJREClassMethods cp "DungeonGame" "can typecheck" $
         doesTypeCheck hry
 
   where
@@ -49,6 +60,12 @@ spec = do
       forM_ (mth^.methodCode) $ \code -> do
         let r = typeCheck hry mn (mth^.methodAccessFlags.contains MStatic)  code
         r `shouldSatisfy` isRight
+
+    -- doesTypeCheck' :: Hierarchy -> AbsMethodName -> Method -> IO ()
+    -- doesTypeCheck' hry mn mth =
+    --   forM_ (mth^.methodCode) $ \code -> do
+    --     r <- typeCheckDebug hry mn (mth^.methodAccessFlags.contains MStatic)  code
+    --     r `shouldSatisfy` isRight
 
 
 

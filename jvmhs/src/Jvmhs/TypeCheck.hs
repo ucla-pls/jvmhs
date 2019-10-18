@@ -637,20 +637,11 @@ typecheck = \case
         forMOf_ (methodReturnType._Just) m push
 
   New a -> do
-    popLengths a
-    -- a <- currentByteCodeIndex
-    -- push (VTUninitialized a :: TypeInfo)
-    push (VTObject $ a :: TypeInfo)
+    push (B.JTClass a)
 
-    where
-      popLengths = \case
-        B.JTClass _ -> return ()
-        B.JTArray b -> do
-          check LInt =<< pop
-          case b of
-            B.JTRef a' -> popLengths a'
-            _ -> return ()
-
+  NewArray a@(NewArrayType n _) -> do
+    replicateM_ (fromIntegral n) (pop >>= check LInt)
+    push (newArrayTypeType a)
 
   ArrayLength -> do
     void . unpack (_VTObject._JTArray) =<< pop
