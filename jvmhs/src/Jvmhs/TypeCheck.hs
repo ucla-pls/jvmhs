@@ -515,14 +515,22 @@ typecheck = \case
     check r a
     push a
 
-  BitOpr _ s -> do
-    let at' = case s of
-          One -> MInt
-          Two -> MLong
+  BitOpr x s -> do
+    let (bt', at') = case s of
+          One -> (MInt, MInt)
+          Two ->
+            ( MLong
+            , case x of
+                ShL -> MInt
+                ShR -> MInt
+                UShR -> MInt
+                _ -> MLong
+            )
     a <- pop
     check at' a
-    check at' =<< pop
-    push a
+    check bt' =<< pop
+    push bt'
+
 
   IncrLocal addr _ -> do
     check LInt =<< getLocal addr
