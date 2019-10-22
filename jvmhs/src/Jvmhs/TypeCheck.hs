@@ -1,18 +1,20 @@
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE EmptyCase                  #-}
 {-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE ViewPatterns               #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DefaultSignatures          #-}
-{-# LANGUAGE FunctionalDependencies     #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE EmptyCase                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-
 Module      : Jvmhs.TypeCheck
@@ -22,8 +24,15 @@ Maintainer  : kalhuage@cs.ucla.edu
 
 -}
 module Jvmhs.TypeCheck
-  ( TypeInfo
-  , B.VerificationTypeInfo (..)
+  ( TypeInfo (..)
+  , _TRef
+  , _TBase
+
+  , TBase (..)
+  , _TInt
+  , _TLong
+  , _TDouble
+  , _TFloat
 
   , AsTypeInfo (..)
   , AsLocalType (..)
@@ -37,51 +46,61 @@ module Jvmhs.TypeCheck
   , TypeCheckState (..)
   , HasTypeCheckState (..)
 
-  , _VTObject
+
   , _JTArray
   , _JTClass
-  , _JTRef
-  , _JTBase
+  , _Single
   ) where
 
 -- base
-import Control.Monad
-import Data.Function
-import Control.Monad.Primitive
-import Control.Exception
--- import Control.Monad.ST
-import qualified Data.List as List
+import           Control.Exception
+import           Control.Monad
+import           Control.Monad.Primitive
+import           Data.Function
+import           Data.Foldable
+import qualified Data.List                            as List
+import           GHC.Generics                         (Generic)
 
 -- containers
-import qualified Data.IntMap as IntMap
+import qualified Data.IntMap                          as IntMap
 
 -- lens
-import Control.Lens
+import           Control.Lens
 
 -- mtl
-import Control.Monad.State
-import Control.Monad.Reader
-import Control.Monad.Except
-
+import           Control.Monad.Except
+import           Control.Monad.Reader
+import           Control.Monad.State
 
 -- vector
-import qualified Data.Vector as V
-import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector                          as V
+import qualified Data.Vector.Mutable                  as VM
 
 -- jvm-binary
-import Language.JVM.Attribute.StackMapTable as B
-import Language.JVM.ByteCode as B
-import qualified Language.JVM.Type as B
-import qualified Language.JVM as B
+import qualified Language.JVM                         as B
+import           Language.JVM.ByteCode                as B
 
 -- jvmhs
-import Jvmhs.Data.Code
-import Jvmhs.Data.Type
-import Jvmhs.Analysis.Hierarchy
+import           Jvmhs.Analysis.Hierarchy
+import           Jvmhs.Data.Code
+import           Jvmhs.Data.Type
 
--- | `TypeInfo` is anything that can be represented on the
--- Java stack.
-type TypeInfo = B.VerificationTypeInfo B.High
+data TBase
+  = TInt
+  | TLong
+  | TFloat
+  | TDouble
+  deriving (Show, Eq, Ord, Generic)
+
+data TypeInfo
+  = TBase !TBase
+  | TRef  ![JRefType]
+  -- ^ Empty list means null
+  | TTop
+  deriving (Show, Eq, Ord, Generic)
+
+makePrisms ''TBase
+makePrisms ''TypeInfo
 
 type Instruction = B.ByteCodeOpr B.High
 
@@ -93,15 +112,12 @@ class AsLocalType a where
 
 instance AsLocalType TypeInfo where
   asLocalType = \case
-    VTInteger  -> LInt
-    VTLong     -> LLong
-    VTFloat    -> LFloat
-    VTDouble   -> LDouble
-    VTObject _ -> LRef
-    VTNull     -> LRef
-    VTUninitializedThis     -> LRef
-    VTUninitialized _     -> LRef
-    VTTop -> error "Cannot convert VTop to a LocalType"
+    TBase TInt  -> LInt
+    TBase TLong     -> LLong
+    TBase TFloat    -> LFloat
+    TBase TDouble   -> LDouble
+    TRef _ -> LRef
+    TTop -> error "Cannot convert Top to LocalType"
 
 instance AsLocalType ArrayType where
   asLocalType = \case
@@ -125,55 +141,54 @@ instance AsTypeInfo TypeInfo where
   asTypeInfo = id
 
 instance AsTypeInfo ClassName where
-  asTypeInfo = B.VTObject . B.JTClass
+  asTypeInfo = TRef . (:[]) . JTClass
+
+instance AsTypeInfo TBase where
+  asTypeInfo = TBase
 
 instance AsTypeInfo B.JRefType where
-  asTypeInfo = B.VTObject
+  asTypeInfo = TRef . (:[])
+
+instance AsTypeInfo B.JBaseType where
+  asTypeInfo = TBase . \case
+    JTByte    -> TInt
+    JTChar    -> TInt
+    JTDouble  -> TDouble
+    JTFloat   -> TFloat
+    JTShort   -> TInt
+    JTBoolean -> TInt
+    JTInt     -> TInt
+    JTLong    -> TLong
 
 instance AsTypeInfo B.JType where
   asTypeInfo = \case
-    B.JTBase b ->
-      case b of
-        B.JTByte -> B.VTInteger
-        B.JTChar -> B.VTInteger
-        B.JTDouble -> B.VTDouble
-        B.JTFloat -> B.VTFloat
-        B.JTShort -> B.VTInteger
-        B.JTBoolean -> B.VTInteger
-        B.JTInt -> B.VTInteger
-        B.JTLong -> B.VTLong
-    B.JTRef a ->
-      B.VTObject a
+    JTBase b -> asTypeInfo b
+    JTRef a -> asTypeInfo a
 
 instance AsTypeInfo (Maybe B.JValue) where
   asTypeInfo = \case
-    Nothing ->
-      VTNull
-    Just a ->
-      asTypeInfo a
+    Nothing -> TRef []
+    Just a -> asTypeInfo a
 
-instance AsLocalType ArithmeticType where
+instance AsLocalType ArithmeticType
 instance AsTypeInfo ArithmeticType where
-  asTypeInfo = \case
-    MInt    -> B.VTInteger
-    MLong   -> B.VTLong
-    MFloat  -> B.VTFloat
-    MDouble -> B.VTDouble
-
+  asTypeInfo = TBase . \case
+    MInt    -> TInt
+    MLong   -> TLong
+    MFloat  -> TFloat
+    MDouble -> TDouble
 
 instance AsTypeInfo B.JValue where
   asTypeInfo = \case
-    B.VInteger _ -> B.VTInteger
-    B.VLong _ -> B.VTLong
-    B.VFloat _ ->B.VTFloat
-    B.VDouble _ -> B.VTDouble
-    B.VString _ -> B.VTObject (B.JTClass "java/lang/String")
-    B.VClass _ -> B.VTObject (B.JTClass "java/lang/Class")
-    B.VMethodType _ -> B.VTObject (B.JTClass "java/lang/invoke/MethodType")
-    B.VMethodHandle _ -> B.VTObject (B.JTClass "java/lang/invoke/MethodHandle")
+    B.VInteger _ -> TBase TInt
+    B.VLong _    -> TBase TLong
+    B.VFloat _   -> TBase TFloat
+    B.VDouble _  -> TBase TDouble
+    B.VString _  -> TRef [JTClass "java/lang/String"]
+    B.VClass _    -> TRef [JTClass "java/lang/Class"]
+    B.VMethodType _ -> TRef [JTClass "java/lang/invoke/MethodType"]
+    B.VMethodHandle _ -> TRef [JTClass "java/lang/invoke/MethodHandle"]
 
-makePrisms ''B.VerificationTypeInfo
-makePrisms ''B.JType
 makePrisms ''B.JRefType
 
 class Checkable a b where
@@ -196,9 +211,9 @@ instance AsLocalType b => Checkable ArithmeticType b where
 
 data TypeCheckState =
   TypeCheckState
-  { _tcStack    :: [TypeInfo]
-  , _tcLocals   :: IntMap.IntMap TypeInfo
-  , _tcNexts    :: [B.ByteCodeIndex]
+  { _tcStack  :: [TypeInfo]
+  , _tcLocals :: IntMap.IntMap TypeInfo
+  , _tcNexts  :: [B.ByteCodeIndex]
   } deriving (Show, Eq)
 
 data TypeCheckError
@@ -266,31 +281,36 @@ isSubtypeOf ::
   (MonadReader Hierarchy m)
   => TypeInfo -> TypeInfo -> m Bool
 isSubtypeOf = curry $ \case
-  (VTObject a, VTObject b) -> a `isSubReftypeOf` b
-  (VTNull,     VTObject _) -> return True
-  (a,          b         ) -> return (a == b)
+  (TRef as, TRef bs) -> asks $ \r -> and
+    [(a `isSubReftypeOf` b) r
+    | a <- toList as
+    , b <- toList bs
+    ]
+  (a         , b      ) -> return (a == b)
 
 -- | Checks if a is S is a subtype of T.
 isSubReftypeOf ::
   (MonadReader Hierarchy m)
-  => B.JRefType
-  -> B.JRefType
+  => JRefType
+  -> JRefType
   -> m Bool
 isSubReftypeOf = \case
-  B.JTClass s -> \case
-    B.JTClass t -> asks $
-      \hry -> s == t || isSubclassOf hry s t
+  JTClass s -> \case
+    JTClass t -> asks $ \hry ->
+      s == t || isSubclassOf hry s t
     _ -> return False
-  B.JTArray s -> \case
-    B.JTArray t ->
+  JTArray s -> \case
+    JTArray t ->
       case (s, t) of
-        (JTRef s', JTRef t') -> s' `isSubReftypeOf` t'
-        _ -> return $ s == t
-    B.JTClass t ->
+        (JTRef s', JTRef t') ->
+          s' `isSubReftypeOf` t'
+        _ ->
+          return $ s == t
+    JTClass t ->
       return $ List.elem t
       [ "java/lang/Object"
       , "java/lang/Cloneable"
-      , "java.io.Serializable"]
+      , "java/io/Serializable"]
 
 unpack ::
   TypeChecker m
@@ -321,13 +341,6 @@ checkSubtypeOf ::
 checkSubtypeOf a b =
   unlessM (asTypeInfo a `isSubtypeOf` asTypeInfo b) $
     throwError (NotSubtype (asTypeInfo a) (asTypeInfo b))
-
-infixl 5 `checkSupertypeOf`
-checkSupertypeOf ::
-  (AsTypeInfo a, AsTypeInfo b, TypeChecker m)
-  => a -> b -> m ()
-checkSupertypeOf a b =
-  checkSubtypeOf b a
 
 unlessM :: Monad m => m Bool -> m () -> m ()
 unlessM mbool munit = mbool >>= \case
@@ -428,30 +441,39 @@ updateStates entries _state =
     prevState <- VM.read entries i
     ask >>= \hry -> case (unifyState prevState _state hry) of
       Just state' -> VM.write entries i state'
-      Nothing -> throwError (InconsistentStates i prevState _state)
+      Nothing     -> throwError (InconsistentStates i prevState _state)
 
 unifyState ::
   TypeCheckState
   -> TypeCheckState
   -> Hierarchy
   -> Maybe TypeCheckState
-unifyState stk1 stk2 hry = do
+unifyState stk1 stk2 _ = do
   _tcStack <- (unify `on` view tcStack) stk1 stk2
   _tcLocals <- Just $ (IntMap.unionWith unify' `on` view tcLocals) stk2 stk1
   _tcNexts <- Just $ (List.union `on` view tcNexts) stk1 stk2
   return $ TypeCheckState {..}
   where
-    unify' a b
-      | (a `isSubtypeOf` b) hry = b
-      | (b `isSubtypeOf` a) hry = a
-    unify' _ _ = VTTop
+    unify' a b = case meet a b of
+      Just a' -> a'
+      Nothing -> TTop
 
-    unify (a:s1) (b:s2)
-      | (a `isSubtypeOf` b) hry = (b:) <$> unify s1 s2
-      | (b `isSubtypeOf` a) hry = (a:) <$> unify s1 s2
+    unify (a:s1) (b:s2) = do
+      x <- meet a b
+      (x:) <$> unify s1 s2
     unify [] s2 =
       return s2
     unify _ _ = Nothing
+
+meet :: TypeInfo -> TypeInfo -> Maybe TypeInfo
+meet = curry $ \case
+  (TBase a, TBase b)
+    | a == b    -> Just (TBase a)
+    | otherwise -> Nothing
+  (TRef as, TRef bs)
+    -> Just . TRef $ List.nub (as ++ bs)
+  (_, _) ->
+    Nothing
 
 
 computeLocals ::
@@ -465,10 +487,11 @@ computeLocals mn isStatic = do
       [ asTypeInfo (mn^.className) | not isStatic ] ++
       (mn ^.. methodArgumentTypes.folded.to asTypeInfo)
 
-    typeSize = \case
-      VTDouble -> 2
-      VTLong -> 2
-      _ -> 1
+typeSize :: TypeInfo -> Int
+typeSize = \case
+  TBase TDouble -> 2
+  TBase TLong -> 2
+  _ -> 1
 
 --stack=1, locals=0, args_size=0
 --   0: getstatic     #1  // Field $VALUES:[Lnet/dhleong/acl/enums/AlertStatus;
@@ -478,6 +501,13 @@ computeLocals mn isStatic = do
 --LineNumberTable:
 --  line 3: 0
 
+-- | Get an element only if it is the only one.
+_Single :: Prism' [a] a
+_Single = prism' (:[])
+  (\case
+      (List.uncons -> Just (a, [])) -> Just a
+      _ -> Nothing
+  )
 
 -- | Given a single `Instruction` lets typecheck it.
 typecheck ::
@@ -488,14 +518,14 @@ typecheck ::
 typecheck = \case
   ArrayLoad r -> do
     check LInt =<< pop
-    a <- unpack (_VTObject._JTArray) =<< pop
+    a <- unpack (_TRef._Single._JTArray) =<< pop
     check r a
     push a
 
   ArrayStore r -> do
     b <- pop
     check LInt =<< pop
-    a <- unpack (_VTObject._JTArray) =<< pop
+    a <- unpack (_TRef._Single._JTArray) =<< pop
     b `checkSubtypeOf` a
     check r a
 
@@ -528,10 +558,10 @@ typecheck = \case
           Two ->
             ( MLong
             , case x of
-                ShL -> MInt
-                ShR -> MInt
+                ShL  -> MInt
+                ShR  -> MInt
                 UShR -> MInt
-                _ -> MLong
+                _    -> MLong
             )
     a <- pop
     check at' a
@@ -545,7 +575,7 @@ typecheck = \case
   Cast cst -> case cst of
     CastDown _ -> do
       check LInt =<< pop
-      push (VTInteger :: TypeInfo)
+      push TInt
     CastTo a b -> do
       -- TODO: check for inequality
       check a =<< pop
@@ -554,7 +584,7 @@ typecheck = \case
   CompareLongs -> do
     check LLong =<< pop
     check LLong =<< pop
-    push (VTInteger :: TypeInfo)
+    push TInt
 
   CompareFloating _ size -> do
     case size of
@@ -564,7 +594,7 @@ typecheck = \case
       Two -> do
         check LDouble =<< pop
         check LDouble =<< pop
-    push (VTInteger :: TypeInfo)
+    push TInt
 
   If _ a off -> do
     case a of
@@ -659,8 +689,8 @@ typecheck = \case
     push (newArrayTypeType a)
 
   ArrayLength -> do
-    void . unpack (_VTObject._JTArray) =<< pop
-    push (VTInteger :: TypeInfo)
+    void . unpack (_TRef._Single._JTArray) =<< pop
+    push TInt
 
   Throw -> do
     a <- pop
@@ -669,15 +699,15 @@ typecheck = \case
     noNext
 
   InstanceOf trg -> do
-    pop >>= (`checkSupertypeOf` trg)
-    push (VTInteger :: TypeInfo)
+    (trg `checkSubtypeOf`) =<< pop
+    push TInt
 
   CheckCast trg -> do
-    pop >>= (`checkSupertypeOf` trg)
+    (trg `checkSubtypeOf`) =<< pop
     push (B.JTRef trg)
 
   Monitor _ ->
-    void . unpack (_VTObject._JTClass) =<< pop
+    void . unpack _TRef =<< pop
 
   Return a -> do
     case a of
@@ -693,26 +723,26 @@ typecheck = \case
     case size of
       One -> do
         a <- pop
-        when (a == VTLong || a == VTDouble) $
+        when (typeSize a == 2) $
           fail "Trying to pop a two sized value"
       Two -> do
         a <- pop
-        unless (a == VTLong || a == VTDouble) $ do
+        unless (typeSize a == 2) $ do
           b <- pop
-          when (b == VTLong || b == VTDouble) $
+          when (typeSize b == 2) $
             fail "Trying to pop a two sized value, as the second parameter"
 
   Dup size ->
     case size of
       One -> do
         a <- pop
-        when (a == VTLong || a == VTDouble) $
+        when (typeSize a == 2) $
           fail "Trying to dup a two sized value"
         push a
         push a
       Two -> do
         a <- pop
-        if (a == VTLong || a == VTDouble)
+        if typeSize a == 2
           then do
           push a
           push a
@@ -724,29 +754,29 @@ typecheck = \case
     case size of
       One -> do
         a <- pop
-        when (a == VTLong || a == VTDouble) $
+        when (typeSize a == 2) $
           fail "Trying to dupX1 a two sized value"
         b <- pop
-        when (b == VTLong || b == VTDouble) $
+        when (typeSize b == 2) $
           fail "Trying to skip a two sized value (dupX1)"
         push a
         push b
         push a
       Two -> do
         a <- pop
-        if (a == VTLong || a == VTDouble)
+        if (typeSize a == 2)
           then do
           b <- pop
-          when (b == VTLong || b == VTDouble) $
+          when (typeSize b == 2) $
             fail "Trying to skip a two sized value (dupX1)"
           push a
           push b
           else do
           b <- pop
-          when (b == VTLong || b == VTDouble) $
+          when (typeSize b == 2) $
             fail "Trying to dupX1 a two sized value, as the second parameter"
           c <- pop
-          when (c == VTLong || c == VTDouble) $
+          when (typeSize c == 2) $
             fail "Trying to skip a two sized value (dupX1)"
           push b
           push a
@@ -758,30 +788,30 @@ typecheck = \case
     case size of
       One -> do
         a <- pop
-        when (a == VTLong || a == VTDouble) $
+        when (typeSize a == 2) $
           fail "Trying to dupX2 a two sized value"
         b <- pop
-        if (b == VTLong || b == VTDouble)
+        if (typeSize b == 2)
           then do
           push a; push b; push a
           else do
           c <- pop
-          when (c == VTLong || c == VTDouble) $
+          when (typeSize c == 2) $
             fail "Trying to skip a two sized value (dupX2), as the second parameter"
           push a; push c; push b; push a
       Two -> do
         a <- pop
-        if (a == VTLong || a == VTDouble)
+        if (typeSize a == 2)
           then do
           b <- pop
-          if (b == VTLong || b == VTDouble)
+          if (typeSize b == 2)
             then do
             push a
             push b
             push a
             else do
             c <- pop
-            when (c == VTLong || c == VTDouble) $
+            when (typeSize c == 2) $
               fail "Trying to skip a two sized value (dupX2)"
             push a
             push c
@@ -789,10 +819,10 @@ typecheck = \case
             push a
           else do
           b <- pop
-          when (b == VTLong || b == VTDouble) $
+          when (typeSize b == 2) $
             fail "Trying to copy a two sized value (dupX2) as the second parameter"
           c <- pop
-          if (c == VTLong || c == VTDouble)
+          if (typeSize c == 2)
             then do
             push b
             push a
@@ -801,7 +831,7 @@ typecheck = \case
             push a
             else do
             d <- pop
-            when (d == VTLong || d == VTDouble) $
+            when (typeSize d == 2) $
               fail "Trying to skip a two sized value (dupX2)"
             push b
             push a
@@ -812,10 +842,10 @@ typecheck = \case
 
   Swap -> do
     a <- pop
-    when (a == VTLong || a == VTDouble) $
+    when (typeSize a == 2) $
       fail "Trying to swap a two sized value"
     b <- pop
-    when (a == VTLong || a == VTDouble) $
+    when (typeSize b == 2) $
       fail "Trying to swap a two sized value"
     push b
     push a
