@@ -698,12 +698,14 @@ typecheck = \case
     push a
     noNext
 
-  InstanceOf trg -> do
-    (trg `checkSubtypeOf`) =<< pop
+  InstanceOf _ -> do
+    -- (trg `checkSubtypeOf`) =<< pop
+    void . unpack _TRef =<< pop
     push TInt
 
   CheckCast trg -> do
-    (trg `checkSubtypeOf`) =<< pop
+    -- (trg `checkSubtypeOf`) =<< pop
+    void . unpack _TRef =<< pop
     push (B.JTRef trg)
 
   Monitor _ ->
