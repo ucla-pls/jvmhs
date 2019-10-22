@@ -33,7 +33,7 @@ class Inspectable a where
   classNames :: Traversal' a ClassName
   classNames _ = pure
 
-  methodNames :: Traversal' a AbsMethodName
+  methodNames :: Traversal' a AbsMethodId
   methodNames _ = pure
 
 nothing :: Traversal' a b
@@ -125,7 +125,7 @@ instance Inspectable ByteCodeInst where
       B.Get fa c          -> B.Get fa <$> classNames g c
       B.Put fa c          -> B.Put fa <$> classNames g c
       B.Invoke r          -> B.Invoke <$> classNames g r
-      B.New c             -> B.New <$> classNames g c
+      B.New c             -> B.New <$> g c
       B.NewArray (B.NewArrayType n c)
         -> B.NewArray . B.NewArrayType n <$> classNames g c
       B.CheckCast c       -> B.CheckCast <$> classNames g c
@@ -178,11 +178,11 @@ instance Inspectable (B.Invocation B.High) where
       B.InvkInterface w r -> B.InvkInterface w <$> methodNames g r
       B.InvkDynamic r     -> B.InvkDynamic <$> methodNames g r
 
-instance Inspectable B.JRefType where
+instance Inspectable JRefType where
   classNames g a =
     case a of
-      B.JTClass x -> B.JTClass <$> classNames g x
-      B.JTArray x -> B.JTArray <$> classNames g x
+      JTClass x -> JTClass <$> g x
+      JTArray x -> JTArray <$> classNames g x
 
 instance Inspectable (B.Constant B.High) where
   classNames g a =
@@ -196,47 +196,48 @@ instance Inspectable (B.Constant B.High) where
       B.CInvokeDynamic r -> B.CInvokeDynamic <$> classNames g r
       _ -> pure a
 
-instance Inspectable (B.AbsFieldId B.High) where
-  classNames g (B.InClass cn ci) =
-    B.InClass <$> classNames g cn <*> classNames g ci
 
-instance Inspectable (FieldName) where
-  classNames = _Binary . classNames
+instance Inspectable a => Inspectable (InRefType a) where
+  classNames g (InRefType t ci) =
+    InRefType <$> classNames g t <*> classNames g ci
 
-instance Inspectable (MethodName) where
-  classNames = _Binary . classNames
+instance Inspectable a => Inspectable (InClass a) where
+  classNames g (InClass t ci) =
+    InClass <$> g t <*> classNames g ci
 
-instance Inspectable (B.FieldId) where
-  classNames g (B.FieldId d) = B.FieldId <$> classNames g d
+instance Inspectable AbsFieldId where
+  classNames g (AbsFieldId a) =
+    AbsFieldId <$> classNames g a
 
-instance Inspectable (B.MethodId) where
-  classNames g (B.MethodId d) =
+instance Inspectable FieldId where
+  classNames g (FieldId d) =
+    B.FieldId <$> classNames g d
+
+instance Inspectable MethodId where
+  classNames g (MethodId d) =
     B.MethodId <$> classNames g d
-
-instance Inspectable (B.ClassName) where
-  classNames = from _Binary
 
 instance Inspectable a => Inspectable (B.NameAndType a) where
   classNames g (B.NameAndType n d) =
     B.NameAndType n <$> classNames g d
 
-instance Inspectable (B.AbsInterfaceMethodId B.High) where
+instance Inspectable B.AbsInterfaceMethodId where
   classNames g (B.AbsInterfaceMethodId x) =
     B.AbsInterfaceMethodId <$> classNames g x
 
   methodNames g (B.AbsInterfaceMethodId x) =
     B.AbsInterfaceMethodId <$> methodNames g x
 
-instance Inspectable (B.AbsVariableMethodId B.High) where
+instance Inspectable B.AbsVariableMethodId where
   classNames g (B.AbsVariableMethodId b x) =
     B.AbsVariableMethodId b <$> classNames g x
 
   -- methodNames g (B.AbsVariableMethodId b x) =
   --   B.AbsVariableMethodId b <$> methodNames g x
 
-instance Inspectable (B.AbsMethodId B.High) where
-  classNames g (B.InClass cn ci) =
-    B.InClass <$> classNames g cn <*> classNames g ci
+instance Inspectable AbsMethodId where
+  classNames g (AbsMethodId a) =
+    AbsMethodId <$> classNames g a
 
   -- methodNames g (B.InClass cn ci) =
   --   (\(cn', ci') -> B.InClass (cn' ^. _Binary) ( ci' ^. _Binary))
@@ -274,11 +275,15 @@ instance Inspectable FieldDescriptor where
     B.FieldDescriptor
       <$> classNames g (B.fieldDescriptorType fd)
 
+instance Inspectable ReturnDescriptor where
+  classNames g (ReturnDescriptor fd) =
+    ReturnDescriptor <$> traverse (classNames g) fd
+
 instance Inspectable MethodDescriptor where
   classNames g md =
     B.MethodDescriptor
       <$> traverse (classNames g) (B.methodDescriptorArguments md)
-      <*> traverse (classNames g) (B.methodDescriptorReturnType md)
+      <*> classNames g (B.methodDescriptorReturnType md)
 
 instance Inspectable JValue where
   classNames g t =
@@ -323,17 +328,18 @@ instance Inspectable ClassType where
   classNames g t =
     case t of
       ClassType cn ta ->
-        ClassType <$> classNames g cn <*> (traverse . traverse . classNames) g ta
+        ClassType <$> g cn <*> (traverse . traverse . classNames) g ta
       InnerClassType _ cn ta ->
         InnerClassType
-           <$> (snd . Text.breakOnEnd "$" . B.classNameAsText <$> classNames g (getClassName t))
+           <$> (snd . Text.breakOnEnd "$" . B.classNameAsText <$> g (getClassName t))
            <*> classNames g cn
            <*> (traverse . traverse . classNames) g ta
 
     where
       getClassName (ClassType cn _) = cn
       getClassName (InnerClassType i oc _) =
-        B.ClassName $ Text.intercalate "$" [B.classNameAsText (getClassName oc), i]
+        either error id . deserialize
+        $ Text.intercalate "$" [B.classNameAsText (getClassName oc), i]
 
 instance Inspectable TypeArgument where
   classNames g (TypeArgument i p) =

@@ -123,14 +123,14 @@ instance FromJVMBinary (B.ExceptionTable B.High) ExceptionHandler where
         <$> B.start
         <*> B.end
         <*> B.handler
-        <*> fmap (view $ from _Binary) . B.catchType
+        <*> B.catchType
 
       toBinaryExceptionTable =
         B.ExceptionTable
         <$> _ehStart
         <*> _ehEnd
         <*> _ehHandler
-        <*> fmap (view _Binary) . _ehCatchType
+        <*> _ehCatchType
 
 traverseCode ::
      Traversal' Word16 a
@@ -264,16 +264,16 @@ instance ToJSON ByteCodeInst where
       , "pairs" .= vector
       ]
 
-    B.Get fa (B.InClass a b) ->
+    B.Get fa (AbsFieldId (InClass a b)) ->
       [ "static" .= fa
-      , "class" .= B.classNameAsText a
-      , "field" .= nameAndTypeFromFieldId b
+      , "class" .= a
+      , "field" .= b
       ]
 
-    B.Put fa (B.InClass a b) ->
+    B.Put fa (AbsFieldId (B.InClass a b)) ->
       [ "static" .= fa
-      , "class" .= B.classNameAsText a
-      , "field" .= nameAndTypeFromFieldId b
+      , "class" .= a
+      , "field" .= b
       ]
 
     B.Invoke invocation ->
@@ -392,9 +392,6 @@ instance ToJSON (B.StackMapFrame B.High) where
 instance ToJSON (B.VerificationTypeInfo B.High) where
   toJSON = object . getTypeInfo
 
-instance ToJSON B.JRefType where
-  toJSON = String . B.typeToText
-
 instance ToJSON B.BinOpr where
   toJSON = String . \case
     B.Add -> "add"
@@ -490,29 +487,21 @@ getListOfPairsFromBConstant = \case
       , "value" .= Null
       ]
 
-methodIDToText :: B.MethodId -> Text.Text
-methodIDToText (B.MethodId name) =
-  B.typeToText name
-
-nameAndTypeFromFieldId :: B.FieldId -> Text.Text
-nameAndTypeFromFieldId (B.FieldId name) =
-  B.typeToText name
-
 getInvocationAttributes :: B.Invocation B.High -> [Pair]
 getInvocationAttributes = \case
     B.InvkSpecial (B.AbsVariableMethodId b avmi) ->
       ("kind" .= String "special")
       : ("interface" .= b)
-      : getInClassMethod avmi
+      : getInRefTypeMethod avmi
 
     B.InvkVirtual abs' ->
       ("kind" .= String "virtual")
-      : getInClassMethod abs'
+      : getInRefTypeMethod abs'
 
     B.InvkStatic (B.AbsVariableMethodId b avmi) ->
       ("kind" .= String "static")
       : ("interface" .= b)
-      : getInClassMethod avmi
+      : getInRefTypeMethod avmi
 
     B.InvkInterface count avmi ->
        ["kind" .= String "interface"
@@ -524,21 +513,27 @@ getInvocationAttributes = \case
      : getInvokeDynamicMethod invokeDynamicMethod
 
 
-getAbsInterfaceMethodId :: B.AbsInterfaceMethodId B.High -> [Pair]
+getAbsInterfaceMethodId :: B.AbsInterfaceMethodId -> [Pair]
 getAbsInterfaceMethodId (B.AbsInterfaceMethodId interfaceMethodId)
-    = getInClassMethod interfaceMethodId
+    = getInRefTypeMethod interfaceMethodId
 
-getInClassMethod ::B.AbsMethodId B.High -> [Pair]
-getInClassMethod (B.InClass a b) =
-  [ "class" .= B.classNameAsText a
-  , "method" .= methodIDToText b
+-- getInClassMethod ::AbsMethodId -> [Pair]
+-- getInClassMethod (AbsMethodId (InClass a b)) =
+--   [ "class" .= a
+--   , "method" .= b
+--   ]
+
+getInRefTypeMethod :: InRefType MethodId -> [Pair]
+getInRefTypeMethod (InRefType a b) =
+  [ "reftype" .= a
+  , "method" .= b
   ]
 
 getInvokeDynamicMethod :: B.InvokeDynamic B.High -> [Pair]
 getInvokeDynamicMethod = \case
   (B.InvokeDynamic attrIndex methodid) ->
     [ "attr" .= attrIndex
-    , "method" .= methodIDToText methodid
+    , "method" .= methodid
     ]
 
 -- * Type Conversion

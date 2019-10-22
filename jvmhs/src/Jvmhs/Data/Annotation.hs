@@ -86,7 +86,7 @@ instance ToJSON (B.ElementValue B.High) where
     B.EBoolean a -> object [ "boolean" .= (a /= 0) ]
     B.EString  a -> object [ "string" .= a ]
     B.EEnum (B.EnumValue a b) -> object [ "enum" .= b , "enum_class" .= a ]
-    B.EClass a -> object [ "class" .= a ]
+    B.EClass a -> object [ "class_info" .= a ]
     B.EAnnotationType a -> object [ "annotation" .= a ]
     B.EArrayType a -> object [ "array" .= toList a ]
 

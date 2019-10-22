@@ -33,8 +33,8 @@ module Jvmhs.Data.Class
   -- , className
   , HasClassContent (..)
 
-  , classAbsFieldNames
-  , classAbsMethodNames
+  , classAbsFieldIds
+  , classAbsMethodIds
 
   , traverseClass
 
@@ -47,13 +47,13 @@ module Jvmhs.Data.Class
   -- ** Field
 
   , Field (..)
-  , fieldName
+  , fieldId
   , FieldContent (..)
   , HasFieldContent (..)
   , traverseField
 
   , Method (..)
-  , methodName
+  , methodId
   , MethodContent (..)
   , HasMethodContent (..)
   , methodReturnType
@@ -165,7 +165,7 @@ data ClassContent = ClassContent
   -- ^ a list of methods
   , _classBootstrapMethods :: [ BootstrapMethod ]
   -- ^ a list of bootstrap methods. #TODO more info here
-  , _classEnclosingMethod  :: Maybe (ClassName, Maybe MethodName)
+  , _classEnclosingMethod  :: Maybe (ClassName, Maybe MethodId)
   -- ^ maybe an enclosing class and method
   , _classInnerClasses     :: [ InnerClass ]
   -- ^ a list of inner classes
@@ -182,29 +182,28 @@ newtype Class = Class (Named ClassName ClassContent)
 
 instance HasName ClassName Class where
   name = className
+  {-# INLINE name #-}
 
 -- | Get the name
-className :: Lens' Class ClassName
-className = lens
-  (\(Class (Named cn _)) -> cn)
-  (\(Class (Named _ a)) cn -> mkClass cn a)
+instance HasClassName Class where
+  className = lens
+    (\(Class (Named cn _)) -> cn)
+    (\(Class (Named _ a)) cn -> mkClass cn a)
+  {-# INLINE className #-}
 
 mkClass :: ClassName -> ClassContent -> Class
 mkClass cid cc = Class $ Named cid cc
 
 -- | A Field is an id and some content
-newtype Field = Field (Named FieldName FieldContent)
+newtype Field = Field (Named FieldId FieldContent)
   deriving (Show, Eq, Generic)
   deriving anyclass (NFData)
 
-mkField :: FieldName -> FieldContent -> Field
+mkField :: FieldId -> FieldContent -> Field
 mkField fid fc = Field $  Named fid fc
 
-fieldName :: Lens' Field FieldName
-fieldName = name
-
-instance HasName FieldName Field where
-  name = _Wrapped . name
+instance HasFieldId Field where
+  fieldId = _Wrapped . namedName
 
 -- | This is the field
 data FieldContent = FieldContent
@@ -219,18 +218,15 @@ data FieldContent = FieldContent
   } deriving (Eq, Show, Generic, NFData)
 
 -- | A method is an id and some content
-newtype Method = Method (Named MethodName MethodContent)
+newtype Method = Method (Named MethodId MethodContent)
   deriving (Show, Eq, Generic)
   deriving anyclass (NFData)
 
-mkMethod :: MethodName -> MethodContent -> Method
+mkMethod :: MethodId -> MethodContent -> Method
 mkMethod mid mc = Method $ Named mid mc
 
-methodName :: Lens' Method MethodName
-methodName = name
-
-instance HasName MethodName Method where
-  name = _Wrapped . name
+instance HasMethodId Method where
+  methodId = _Wrapped . namedName
 
 -- | This is the method
 data MethodContent = MethodContent
@@ -257,25 +253,25 @@ makeWrapped ''Field
 makeWrapped ''Method
 
 instance HasClassContent Class where
-  classContent = _Wrapped . content
+  classContent = _Wrapped . namedContent
 
 instance HasFieldContent Field where
-  fieldContent = _Wrapped . content
+  fieldContent = _Wrapped . namedContent
 
 instance HasMethodContent Method where
-  methodContent = _Wrapped . content
+  methodContent = _Wrapped . namedContent
 
-classAbsMethodNames :: Fold Class AbsMethodName
-classAbsMethodNames =
+classAbsMethodIds :: Fold Class AbsMethodId
+classAbsMethodIds =
   (selfIndex <. classMethods.folded)
   . withIndex
-  . to (\(a, b) -> mkAbsMethodName (a ^. name) (b ^. name))
+  . to (\(a, b) -> mkAbsMethodId a b)
 
-classAbsFieldNames :: Fold Class AbsFieldName
-classAbsFieldNames =
+classAbsFieldIds :: Fold Class AbsFieldId
+classAbsFieldIds =
   (selfIndex <. classFields.folded)
   . withIndex
-  . to (\(a, b) -> mkAbsFieldName (a ^. name) (b ^. name))
+  . to (\(a, b) -> mkAbsFieldId a b)
 
 traverseClass ::
   Traversal' ClassName a
@@ -286,7 +282,7 @@ traverseClass ::
   -> Traversal' [ Field ] a
   -> Traversal' [ Method ] a
   -> Traversal' [ BootstrapMethod ] a
-  -> Traversal' (Maybe (ClassName, Maybe MethodName)) a
+  -> Traversal' (Maybe (ClassName, Maybe MethodId)) a
   -> Traversal' [ InnerClass ] a
   -> Traversal' Annotations a
   -> Traversal' Class a
@@ -320,9 +316,9 @@ traverseField ::
 traverseField tfn tfd taf tjv ts tano g s =
   mkField
   <$> (
-  mkFieldName
-    <$> (tfn g . view (name . fieldNameId) $ s)
-    <*> (tfd g . view (name . fieldNameDescriptor) $ s)
+  (<:>)
+    <$> (tfn g . view (fieldName) $ s)
+    <*> (tfd g . view (fieldDescriptor) $ s)
   ) <*> (
   FieldContent
     <$> (taf g . view fieldAccessFlags $ s)
@@ -344,9 +340,9 @@ traverseMethod ::
 traverseMethod tfn tfd taf tc tex ts tano g s =
   mkMethod
   <$> (
-    mkMethodName
-    <$> (tfn g . view (name . methodNameId) $ s)
-    <*> (tfd g . view (name . methodNameDescriptor) $ s)
+    (<:>)
+    <$> (tfn g . view (methodName) $ s)
+    <*> (tfd g . view (methodDescriptor) $ s)
   ) <*> (
     MethodContent
       <$> (taf g . view methodAccessFlags $ s)
@@ -361,10 +357,10 @@ traverseMethod tfn tfd taf tc tex ts tano g s =
 -- mapAsList :: Ord a => Iso' (Map.Map a b) [(a,b)]
 -- mapAsList = iso Map.toList Map.fromList
 
--- mapAsFieldList :: Lens' (HashMap.HashMap FieldName FieldContent) [Field]
+-- mapAsFieldList :: Lens' (HashMap.HashMap FieldId FieldContent) [Field]
 -- mapAsFieldList = namedMapAsList . coerced
 
--- mapAsMethodList :: Lens' (HashMap.HashMap MethodName MethodContent) [Method]
+-- mapAsMethodList :: Lens' (HashMap.HashMap MethodId MethodContent) [Method]
 -- mapAsMethodList = namedMapAsList . coerced
 
 -- classMethodList :: Lens' Class [Method]
@@ -373,11 +369,11 @@ traverseMethod tfn tfd taf tc tex ts tano g s =
 -- classFieldList :: Lens' Class [Field]
 -- classFieldList = classFields . mapAsFieldList
 
-classField :: FieldName -> Getter Class (Maybe Field)
-classField fid = classFields . to (find (\a -> a ^. name == fid))
+classField :: FieldId -> Getter Class (Maybe Field)
+classField fid = classFields . to (find (\a -> a ^. fieldId == fid))
 
-classMethod :: MethodName -> Getter Class (Maybe Method)
-classMethod mid = classMethods . to (find (\a -> a ^. name == mid))
+classMethod :: MethodId -> Getter Class (Maybe Method)
+classMethod mid = classMethods . to (find (\a -> a ^. methodId == mid))
 
 -- | The dependencies of a class
 dependencies :: Class -> [ ClassName ]
@@ -415,13 +411,13 @@ instance FromJVMBinary (B.Field B.High) Field where
           (readAnnotations <$> B.faVisibleAnnotations <*> B.faInvisibleAnnotations)
           . B.fAttributes
 
-        pure (mkField (mkFieldName _name _desc) (FieldContent {..}))
+        pure (mkField (_name <:> _desc) (FieldContent {..}))
 
       toBField =
         B.Field
           <$> B.BitSet . view fieldAccessFlags
-          <*> view (name.fieldNameId)
-          <*> view (name.fieldNameDescriptor)
+          <*> view fieldName
+          <*> view fieldDescriptor
           <*> ( do
                  faConstantValues <-
                    maybeToList . fmap B.ConstantValue
@@ -460,7 +456,7 @@ instance FromJVMBinary (B.Method B.High) Method where
           fmap fromBinaryCode . B.mCode
 
         _methodExceptions <-
-          map (view (from _Binary)) . B.mExceptions
+          B.mExceptions
 
         _methodSignature <-
           fmap (\(Signature a) ->
@@ -474,14 +470,14 @@ instance FromJVMBinary (B.Method B.High) Method where
           . B.mAttributes
 
         pure $ mkMethod
-          (mkMethodName _name _desc)
+          (_name <:> _desc)
           (MethodContent {..})
 
       toBMethod =
         B.Method
           <$> unsafeCoerce . view methodAccessFlags
-          <*> view (name . methodNameId)
-          <*> view (name . methodNameDescriptor)
+          <*> view methodName
+          <*> view methodDescriptor
           <*> ( do
                   maCode <-
                     maybeToList . fmap toBinaryCode . view methodCode
@@ -495,7 +491,7 @@ instance FromJVMBinary (B.Method B.High) Method where
                     . view (methodAnnotations . invisibleAnnotations)
 
                   maExceptions <-
-                    compress (B.Exceptions . B.SizedList . map (view _Binary))
+                    compress (B.Exceptions . B.SizedList)
                     . view methodExceptions
 
                   maSignatures <-
@@ -518,29 +514,22 @@ instance FromJVMBinary (B.InnerClass B.High) InnerClass where
     where
       fromBInnerClass =
         InnerClass
-          <$> view (from _Binary) . B.icClassName
-          <*> fmap (view (from _Binary)) . B.icOuterClassName
+          <$> B.icClassName
+          <*> B.icOuterClassName
           <*> B.icInnerName
           <*> B.toSet . B.icInnerAccessFlags
 
       toBInnerClass :: InnerClass -> B.InnerClass B.High
       toBInnerClass =
         B.InnerClass
-          <$> view (innerClass . _Binary)
-          <*> preview (innerOuterClass . _Just . _Binary)
+          <$> view innerClass
+          <*> preview (innerOuterClass . _Just)
           <*> _innerClassName
           <*> B.BitSet . _innerAccessFlags
 
--- asMethodMap :: Lens' [Method] (HashMap.HashMap MethodName MethodContent)
--- asMethodMap = coerced . from namedMapAsList
-
--- asFieldMap :: Lens' [Field] (HashMap.HashMap FieldName FieldContent)
--- asFieldMap = coerced . from namedMapAsList
-
 fromClassFile :: B.ClassFile B.High -> Class
 fromClassFile = do
-  _className <-
-    view (from _Binary) . B.cThisClass
+  _className <- B.cThisClass
 
   classSignature <-
     fmap (\(Signature a) ->
@@ -578,8 +567,8 @@ fromClassFile = do
 
   _classEnclosingMethod <-
     fmap (\e ->
-            ( view (from _Binary) $ B.enclosingClassName e
-            , view (from _Binary) <$> B.enclosingMethodName e
+            ( B.enclosingClassName e
+            , B.enclosingMethodName e
             )
          ) . B.cEnclosingMethod
 
@@ -613,12 +602,11 @@ toClassFile = do
     <*> pure ()
     <*> B.BitSet . view classAccessFlags
 
-    <*> view (className._Binary)
-    <*> view _Binary
-      . maybe "java/lang/Object" (view classTypeName)
+    <*> view className
+    <*> maybe "java/lang/Object" (view classTypeName)
       . view classSuper
 
-    <*> B.SizedList . toListOf ( classInterfaces.folded.classTypeName._Binary)
+    <*> B.SizedList . toListOf ( classInterfaces.folded.classTypeName)
     <*> B.SizedList . toListOf ( classFields.folded._Binary )
     <*> B.SizedList . toListOf ( classMethods.folded._Binary )
     <*> ( do
@@ -640,8 +628,7 @@ toClassFile = do
 
            caEnclosingMethod <-
              maybeToList
-             . fmap (\(cn, em) ->
-                       B.EnclosingMethod (view _Binary cn) (fmap (view _Binary) em))
+             . fmap (\(cn, em) -> B.EnclosingMethod cn em)
              . view classEnclosingMethod
 
            caInnerClasses <-
@@ -674,15 +661,15 @@ isoBinary = iso fromClassFile toClassFile
 
 instance ToJSON Field where
   toJSON (Field f) =
-    object [ "name" .= (f ^. name), "content" .= (f ^. content)]
+    object [ "name" .= (f ^. namedName), "content" .= (f ^. namedContent)]
 
 instance ToJSON Method where
   toJSON (Method m) =
-    object [ "name" .= (m ^. name), "content" .= (m ^. content)]
+    object [ "name" .= (m ^. namedName), "content" .= (m ^. namedContent)]
 
 instance ToJSON Class where
   toJSON cls@(Class c) =
-    object [ "name" .= (cls ^. name), "content" .= (c ^. content)]
+    object [ "name" .= (cls ^. _Wrapped. namedName), "content" .= (c ^. namedContent)]
 
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''MethodContent)
 $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''FieldContent)

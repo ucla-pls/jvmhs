@@ -36,7 +36,7 @@ stub :: Method -> Method
 stub m
   | isConstructor m =
     m & methodCode . _Just .~ makeConstructorStub
-        (mkAbsMethodName "java/lang/Object" "<init>:()V")
+        "java/lang/Object.<init>:()V"
         requiredLocals
   | otherwise =
     m & methodCode . _Just .~ makeStub requiredLocals (m ^. methodReturnType)
@@ -87,7 +87,7 @@ makeStub requiredLocals jt = Code
   }
 
 -- | Create a constructor stub
-makeConstructorStub :: AbsMethodName -> Word16 -> Code
+makeConstructorStub :: AbsMethodId -> Word16 -> Code
 makeConstructorStub m requiredLocals = Code
   { _codeMaxStack = 1 + sum (map typeSize arguments)
   , _codeMaxLocals = requiredLocals
@@ -98,7 +98,13 @@ makeConstructorStub m requiredLocals = Code
     | t <- arguments
     ]
     ++
-    [ B.Invoke (B.InvkSpecial (B.AbsVariableMethodId False m))
+    [ B.Invoke
+      (B.InvkSpecial
+        (B.AbsVariableMethodId False
+         (InRefType (JTClass $ m^.className) (m^.methodId)
+         )
+        )
+      )
     , B.Return Nothing
     ]
   , _codeExceptionTable = []
@@ -113,4 +119,4 @@ typeSize = \case
   _ -> 1
 
 isConstructor :: Method -> Bool
-isConstructor m = m^.methodId == "<init>"
+isConstructor m = m^.methodName == "<init>"

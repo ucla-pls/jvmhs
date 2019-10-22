@@ -55,7 +55,7 @@ spec = do
         doesTypeCheck hry
 
   where
-    doesTypeCheck :: Hierarchy -> AbsMethodName -> Method -> IO ()
+    doesTypeCheck :: Hierarchy -> AbsMethodId -> Method -> IO ()
     doesTypeCheck hry mn mth =
       forM_ (mth^.methodCode) $ \code -> do
         let r = typeCheck hry mn (mth^.methodAccessFlags.contains MStatic)  code

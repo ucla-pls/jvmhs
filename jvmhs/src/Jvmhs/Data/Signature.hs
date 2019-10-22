@@ -51,7 +51,7 @@ getClassTypeName =
       InnerClassType {..} ->
         ctsInnerClassName : getClassName ctsOuterClassType
       ClassType {..} ->
-        [ctsClassName ^. from _Binary . fullyQualifiedName]
+        [ctsClassName ^. fullyQualifiedName]
 
 
 instance ToJSON (ClassSignature) where

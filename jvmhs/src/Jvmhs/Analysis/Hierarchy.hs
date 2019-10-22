@@ -80,7 +80,6 @@ import           Jvmhs.ClassPool
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Graph
 import           Jvmhs.Data.Type
-import           Jvmhs.Data.Named
 
 -- import qualified Data.Set.Lens       as S
 
@@ -100,8 +99,8 @@ data HierarchyStub = HierarchyStub
   { _hryType       :: HierarchyType
   , _hrySuper      :: Maybe ClassName
   , _hryInterfaces :: S.HashSet ClassName
-  , _hryMethods    :: M.HashMap MethodName Bool
-  , _hryFields     :: S.HashSet FieldName
+  , _hryMethods    :: M.HashMap MethodId Bool
+  , _hryFields     :: S.HashSet FieldId
   } deriving (Show, Eq)
 
 makeLenses ''HierarchyStub
@@ -120,9 +119,9 @@ toStub cls = HierarchyStub
   (M.fromList
    $ cls ^.. classMethods
    . folded
-   . to (\m -> (m^.name, m ^. methodAccessFlags . contains MAbstract))
+   . to (\m -> (m^.methodId, m ^. methodAccessFlags . contains MAbstract))
   )
-  (S.fromList $ cls ^.. classFields . folded . name)
+  (S.fromList $ cls ^.. classFields . folded . fieldId)
 
 type HierarchyStubs = M.HashMap ClassName HierarchyStub
 
@@ -194,24 +193,24 @@ implementations hry =
 -- | Return a set of classes that implements a method.
 definitions ::
   Hierarchy
-  -> AbsMethodName
+  -> AbsMethodId
   -> S.HashSet ClassName
 definitions hry mid =
   S.fromList
-  . toListOf (folded.filtered (methodDefinedIn hry $ mid^.inClassId))
+  . toListOf (folded.filtered (methodDefinedIn hry $ mid^.methodId))
   . implementations hry
-  $ mid^.inClassName
+  $ mid^.className
 
 -- | Returns the possible declaration of a method. It might return
 -- itself
 declaration ::
   Hierarchy
-  -> AbsMethodName
-  -> Maybe AbsMethodName
+  -> AbsMethodId
+  -> Maybe AbsMethodId
 declaration hry mid =
-  (\a -> mid & inClassName .~ a) <$> go (mid ^. inClassName)
+  (\a -> mid & className .~ a) <$> go (mid ^. className)
   where
-    ii = mid ^. relMethodName
+    ii = mid ^. methodId
     go cn =
       firstOf
       ( hryStubs.ix cn .
@@ -225,7 +224,7 @@ declaration hry mid =
 -- This methods stops on the first declared method.
 abstractDeclaration ::
   Hierarchy
-  -> AbsMethodName
+  -> AbsMethodId
   -> Bool
 abstractDeclaration hry mid =
   fromMaybe False (declaration hry mid >>= isAbstract hry)
@@ -233,9 +232,9 @@ abstractDeclaration hry mid =
 -- | Return a list of abstract methods that declares the method, but not the
 -- method itself. If a method is defined above this, no declaration above this 
 -- is used.
-declarations :: Hierarchy -> AbsMethodName -> [AbsMethodName]
+declarations :: Hierarchy -> AbsMethodId -> [AbsMethodId]
 declarations hry m =
-  hry ^.. hryStubs . ix (m ^.inClassName) . folding abstractsInSupers
+  hry ^.. hryStubs . ix (m ^.className) . folding abstractsInSupers
   where
     abstractsInSupers = toListOf $
       (hrySuper._Just <> hryInterfaces.folded)
@@ -245,14 +244,14 @@ declarations hry m =
       case hry ^. hryStubs.at cn of
         Just stb ->
           case stb ^. hryMethods.at mid of
-            Just True -> [mkAbsMethodName cn mid]
+            Just True -> [mkAbsMethodId cn mid]
             _ | stb ^. hryType `L.elem` [HInterface, HAbstract]
                 -> abstractsInSupers stb
               | otherwise
                 -> []
         Nothing -> []
 
-    mid = m ^. relMethodName
+    mid = m ^. methodId
 
 
 isSubclassOf :: Hierarchy -> ClassName -> ClassName -> Bool
@@ -278,11 +277,11 @@ subclassPath hry a' b = go a'
 
 
 
-isAbstract :: Hierarchy -> AbsMethodName -> Maybe Bool
+isAbstract :: Hierarchy -> AbsMethodId -> Maybe Bool
 isAbstract hry mid =
-  hry ^? hryStubs . ix (mid^.inClassName) . hryMethods . ix (mid^.inClassId)
+  hry ^? hryStubs . ix (mid^.className) . hryMethods . ix (mid^.methodId)
 
--- higherMethods :: Hierarchy -> MethodName -> Fold ClassName AbsMethodName
+-- higherMethods :: Hierarchy -> MethodName -> Fold ClassName AbsMethodId
 -- higherMethods hry =
 
 -- | A fold of all abstract super classes, this includes classes and
@@ -297,10 +296,10 @@ abstractedSuperClasses stub h =
 
 isRequired ::
   Hierarchy
-  -> AbsMethodName
+  -> AbsMethodId
   -> Bool
 isRequired hry m =
-  maybe False isAbstractInSupers $ hry ^. hryStubs.at (m ^.inClassName)
+  maybe False isAbstractInSupers $ hry ^. hryStubs.at (m ^.className)
   where
     isAbstractInSupers :: HierarchyStub -> Bool
     isAbstractInSupers stb =
@@ -310,7 +309,7 @@ isRequired hry m =
     hasAbstract stb =
       fromMaybe (isAbstractInSupers stb) $ stb ^. hryMethods.at mid
 
-    mid = m ^. relMethodName
+    mid = m ^. methodId
 
   -- where go
 
@@ -349,13 +348,13 @@ isRequired hry m =
 requiredMethods ::
   Hierarchy
   -> Class
-  -> [AbsMethodName]
+  -> [AbsMethodId]
 requiredMethods hry cls =
-  cls ^.. classAbsMethodNames . filtered (isRequired hry)
+  cls ^.. classAbsMethodIds . filtered (isRequired hry)
 
 methodDefinedIn ::
   Hierarchy
-  -> MethodName
+  -> MethodId
   -> ClassName
   -> Bool
 methodDefinedIn hry mid cn =
@@ -364,7 +363,7 @@ methodDefinedIn hry mid cn =
 -- | returns a list of possible call sites.
 callSites ::
   Hierarchy
-  -> AbsMethodName
-  -> [ AbsMethodName ]
+  -> AbsMethodId
+  -> [ AbsMethodId ]
 callSites hry mid =
-  definitions hry mid ^.. folded . to (\cn -> mid & inClassName .~ cn)
+  definitions hry mid ^.. folded . to (\cn -> mid & className .~ cn)
