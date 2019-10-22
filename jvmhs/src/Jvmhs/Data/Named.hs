@@ -63,16 +63,15 @@ class HasName name n | n -> name where
 
 data Named name content =
   Named
-  { namedName :: !name
-  , namedContent :: !content
+  { _namedName :: !name
+  , _namedContent :: !content
   }
   deriving (Show, Eq, Generic, NFData)
 
-instance HasName e n => HasName e (Named n c) where
-  name = (lens namedName (\n h -> n { namedName = h })) . name
+makeLenses ''Named
 
-content :: Lens' (Named name content) content
-content = lens namedContent (\n h -> n { namedContent = h })
+instance HasName e n => HasName e (Named n c) where
+  name = namedName . name
 
 instance (ToJSON name) => ToJSON (Name name) where
   toJSON = toJSON . innerName

@@ -108,13 +108,13 @@ forEveryClassIt n fn = do
     it (printf "%s (%s)" n (show (cls ^. className))) $ fn cls
 
 beforeMethod ::
-  AbsMethodName
+  AbsMethodId
   -> SpecWith Method
   -> Spec
 beforeMethod mn =
   beforeClassPool $ do
-    a <- getClass (mn^.inClassName)
-    return $ a ^?! _Just.classMethod (mn^.relMethodName)._Just
+    a <- getClass (mn^.className)
+    return $ a ^?! _Just.classMethod (mn^.methodId)._Just
 
 useOutputFolder ::
   String
@@ -144,9 +144,9 @@ runJREClassPool cp scpt =
 withJREMethodIt ::
   (HasCallStack, Arg a ~ Method, Example a)
   => [String]
-  -> AbsMethodName
+  -> AbsMethodId
   -> String
-  -> (AbsMethodName -> a)
+  -> (AbsMethodId -> a)
   -> Spec
 withJREMethodIt cp mn n fn =
   beforeJREClassPool cp (fmap fromJust $ getMethod mn) $ do
@@ -157,13 +157,13 @@ withJREClassMethods ::
   => [String]
   -> ClassName
   -> String
-  -> (AbsMethodName -> Method -> b)
+  -> (AbsMethodId -> Method -> b)
   -> SpecWith (Arg b)
 withJREClassMethods cp cn n fn = do
   mcls <- runIO . runJREClassPool cp $ getClass cn
   forM_ mcls $ \cls -> do
     forMOf_ (classMethods.folded) cls $ \m -> do
-      let mn = mkAbsMethodName (cls^.className) (m^.methodName)
+      let mn = mkAbsMethodId cls m
       it (printf "%s (%s)" n (show mn)) $ fn mn m
 
 getJREHierachy :: [String] -> FilePath -> IO (Maybe Hierarchy)

@@ -326,11 +326,11 @@ saveClass fp cn = do
 
 getMethod ::
   (MonadClassPool m )
-  => AbsMethodName
+  => AbsMethodId
   -> m (Maybe Method)
 getMethod mid = do
-  cls <- getClass (mid^.inClassName)
-  return $ cls^?_Just.classMethod(mid^.inClassId)._Just
+  cls <- getClass (mid^.className)
+  return $ cls^?_Just.classMethod(mid^.methodId)._Just
 
 instance MonadClassPool m => MonadClassPool (ReaderT r m) where
   alterClass f cn = lift $ fmap (fmap lift) $ alterClass f cn

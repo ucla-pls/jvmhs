@@ -75,8 +75,6 @@ import qualified Language.JVM.Type as B
 import qualified Language.JVM as B
 
 -- jvmhs
--- import Jvmhs.Data.Class
-import Jvmhs.Data.Named
 import Jvmhs.Data.Code
 import Jvmhs.Data.Type
 import Jvmhs.Analysis.Hierarchy
@@ -127,7 +125,7 @@ instance AsTypeInfo TypeInfo where
   asTypeInfo = id
 
 instance AsTypeInfo ClassName where
-  asTypeInfo = B.VTObject . B.JTClass . view _Binary
+  asTypeInfo = B.VTObject . B.JTClass
 
 instance AsTypeInfo B.JRefType where
   asTypeInfo = B.VTObject
@@ -281,7 +279,7 @@ isSubReftypeOf ::
 isSubReftypeOf = \case
   B.JTClass s -> \case
     B.JTClass t -> asks $
-      \hry -> s == t || isSubclassOf hry (review _Binary s) (review _Binary t)
+      \hry -> s == t || isSubclassOf hry s t
     _ -> return False
   B.JTArray s -> \case
     B.JTArray t ->
@@ -342,7 +340,7 @@ unlessM mbool munit = mbool >>= \case
 typeCheck ::
   Hierarchy
   -- ^ A class hierarchy.
-  -> AbsMethodName
+  -> AbsMethodId
   -- ^ the absolute name of the method to check
   -> Bool
   -- ^ is the method static
@@ -369,7 +367,7 @@ typeCheck hry mn isStatic code = V.createT (runExceptT go) where
 
 typeCheckDebug ::
   Hierarchy
-  -> AbsMethodName
+  -> AbsMethodId
   -> Bool
   -> Code
   -> IO (Either (B.ByteCodeIndex, TypeCheckError) (V.Vector TypeCheckState))
@@ -457,20 +455,29 @@ unifyState stk1 stk2 hry = do
 
 
 computeLocals ::
-  AbsMethodName
+  AbsMethodId
   -> Bool
   -> IntMap.IntMap TypeInfo
 computeLocals mn isStatic = do
   IntMap.fromList $ zip (scanl (\n a -> n + typeSize a) 0 types) types
   where
     types =
-      [ asTypeInfo (mn^.inClassName) | not isStatic ] ++
+      [ asTypeInfo (mn^.className) | not isStatic ] ++
       (mn ^.. methodArgumentTypes.folded.to asTypeInfo)
 
     typeSize = \case
       VTDouble -> 2
       VTLong -> 2
       _ -> 1
+
+--stack=1, locals=0, args_size=0
+--   0: getstatic     #1  // Field $VALUES:[Lnet/dhleong/acl/enums/AlertStatus;
+--   3: invokevirtual #2  // Method "[Lnet/dhleong/acl/enums/AlertStatus;".clone:()Ljava/lang/Object;
+--   6: checkcast     #3  // class "[Lnet/dhleong/acl/enums/AlertStatus;"
+--   9: areturn
+--LineNumberTable:
+--  line 3: 0
+
 
 -- | Given a single `Instruction` lets typecheck it.
 typecheck ::
@@ -603,7 +610,7 @@ typecheck = \case
     case fa of
       B.FldStatic -> return ()
       B.FldField -> do
-        pop >>= (`checkSubtypeOf` fid ^. inClassName)
+        pop >>= (`checkSubtypeOf` fid ^. className)
     push (fid ^. fieldType)
 
 
@@ -612,35 +619,35 @@ typecheck = \case
     case fa of
       B.FldStatic -> return ()
       B.FldField -> do
-        pop >>= (`checkSubtypeOf` fid ^. inClassName)
+        pop >>= (`checkSubtypeOf` fid ^. className)
 
   Invoke a -> do
     case a of
       InvkVirtual m -> do
         popArguments m
-        pop >>= (`checkSubtypeOf` m ^.inClassName)
+        pop >>= (`checkSubtypeOf` m ^.asInClass.className)
         pushReturn m
       InvkStatic (B.AbsVariableMethodId _ m) -> do
         popArguments m
         pushReturn m
       InvkSpecial (B.AbsVariableMethodId _ m) -> do
         popArguments m
-        pop >>= (`checkSubtypeOf` m ^.inClassName)
+        pop >>= (`checkSubtypeOf` m ^.asInClass.className)
         pushReturn m
       InvkInterface _ (B.AbsInterfaceMethodId m) -> do
         popArguments m
-        pop >>= (`checkSubtypeOf` m ^.inClassName)
+        pop >>= (`checkSubtypeOf` m ^.asInClass.className)
         pushReturn m
       InvkDynamic (B.InvokeDynamic _ m) -> do
-        popArguments (review _Binary m :: MethodName)
-        pushReturn (review _Binary m :: MethodName)
+        popArguments m
+        pushReturn m
     where
-      popArguments :: HasName MethodName a => a -> m ()
+      popArguments :: HasMethodId a => a -> m ()
       popArguments m =
         forM_ (reverse $ m ^. methodArgumentTypes) $ \b -> do
           pop >>= (`checkSubtypeOf` b)
 
-      pushReturn :: HasName MethodName a => a -> m ()
+      pushReturn :: HasMethodId a => a -> m ()
       pushReturn m =
         forMOf_ (methodReturnType._Just) m push
 

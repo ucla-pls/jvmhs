@@ -24,7 +24,7 @@ import Jvmhs.Data.Named
 import Jvmhs.Data.Type
 
 data CallSiteName = CallSiteName
-  { _callSiteMethod :: MethodName
+  { _callSiteMethod :: MethodId
   , _callSiteOffset :: !Word16
   } deriving (Show, Eq, Generic, NFData)
 
