@@ -53,6 +53,9 @@ module Jvmhs.Analysis.Hierarchy
   , abstractDeclaration
   , callSites
   , requiredMethods
+
+  -- ** Fields
+  , fieldLocation
   ) where
 
 
@@ -201,6 +204,7 @@ definitions hry mid =
   . implementations hry
   $ mid^.className
 
+
 -- | Returns the possible declaration of a method. It might return
 -- itself
 declaration ::
@@ -253,6 +257,24 @@ declarations hry m =
 
     mid = m ^. methodId
 
+
+-- | Given a field finds its real location
+fieldLocation ::
+  Hierarchy
+  -> AbsFieldId
+  -> Maybe AbsFieldId
+fieldLocation hry mid =
+  (\a -> mid & className .~ a) <$> go (mid ^. className)
+  where
+    ii = mid ^. fieldId
+    go cn =
+      firstOf
+      ( hryStubs.ix cn .
+        ( hryFields.ix ii.like cn
+          <> hrySuper.folded.to go._Just
+          <> hryInterfaces.folded.to go._Just
+        )
+      ) hry
 
 isSubclassOf :: Hierarchy -> ClassName -> ClassName -> Bool
 isSubclassOf hry cn1 cn2 =
