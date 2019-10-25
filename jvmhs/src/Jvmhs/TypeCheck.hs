@@ -222,6 +222,7 @@ data TypeCheckError
   | NoLocal LocalAddress
   | BadType TypeInfo
   | NotSubtype TypeInfo TypeInfo
+  | NotIntersect TypeInfo TypeInfo
   | InconsistentStates B.ByteCodeIndex TypeCheckState TypeCheckState
   deriving (Show, Eq)
 
@@ -341,6 +342,17 @@ checkSubtypeOf ::
 checkSubtypeOf a b =
   unlessM (asTypeInfo a `isSubtypeOf` asTypeInfo b) $
     throwError (NotSubtype (asTypeInfo a) (asTypeInfo b))
+
+infixl 5 `checkIntersectOf`
+checkIntersectOf ::
+  (AsTypeInfo a, AsTypeInfo b, TypeChecker m)
+  => a -> b -> m ()
+checkIntersectOf a b =
+  unlessM
+  ( liftM2 (||)
+    (asTypeInfo a `isSubtypeOf` asTypeInfo b)
+    (asTypeInfo b `isSubtypeOf` asTypeInfo a)
+  ) $ throwError (NotIntersect (asTypeInfo a) (asTypeInfo b))
 
 unlessM :: Monad m => m Bool -> m () -> m ()
 unlessM mbool munit = mbool >>= \case
@@ -704,8 +716,7 @@ typecheck = \case
     push TInt
 
   CheckCast trg -> do
-    -- (trg `checkSubtypeOf`) =<< pop
-    void . unpack _TRef =<< pop
+    (trg `checkIntersectOf`) =<< pop
     push (B.JTRef trg)
 
   Monitor _ ->
