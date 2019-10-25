@@ -204,7 +204,6 @@ definitions hry mid =
   . implementations hry
   $ mid^.className
 
-
 -- | Returns the possible declaration of a method. It might return
 -- itself
 declaration ::
@@ -256,7 +255,6 @@ declarations hry m =
         Nothing -> []
 
     mid = m ^. methodId
-
 
 -- | Given a field finds its real location
 fieldLocation ::
