@@ -84,27 +84,25 @@ import           Jvmhs.Data.Class
 import           Jvmhs.Data.Graph
 import           Jvmhs.Data.Type
 
--- import qualified Data.Set.Lens       as S
 
--- | from map utils
-fromMap' :: M.HashMap k v -> S.HashSet k
-fromMap' m = S.fromMap $ m $> ()
-
-data HierarchyType
-  = HInterface
-  | HAbstract
-  | HPlain
-  deriving (Show, Eq)
+type IsAbstract = Bool
 
 -- | A hierarchy stub, is the only information needed to calculate the
 -- hierarchy. The benifit is that this can be loaded up front.
 data HierarchyStub = HierarchyStub
-  { _hryType       :: HierarchyType
+  { _hryAbstract   :: IsAbstract
   , _hrySuper      :: Maybe ClassName
   , _hryInterfaces :: S.HashSet ClassName
-  , _hryMethods    :: M.HashMap MethodId Bool
+  , _hryMethods    :: M.HashMap MethodId IsAbstract
   , _hryFields     :: S.HashSet FieldId
   } deriving (Show, Eq)
+
+
+
+
+
+
+
 
 makeLenses ''HierarchyStub
 $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4} ''HierarchyType)
@@ -387,3 +385,9 @@ callSites ::
   -> [ AbsMethodId ]
 callSites hry mid =
   definitions hry mid ^.. folded . to (\cn -> mid & className .~ cn)
+
+-- import qualified Data.Set.Lens       as S
+
+-- | from map utils
+fromMap' :: M.HashMap k v -> S.HashSet k
+fromMap' m = S.fromMap $ m $> ()
