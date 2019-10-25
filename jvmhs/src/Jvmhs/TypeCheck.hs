@@ -297,8 +297,8 @@ isSubReftypeOf ::
   -> m Bool
 isSubReftypeOf = \case
   JTClass s -> \case
-    JTClass t -> asks $ \hry ->
-      s == t || isSubclassOf hry s t
+    JTClass t ->
+      isSubclassOf s t
     _ -> return False
   JTArray s -> \case
     JTArray t ->
