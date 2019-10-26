@@ -643,36 +643,64 @@ findpaths a b hry
 
 -- | Given a method id return all defitions of that method. That is all
 -- implementations of that method.
+-- This method will stop if a method is redefined, but will not
+-- report back abstract methods.
 definitions ::
   MonadHierarchy env m
   => AbsMethodId
   -> m [AbsMethodId]
-definitions _ = views hierarchy $ \_ -> []
-  -- [
-  -- | cid <- classIndex (mid^.className) hry
-  -- ]
+definitions mid = views hierarchy $ \hry ->
+  [ mid & className .~ cn
+  | i <- maybeToList $ item (mid^.className) hry
+  , cn <-
+    i ^.. hryChildren . folding IS.toList
+        . cixItem hry . folding (go (mid^.methodId) hry)
+  ]
+  where
+    go m hry =
+      view (hryStub . stubMethods . at m) >>= \case
+        Just True -> pure []
+        Just False -> toListOf hryClassName
+        Nothing ->
+          toListOf
+            $ hryChildren
+            . folding IS.toList
+            . cixItem hry
+            . folding (go m hry)
 
 -- | Given an absolute method id find all superclasses that declare the
 -- method. This method also if that method is declared abstractly.
 -- This function also returns itself.
--- This method stops on the first occurence of the method.
 declarations ::
   MonadHierarchy env m
   => AbsMethodId
   -> m [(AbsMethodId, IsAbstract)]
-declarations =
-  undefined
-
+declarations mid = views hierarchy $ \hry ->
+  [ result
+  | i <- maybeToList $ classIndex (mid^.className) hry
+  , result <- i ^.. cixSuperclasses hry.cixItem hry.folding
+    (\x ->
+       [ (mid & className .~ x^.hryClassName, b)
+       | b <- x^.. hryStub.stubMethods.ix (mid^.methodId)
+       ]
+    )
+  ]
 
 -- | Given an absolute field location, return all locations where
 -- the field is declared, including itself.
--- This methods stops at the first ocurrence of the field.
 fieldLocations ::
   MonadHierarchy env m
   => AbsFieldId
   -> m [AbsFieldId]
-fieldLocations =
-  undefined
+fieldLocations fid = views hierarchy $ \hry ->
+  [ fid & className .~ cn
+  | i <- maybeToList $ classIndex (fid^.className) hry
+  , cn <- i ^..
+    cixSuperclasses hry
+    . cixItem hry
+    . filtered (view $ hryStub.stubFields.contains (fid^.fieldId))
+    . hryClassName
+  ]
 
 -- -- | Return a set of classes that implements a method.
 -- definitions ::
