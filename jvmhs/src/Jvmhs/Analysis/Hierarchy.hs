@@ -355,8 +355,6 @@ loadStubs fp =
 data Hierarchy = Hierarchy
   { _hierarchyClassIndicies :: !(M.HashMap ClassName Int)
   , _hierarchyItems         :: !(V.Vector HierarchyItem)
-  , _hierarchyObject        :: ClassIndex
-  -- ^ The index of java/lang/Object
   }
 
 type ClassIndex = Int
@@ -470,10 +468,6 @@ hierarchyFromStubsWarn warn stubs = do
             )
         )
         $ initial
-
-      _hierarchyObject =
-        fromMaybe (error "cannot create a hierachy without object") $
-        M.lookup "java/lang/Object" _hierarchyClassIndicies
 
       _hierarchyItems = flip V.imap initial $ \i a ->
         a { _hryChildren = fold $ IM.lookup i _children }
