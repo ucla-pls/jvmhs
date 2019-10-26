@@ -157,8 +157,8 @@ withJREClassMethods ::
   -> (AbsMethodId -> Method -> b)
   -> SpecWith (Arg b)
 withJREClassMethods cp cn n fn = do
-  mcls <- runIO . runJREClassPool cp $ getClass cn
-  forM_ mcls $ \cls -> do
+  mcls <- runIO (tryIOError $ runJREClassPool cp $ getClass cn)
+  forM_ (either (const Nothing) id mcls) $ \cls -> do
     forMOf_ (classMethods.folded) cls $ \m -> do
       let mn = mkAbsMethodId cls m
       it (printf "%s (%s)" n (show mn)) $ fn mn m
