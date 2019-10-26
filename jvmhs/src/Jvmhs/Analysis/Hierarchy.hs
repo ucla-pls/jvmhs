@@ -72,6 +72,9 @@ module Jvmhs.Analysis.Hierarchy
   , computeStubs
   , computeStubsWithCache
 
+  , allStubs
+  , expandStubs
+
   -- ** IO
   , loadStubs
 
