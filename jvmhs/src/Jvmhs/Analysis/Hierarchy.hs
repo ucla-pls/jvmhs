@@ -72,6 +72,9 @@ module Jvmhs.Analysis.Hierarchy
   , computeStubs
   , computeStubsWithCache
 
+  -- ** IO
+  , loadStubs
+
   -- * Utils
   , IsAbstract
    
@@ -98,18 +101,20 @@ import System.Directory
 import Data.Binary
 
 -- mtl
-import Control.Monad.Reader
-import Control.Monad.Writer
+import Control.Monad.Reader hiding (fail)
+import Control.Monad.Writer hiding (fail)
 
 -- transformers
 import Control.Monad.Trans.Maybe
 
 -- base
+import Prelude hiding (fail)
 import           Data.Functor
 import           Data.Foldable
 import           Data.Functor.Contravariant
 import           Control.Applicative
 import           Data.Hashable
+import           Control.Monad.Fail
 import           Data.Maybe
 import           GHC.Generics        (Generic)
 
@@ -308,11 +313,7 @@ computeStubsWithCache :: (MonadIO m, ClassReader r)
 computeStubsWithCache fp r = liftIO $ do
   doesFileExist fp >>= \case
     True -> do
-      case takeExtension fp of
-        ".bin" -> useBinary
-        ".json" -> useJSON
-        _ ->
-          error $ "Unknown file format: " <> fp
+      loadStubs fp
     False -> do
       case takeExtension fp of
         ".bin" -> do
@@ -327,16 +328,24 @@ computeStubsWithCache fp r = liftIO $ do
           error $ "Unknown file format: " <> fp
 
   where
-  useBinary =
-    Data.Binary.decodeFileOrFail fp >>= \case
-      Right a -> return a
-      Left msg -> error (show msg)
 
-  useJSON = do
-    Data.Aeson.decodeFileStrict' fp >>= \case
-      Just a -> return a
-      Nothing -> error $ "could not load json file: " <> fp
 
+-- | Load stubs from a file
+loadStubs :: (MonadIO m, MonadFail m)
+  => FilePath
+  -> m HierarchyStubs
+loadStubs fp =
+  case takeExtension fp of
+    ".bin" ->
+      liftIO (Data.Binary.decodeFileOrFail fp) >>= \case
+        Right a -> return a
+        Left msg -> fail (show msg)
+    ".json" ->
+      liftIO (Data.Aeson.decodeFileStrict' fp) >>= \case
+        Just a -> return a
+        Nothing -> fail $ "could not load json file: " <> fp
+    _ ->
+      fail $ "Unknown file format: " <> fp
 
 
 

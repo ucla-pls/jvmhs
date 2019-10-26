@@ -22,38 +22,37 @@ spec = do
     prop "can load and save a binary file" $ \(a :: HierarchyStubs) -> do
       decode (encode a) === a
 
-  (runIO (getJREHierachy [] "stdlib-stubs.json") >>=) . mapM_ $ \hry -> do
-
+  withJREHierarchy $ do
     describe "super" $ do
-      it "java/lang/Iterable super should be java/lang/Object" $ do
+      it "java/lang/Iterable super should be java/lang/Object" $ \hry -> do
         super "java/lang/Iterable" hry
         `shouldBe`
           Just (Just "java/lang/Object")
 
-      it "java/lang/Object super should be Nothing" $ do
+      it "java/lang/Object super should be Nothing" $ \hry -> do
         super "java/lang/Object" hry
         `shouldBe`
           Just Nothing
 
     describe "interfaces" $ do
-      it "java/lang/Iterable should have no interfaces " $ do
+      it "java/lang/Iterable should have no interfaces " $ \hry -> do
         interfaces "java/lang/Iterable" hry
         `shouldBe`
           Just []
 
     describe "parents" $ do
-      it "java/lang/Iterable should have one parent" $ do
+      it "java/lang/Iterable should have one parent" $ \hry -> do
         parents "java/lang/Iterable" hry
         `shouldBe`
           [ "java/lang/Object"
           ]
-      it "java/lang/Object should have no parents" $ do
+      it "java/lang/Object should have no parents" $ \hry -> do
         parents "java/lang/Object" hry
         `shouldBe`
           []
 
     describe "superclasses" $ do
-      it "java/lang/String should have five superclasses" $ do
+      it "java/lang/String should have five superclasses" $ \hry -> do
         superclasses "java/lang/String" hry
         `shouldBe`
           [ "java/lang/String"
@@ -68,27 +67,27 @@ spec = do
 
 
     describe "isSubclassOf" $ do
-      it "should type check string as a subclass of object" $ do
+      it "should type check string as a subclass of object" $ \hry -> do
         (isSubclassOf "java/lang/String" "java/lang/Object" $ hry)
           `shouldBe` True
 
-      it "should type check string as a subclass of string" $ do
+      it "should type check string as a subclass of string" $ \hry -> do
         (isSubclassOf' "java/lang/String" "java/lang/String" $ hry)
           `shouldBe` Just True
 
     describe "subclassPath" $ do
-      prop "can find a path from string to object" $ do
+      it "can find a path from string to object" $ \hry -> do
         (head $ subclassPath "java/lang/String" "java/lang/Object" $ hry)
         `shouldBe` [ ("java/lang/String", "java/lang/Object", Extend) ]
 
-      it "should find path from 'java/util/ArrayList' to 'java/util/List'" $ do
+      it "should find path from 'java/util/ArrayList' to 'java/util/List'" $ \hry -> do
         (head $ subclassPath "java/util/ArrayList" "java/util/List" $ hry)
           `shouldBe`
           [ ("java/util/ArrayList", "java/util/AbstractList", Extend)
           , ("java/util/AbstractList", "java/util/List", Implement)
           ]
 
-      it "should find path from 'java/util/ArrayList' to 'java/lang/Object'" $ do
+      it "should find path from 'java/util/ArrayList' to 'java/lang/Object'" $ \hry -> do
         (head $ subclassPath "java/util/ArrayList" "java/lang/Object" hry)
           `shouldBe`
           [ ("java/util/ArrayList", "java/util/AbstractList", Extend)

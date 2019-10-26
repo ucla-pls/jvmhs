@@ -22,41 +22,31 @@ import           SpecHelper
 
 spec :: Spec
 spec = do
-  describe "typecheck" $ do
-    mhry <- runIO $ getJREHierachy [] "stdlib-stubs.bin"
-    forM_ mhry $ \hry -> do
-      withJREClassMethods [] "java/lang/String" "can typecheck" $
-        doesTypeCheck hry
+  withJREHierarchy . describe "typecheck" $ do
+      withJREClassMethods [] "java/lang/String"
+        "can typecheck" doesTypeCheck
 
-      withJREClassMethods [] "java/lang/Object" "can typecheck" $
-        doesTypeCheck hry
+      withJREClassMethods [] "java/lang/Object"
+        "can typecheck" doesTypeCheck
 
-      withJREClassMethods [] "java/util/ArrayList" "can typecheck" $
-        doesTypeCheck hry
+      withJREClassMethods [] "java/util/ArrayList"
+        "can typecheck" doesTypeCheck
 
-      withJREClassMethods [] "java/util/HashMap" "can typecheck" $
-        doesTypeCheck hry
+      withJREClassMethods [] "java/util/HashMap"
+        "can typecheck" doesTypeCheck
 
-      withJREClassMethods [] "java/lang/Enum" "can typecheck" $
-        doesTypeCheck hry
+      withJREClassMethods [] "java/lang/Enum"
+        "can typecheck" doesTypeCheck
 
-      withJREClassMethods [] "java/util/function/BiConsumer" "can typecheck" $
-        doesTypeCheck hry
+      withJREClassMethods [] "java/util/function/BiConsumer"
+        "can typecheck" doesTypeCheck
 
-      withJREClassMethods [] "java/util/function/BiConsumer" "can typecheck" $
-        doesTypeCheck hry
+      withJREClassMethods [] "java/util/function/BiConsumer"
+        "can typecheck" doesTypeCheck
 
-  describe "typecheck-local" $ do
-    let cp = ["test/data/bigtest/classes", "test/data/bigtest/lib"]
-    mhry <- runIO $ getJREHierachy cp "bigtest-stubs.bin"
-
-    forM_ mhry $ \hry -> do
-      withJREClassMethods cp "DungeonGame" "can typecheck" $
-        doesTypeCheck hry
-
-  where
-    doesTypeCheck :: Hierarchy -> AbsMethodId -> Method -> IO ()
-    doesTypeCheck hry mn mth =
+    where
+    doesTypeCheck :: AbsMethodId -> Method -> Hierarchy -> IO ()
+    doesTypeCheck mn mth hry =
       forM_ (mth^.methodCode) $ \code -> do
         let r = typeCheck hry mn (mth^.methodAccessFlags.contains MStatic)  code
         r `shouldSatisfy` isRight

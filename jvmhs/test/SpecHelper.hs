@@ -31,6 +31,7 @@ module SpecHelper
   , withJREClassMethods
   , getJREHierachy
   , withJREMethodIt
+  , withJREHierarchy
 
   , useOutputFolder
   , getClassFromTestPool
@@ -171,6 +172,13 @@ getJREHierachy cp fp = do
     stubs <- computeStubsWithCache fp r
     liftIO $ putStrLn "Computing hierarchy"
     return $ hierarchyFromStubs stubs
+
+withJREHierarchy :: SpecWith Hierarchy -> Spec
+withJREHierarchy =
+  beforeAll $ hierarchyFromStubs <$> loadStubs "test/stdlib-stubs.json"
+  
+  
+
 
   
   -- doesFileExist fp >>= \case
