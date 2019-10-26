@@ -23,7 +23,7 @@ import           SpecHelper
 spec :: Spec
 spec = do
   describe "typecheck" $ do
-    mhry <- runIO $ getJREHierachy [] "stdlib-stubs.json"
+    mhry <- runIO $ getJREHierachy [] "stdlib-stubs.bin"
     forM_ mhry $ \hry -> do
       withJREClassMethods [] "java/lang/String" "can typecheck" $
         doesTypeCheck hry
@@ -48,7 +48,7 @@ spec = do
 
   describe "typecheck-local" $ do
     let cp = ["test/data/bigtest/classes", "test/data/bigtest/lib"]
-    mhry <- runIO $ getJREHierachy cp "bigtest-stubs.json"
+    mhry <- runIO $ getJREHierachy cp "bigtest-stubs.bin"
 
     forM_ mhry $ \hry -> do
       withJREClassMethods cp "DungeonGame" "can typecheck" $

@@ -34,6 +34,7 @@ module SpecHelper
 
   , useOutputFolder
   , getClassFromTestPool
+
   ) where
 
 import Text.Printf
@@ -44,11 +45,6 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.Hspec.Expectations.Pretty
 import Control.Monad.IO.Class
-
-import qualified Data.ByteString.Lazy as BL
-
--- aeson
-import Data.Aeson
 
 import System.Directory
 import System.IO.Error
@@ -168,13 +164,22 @@ withJREClassMethods cp cn n fn = do
 
 getJREHierachy :: [String] -> FilePath -> IO (Maybe Hierarchy)
 getJREHierachy cp fp = do
-  doesFileExist fp >>= \case
-    True -> do
-      Just stubs <- fmap decode $ BL.readFile fp
-      return . Just . snd $ calculateHierarchy stubs
-    False -> fmap (either (\(SomeException _) -> Nothing) Just). try $ do
-      r <- preload =<< fromClassPath cp
-      (_, st) <- loadClassPoolState (defaultFromReader r)
-      hry <- fmap fst . flip runClassPoolT st . fmap snd $ getHierarchy
-      BL.writeFile fp $ encode (hry^.hryStubs)
-      return hry
+  fmap (either (\(SomeException _) -> Nothing) Just). try $ do
+    liftIO $ putStrLn "Computing classpath "
+    r <- fromClassPath cp
+    liftIO $ putStrLn $ "Computing stubs " <> fp
+    stubs <- computeStubsWithCache fp r
+    liftIO $ putStrLn "Computing hierarchy"
+    return $ hierarchyFromStubs stubs
+
+  
+  -- doesFileExist fp >>= \case
+  --   True -> do
+  --     Just stubs <- fmap decode $ BL.readFile fp
+  --     return . Just . snd $ calculateHierarchy stubs
+  --   False -> fmap (either (\(SomeException _) -> Nothing) Just). try $ do
+  --     r <- preload =<< fromClassPath cp
+  --     (_, st) <- loadClassPoolState (defaultFromReader r)
+  --     hry <- fmap fst . flip runClassPoolT st . fmap snd $ getHierarchy
+  --     BL.writeFile fp $ encode (hry^.hryStubs)
+  --     return hry

@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE ApplicativeDo              #-}
@@ -27,63 +28,49 @@ module Jvmhs.Analysis.Hierarchy
   , HasHierarchy (hierarchy)
 
   -- ** Creation
+  , computeHierarchy
+  , computeHierarchyWithStubs
+
   , hierarchyFromStubs
   , hierarchyFromStubsWarn
 
   -- ** Queries
   , HEdge (..)
 
+  , inStub
+
+  -- ** Classes
+  , item
+  , super
+  , interfaces
+  , parents
+  , superclasses
+
+  , children
   , implementations
+ 
   , isSubclassOf
+  , isSubclassOf'
   , subclassPath
 
-  -- -- * Hierarchy
-  --   Hierarchy (..)
-  -- , hryStubs
-  -- , hryGraph
-  -- , HEdge (..)
+  -- ** Methods
+  , definitions
+  , declarations
 
-  -- , HierarchyStub (..)
-  -- , hrySuper
-  -- , hryInterfaces
-  -- , hryFields
-  -- , hryMethods
-
-  -- , HierarchyType (..)
-
-  -- , HierarchyStubs
-
-  -- , toStub
-  -- , allStubs
-  -- , expandStubs
-
-  -- -- ** Creation
-  -- , getHierarchy
-  -- , getHierarchyWithStubs
-  -- , calculateHierarchy
-
-  -- -- ** Classes
-  -- , implementations
-
-  -- -- ** Methods
-  -- , definitions
-  -- , declaration
-  -- , declarations
-  -- , isAbstract
-  -- , isSubclassOf
-  -- , subclassPath
-  -- , abstractDeclaration
-  -- , callSites
-  -- , requiredMethods
-
-  -- -- ** Fields
-  -- , fieldLocation
+  -- ** Fields
+  , fieldLocations
 
   -- * HierarchyStub
   -- $hierarchyStub
 
   , HierarchyStub (..)
   , stubIsAbstract, stubSuper, stubInterfaces, stubMethods, stubFields
+
+  , HierarchyStubs (..)
+
+  -- ** Creation
+  , computeStubs
+  , computeStubsWithCache
 
   -- * Utils
   , IsAbstract
@@ -92,7 +79,7 @@ module Jvmhs.Analysis.Hierarchy
 
 
 -- lens
-import           Control.Lens
+import           Control.Lens hiding (children)
 
 -- aeson
 import           Data.Aeson
@@ -101,19 +88,26 @@ import           Data.Aeson.TH
 -- vector
 import qualified Data.Vector as V
 
+-- filepath
+import System.FilePath
+
+-- directory
+import System.Directory
+
 -- binary
 import Data.Binary
 
 -- mtl
 import Control.Monad.Reader
+import Control.Monad.Writer
 
 -- transformers
 import Control.Monad.Trans.Maybe
 
 -- base
-import           Control.Monad
-import qualified Data.List as List
 import           Data.Functor
+import           Data.Foldable
+import           Data.Functor.Contravariant
 import           Control.Applicative
 import           Data.Hashable
 import           Data.Maybe
@@ -121,6 +115,7 @@ import           GHC.Generics        (Generic)
 
 -- containers
 import qualified Data.IntSet as IS
+import qualified Data.IntMap as IM
 
 -- unordered-containers
 import qualified Data.HashMap.Strict as M
@@ -128,8 +123,8 @@ import qualified Data.HashSet        as S
 
 -- jvmhs
 import           Jvmhs.ClassPool
+import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
-import           Jvmhs.Data.Graph
 import           Jvmhs.Data.Type
 
 -- | Decompose takes a 'H.HashMap' and splits it into two parts. A lookup part
@@ -167,7 +162,7 @@ data HierarchyStub = HierarchyStub
 
 makeLenses ''HierarchyStub
 $(deriveJSON
-  defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 4}
+  defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5}
   ''HierarchyStub
   )
 
@@ -199,95 +194,150 @@ newtype HierarchyStubs = HierarchyStubs
   { asStubMap :: M.HashMap ClassName HierarchyStub
   } deriving (Show, Eq, Generic, ToJSON, FromJSON, Monoid, Semigroup)
 
+compress :: HierarchyStubs -> CompressedStubs
+compress = do
+  (clookup :: M.HashMap ClassName Int, TextVector -> chsClassNames) <- fmap decomposeSet . view
+    $ to asStubMap . to fromMap'
+    <> folding asStubMap .
+    ( stubSuper._Just.to S.singleton
+      <> stubInterfaces
+    )
+
+  (mlookup, TextVector -> chsMethodIds) <- fmap decomposeSet . view
+    $ folding asStubMap.stubMethods.to fromMap'
+
+  (flookup, TextVector -> chsFieldIds) <- fmap decomposeSet . view
+    $ folding asStubMap.stubFields
+
+  chsStubs <- asks $ \a -> flip map (M.toList $ asStubMap a) . uncurry $ \i  -> do
+    chsClassId <- pure $ clookup M.! i
+    chsIsAbstract <- view stubIsAbstract
+    chsSuper <- fmap (clookup M.!) <$> view stubSuper
+    chsInterfaces <- IS.fromList <$> toListOf (stubInterfaces.folded.to(clookup M.!))
+    chsMethods <- IM.fromList . map (\(m, x) -> (mlookup M.! m, x)) <$> view (stubMethods.to(M.toList))
+    chsFields <- IS.fromList . map (flookup M.!) <$> view (stubFields.to(S.toList))
+    pure $ CompressedStub {..}
+
+  return $ CompressedStubs {..}
+
+decompress :: CompressedStubs -> HierarchyStubs
+decompress (CompressedStubs {..})= do
+  HierarchyStubs . M.fromList $
+    [ ( chsClassNames ! chsClassId
+      , HierarchyStub
+        { _stubIsAbstract = chsIsAbstract
+        , _stubSuper      = fmap (chsClassNames !) chsSuper
+        , _stubInterfaces = S.fromList [ chsClassNames ! i | i <- IS.toList chsInterfaces ]
+        , _stubMethods    = M.fromList [ (chsMethodIds ! i, b) | (i, b) <- IM.toList chsMethods ]
+        , _stubFields     = S.fromList [ chsFieldIds ! i | i <- IS.toList chsFields ]
+        }
+      )
+    | CompressedStub {..} <- chsStubs
+    ]
+
+  where
+    (!) :: TextVector a -> Int -> a
+    (!) (TextVector v) i = v V.! i
+
+
+data CompressedStub = CompressedStub
+  { chsClassId    :: Int
+  , chsIsAbstract :: IsAbstract
+  , chsSuper      :: !(Maybe Int)
+  , chsInterfaces :: !(IS.IntSet)
+  , chsMethods    :: !(IM.IntMap IsAbstract)
+  , chsFields     :: !(IS.IntSet)
+  } deriving (Generic)
+
+data CompressedStubs = CompressedStubs
+  { chsClassNames :: ! (TextVector ClassName)
+  , chsMethodIds  :: ! (TextVector MethodId)
+  , chsFieldIds   :: ! (TextVector FieldId)
+  , chsStubs      :: ! [CompressedStub]
+  } deriving (Generic)
+
+newtype TextVector a = TextVector (V.Vector a)
+  deriving (Foldable)
+
+instance Binary CompressedStub
+instance Binary CompressedStubs
+
+instance TextSerializable a => Binary (TextVector a) where
+  get = do i <- get; TextVector <$> V.replicateM i getDeserialize where
+    getDeserialize = either fail return . deserialize =<< get
+  put (TextVector v) = put (V.length v) >> forM_ v putSerialize where
+    putSerialize = put . serialize
+
 -- | We can write 'HierarchyStubs' to a binary file.
 instance Binary HierarchyStubs where
-  get = do
-    classnames <- getVector getDeserialize
-    methodids <- getVector getDeserialize
-    fieldids <- getVector getDeserialize
-    i <- get
-    fmap (HierarchyStubs . M.fromList) . sequence . List.replicate i $ do
-      _classname <- seek classnames
-      _stubIsAbstract <- get
+  get = decompress <$> get
+  put = put . compress
 
-      _stubSuper <- get <&> \i ->
-        if i < 0
-        then Nothing
-        else Just (classnames V.! i)
+-- | Create HierarchyStubs from all the classes in classPool
+allStubs ::
+  MonadClassPool m
+  => m HierarchyStubs
+allStubs =
+   HierarchyStubs . M.fromList
+   <$> mapClasses (\c -> (c^.className, toStub c))
 
-      _stubInterfaces <-
-        S.fromList <$> getMany (seek classnames)
+-- | Expand a set of 'HierarchyStubs' with loaded classes.
+expandStubs ::
+  MonadClassPool m
+  => HierarchyStubs
+  -> m HierarchyStubs
+expandStubs old = do
+  s <- allStubs
+  return $ s <> old
 
-      _stubMethods <-
-        M.fromList <$> getMany (liftA2 (,) (seek methodids) get)
+-- Compute the stubs from a class reader.
+computeStubs :: (MonadIO m, ClassReader r)
+  => r
+  -> m HierarchyStubs
+computeStubs r =
+  fst <$> runClassPoolTWithReader
+    (const $ allStubs)
+    (ReaderOptions False r)
 
-      _stubFields <-
-        S.fromList <$> getMany (seek fieldids)
+-- Compute the stubs if the cache does not exist. Writes to
+-- the cache after the stubs have been loaded.
+computeStubsWithCache :: (MonadIO m, ClassReader r)
+  => FilePath
+  -> r
+  -> m HierarchyStubs
+computeStubsWithCache fp r = liftIO $ do
+  doesFileExist fp >>= \case
+    True -> do
+      case takeExtension fp of
+        ".bin" -> useBinary
+        ".json" -> useJSON
+        _ ->
+          error $ "Unknown file format: " <> fp
+    False -> do
+      case takeExtension fp of
+        ".bin" -> do
+          stubs <- computeStubs r
+          Data.Binary.encodeFile fp stubs
+          return stubs
+        ".json" -> do
+          stubs <- computeStubs r
+          Data.Aeson.encodeFile fp stubs
+          return stubs
+        _ ->
+          error $ "Unknown file format: " <> fp
 
-      pure $ (_classname, HierarchyStub {..})
+  where
+  useBinary =
+    Data.Binary.decodeFileOrFail fp >>= \case
+      Right a -> return a
+      Left msg -> error (show msg)
 
-    where
-      getMany g = get >>= \i -> sequence $ List.replicate i g
+  useJSON = do
+    Data.Aeson.decodeFileStrict' fp >>= \case
+      Just a -> return a
+      Nothing -> error $ "could not load json file: " <> fp
 
-      seek :: V.Vector a -> Get a
-      seek a = get <&> \i -> a V.! i
 
-      getVector :: Get a -> Get (V.Vector a)
-      getVector g = do
-        i <- get
-        V.replicateM i g
-
-      getDeserialize :: TextSerializable a => Get a
-      getDeserialize =
-        either fail return . deserialize =<< get
-
-  put = runReaderT $ do
-    (clookup, classnames) <- fmap decomposeSet . view
-      $ to asStubMap . to fromMap'
-      <> folding asStubMap .
-      ( stubSuper._Just.to S.singleton
-        <> stubInterfaces
-      )
-
-    (mlookup, methodids) <- fmap decomposeSet . view
-      $ folding asStubMap.stubMethods.to fromMap'
-
-    (flookup, fieldids) <- fmap decomposeSet . view
-      $ folding asStubMap.stubFields
-
-    lift $ do
-      putVector putSerialize classnames
-      putVector putSerialize methodids
-      putVector putSerialize fieldids
-
-    ReaderT $ \a -> iforM_ (asStubMap a) $ \i s -> do
-      puts clookup i
-
-      put (s ^. stubIsAbstract)
-      case s ^. stubSuper of
-        Nothing -> put (-1 :: Int)
-        Just a -> puts clookup i
-      putsMany (puts clookup) . S.toList $ s ^. stubInterfaces
-      putsMany (\(i, a) -> puts mlookup i >> put a) . M.toList $ s ^. stubMethods
-      putsMany (puts flookup) . S.toList $ s ^. stubFields
-
-    where
-      puts :: (Eq a, Hashable a) => M.HashMap a Int -> a -> Put
-      puts l i = put (l M.! i)
-
-      putsMany :: (a -> Put) -> [a] -> Put
-      putsMany p lst = do
-        put (List.length lst)
-        mapM_ p lst
-
-      putVector :: (a -> Put) -> V.Vector a -> Put
-      putVector p v = do
-        put (V.length v)
-        forM_ v p
-
-      putSerialize :: TextSerializable a => a -> Put
-      putSerialize =
-        put . serialize
 
 
 -- $hierarchy
@@ -296,6 +346,8 @@ instance Binary HierarchyStubs where
 data Hierarchy = Hierarchy
   { _hierarchyClassIndicies :: !(M.HashMap ClassName Int)
   , _hierarchyItems         :: !(V.Vector HierarchyItem)
+  , _hierarchyObject        :: ClassIndex
+  -- ^ The index of java/lang/Object
   }
 
 type ClassIndex = Int
@@ -304,14 +356,81 @@ data HierarchyItem = HierarchyItem
   { _hryClassName       :: !ClassName
   , _hryStub            :: HierarchyStub
   , _hrySuper           :: !(Maybe ClassIndex)
-  , _hryInterfaces      :: !(IS.IntSet)
-  , _hryImplementations :: IS.IntSet
+  , _hryInterfaces      :: !IS.IntSet
+  , _hryChildren        :: !IS.IntSet
   -- ^ implementations are intentionally keept lazy so that it can be calulated
   -- on the fly.
+  -- , _hryChildren        :: IS.IntSet -- The Imediate children
   }
 
 makeClassy ''Hierarchy
 makeLenses ''HierarchyItem
+
+-- | Fold over the superclasses of a 'HierarchyItem'.
+hryParents :: Fold HierarchyItem ClassIndex
+hryParents fn i =
+  (hrySuper._Just) fn i *> (hryInterfaces.folding IS.toList) fn i
+
+-- | Fold over the superclasses of a 'HierarchyItem'.
+hryAnnotatedParents :: Fold HierarchyItem (ClassIndex, HEdge)
+hryAnnotatedParents fn i =
+  (hrySuper._Just.to(,Extend)) fn i
+  *> (hryInterfaces.folding IS.toList.to(,Implement)) fn i
+
+-- | Fold over the imidiate superclasses of a 'ClassIndex'.
+cixParents :: Hierarchy -> Fold ClassIndex ClassIndex
+cixParents hry =
+  cixItem hry . hryParents
+
+cixClassName :: Hierarchy -> Fold ClassIndex ClassName
+cixClassName hry =
+  cixItem hry . hryClassName
+
+-- | Fold over the imidiate superclasses of a 'ClassIndex'.
+cixAnnotatedParents :: Hierarchy -> Fold ClassIndex (ClassIndex, HEdge)
+cixAnnotatedParents hry =
+  cixItem hry . hryAnnotatedParents
+
+-- | Fold over the superclasses of a 'ClassIndex'.
+cixSuperclasses :: Hierarchy -> Fold ClassIndex ClassIndex
+cixSuperclasses hry =
+  cosmosOf (cixParents hry)
+
+-- | Fold over the imidiate superclasses of a 'ClassIndex'.
+cixChildren :: Hierarchy -> Fold ClassIndex (IS.IntSet)
+cixChildren hry =
+  cixItem hry . hryChildren
+
+-- | Fold over the imidiate superclasses of a 'ClassIndex'.
+cixImplementations :: Hierarchy -> Fold ClassIndex ClassIndex
+cixImplementations hry =
+  cosmosOf (cixChildren hry . folding IS.toList)
+
+
+cixItem :: Hierarchy -> Getter ClassIndex HierarchyItem
+cixItem hry fn i =
+  phantom . fn $ hry ^?! hierarchyItems . ix i
+
+
+-- | Load all the classes from the classpool. Outputs the hierarchy and a
+-- list of missing classes.
+computeHierarchy ::
+  MonadClassPool m
+  => m ([ClassName], Hierarchy)
+computeHierarchy =
+  computeHierarchyWithStubs mempty
+
+-- | Load all the classes from the classpool.
+computeHierarchyWithStubs ::
+  MonadClassPool m
+  => HierarchyStubs
+  -- ^ Add stubs
+  -> m ([ClassName], Hierarchy)
+computeHierarchyWithStubs stubs = do
+  stubs' <- expandStubs stubs
+  let (hry, a) = runWriter $ hierarchyFromStubsWarn (tell . Endo . (:)) stubs'
+  return (appEndo a [], hry)
+
 
 -- | Calculate the hierarchy and warn about missing items.
 hierarchyFromStubsWarn ::
@@ -320,31 +439,57 @@ hierarchyFromStubsWarn ::
   -- ^ Warning function
   -> HierarchyStubs
   -> m Hierarchy
-hierarchyFromStubsWarn tell stubs = do
+hierarchyFromStubsWarn warn stubs = do
   initial <- flip traverse items $ \(_hryClassName, _hryStub) -> do
     _hrySuper      <- maybe (pure Nothing) findIdx $ _hryStub ^. stubSuper
     _hryInterfaces <- IS.fromList . catMaybes <$>
       traverse findIdx (_hryStub ^.. stubInterfaces . folded)
-    pure $ HierarchyItem {..}
+    pure $
+      let _hryChildren = mempty
+      in HierarchyItem {..}
 
   pure $
-    let _hierarchyItems = flip V.imap initial $
-          \i -> hryImplementations
-            .~ IS.singleton i <> flip foldMap _hierarchyItems
-            (\a ->
-                if a^.hrySuper == Just i || a^.hryInterfaces.contains i
-                then a^.hryImplementations
-                else mempty
+    let
+      _children =
+        IM.unionsWith IS.union
+        . V.toList
+        . V.imap
+        (\i x ->
+            IM.unionsWith IS.union
+            ( x ^.. (hryInterfaces.folding (IS.toList) <> hrySuper._Just)
+              . to (\j -> IM.singleton j (IS.singleton i))
             )
+        )
+        $ initial
+
+      _hierarchyObject =
+        fromMaybe (error "cannot create a hierachy without object") $
+        M.lookup "java/lang/Object" _hierarchyClassIndicies
+
+      _hierarchyItems = flip V.imap initial $ \i a ->
+        a { _hryChildren = fold $ IM.lookup i _children }
+
+    --   _hierarchyItems = flip V.imap initial $
+    --       \i a ->
+    --         case _children IM.!? i of
+    --           _ | a ^. hryClassName == "java/lang/Object"
+    --               -> a { _hryImplementations = IS.fromList [0..V.length items] }
+    --           Just _myChildren ->
+    --             a { _hryImplementations = IS.singleton i
+    --                 <> foldMap (\i' -> (V.unsafeIndex _hierarchyItems i' ^. hryImplementations))
+    --                   (IS.toList _myChildren)
+    --               }
+    --           Nothing ->
+    --             a { _hryChildren = IS.singleton i }
     in Hierarchy {..}
-    
+
   where
     (_hierarchyClassIndicies, items) = decompose (asStubMap stubs)
 
     findIdx :: ClassName -> m (Maybe ClassIndex)
     findIdx cn = case M.lookup cn _hierarchyClassIndicies of
       Just idx -> pure (Just idx)
-      Nothing -> tell cn $> Nothing
+      Nothing -> warn cn $> Nothing
 
 -- | Calculate the hierarchy from stubs.
 hierarchyFromStubs :: HierarchyStubs -> Hierarchy
@@ -378,9 +523,21 @@ unIndicies fci = do
   pure $ fmap (V.unsafeIndex itms) fci
 
 -- | Get the stub associated with the 'ClassName'
-stub :: MonadHierarchy env m => ClassName -> m (Maybe HierarchyStub)
-stub cn = do
-  item cn <&> fmap (view hryStub)
+inStub :: MonadHierarchy env m => ClassName -> (Getter HierarchyStub a) -> m (Maybe a)
+inStub cn l = do
+  item cn <&> fmap (view $ hryStub . l)
+
+-- | Returns a list of all classes that implement some interface, or extends
+-- a class, including the class itself.
+children ::
+  MonadHierarchy env m
+  => ClassName
+  -> m [ClassName]
+children = classIndex >=> \case
+  Just cix -> views hierarchy $ \hry ->
+    toListOf (cixChildren hry.folding IS.toList.cixItem hry.hryClassName) cix
+  Nothing ->
+    return []
 
 -- | Returns a list of all classes that implement some interface, or extends
 -- a class, including the class itself.
@@ -388,116 +545,134 @@ implementations ::
   MonadHierarchy env m
   => ClassName
   -> m [ClassName]
-implementations = item >=> \case
-    Just (view hryImplementations -> imps) -> do
-      lst <- unIndicies (IS.toList imps)
-      return $ map (view hryClassName) lst
-    Nothing ->
-      return []
+implementations = classIndex >=> \case
+  Just cix -> views hierarchy $ \hry ->
+    toListOf (cixImplementations hry.cixItem hry.hryClassName) cix
+  Nothing ->
+    return []
 
 infixl 5 `isSubclassOf`
 -- | Checks if the first class is a subclass or equal to the second.
 isSubclassOf ::
-  (MonadHierarchy env m, HasClassName n1, HasClassName n2)
-  => n1 -> n2 -> m Bool
-isSubclassOf (view className -> cn1) (view className -> cn2) =
-  fmap (fromMaybe False) . runMaybeT $ do
-  ci1 <- MaybeT $ classIndex cn1
-  i2 <- MaybeT $ item cn2
+  (MonadHierarchy env m)
+  => ClassName -> ClassName -> m Bool
+isSubclassOf cn1 cn2 =
+  fromMaybe False <$> cn1 `isSubclassOf'` cn2
 
-  return $ ci1 `IS.member` (i2^.hryImplementations)
+infixl 5 `isSubclassOf'`
+-- | Checks if the first class is a subclass or equal to the second.
+isSubclassOf' ::
+  (MonadHierarchy env m)
+  => ClassName -> ClassName -> m (Maybe Bool)
+isSubclassOf' cn1 cn2 = runMaybeT $ do
+  ci1 <- MaybeT $ classIndex cn1
+  ci2 <- MaybeT $ classIndex cn2
+  lift $ superClassSearch ci1 ci2
+  -- i2 <- MaybeT $ item cn2
+  -- return $ ci1 `IS.member` (i2^.hryImplementations)
+
+superclasses ::
+  (MonadHierarchy env m)
+  => ClassName -> m [ClassName]
+superclasses cn = views hierarchy $ \hry ->
+  [ reClassName cix hry
+  | cix1 <- maybeToList $ classIndex cn hry
+  , cix <- toListOf (cixSuperclasses hry) cix1
+  ]
+
+parents ::
+  (MonadHierarchy env m)
+  => ClassName -> m [ClassName]
+parents cn = views hierarchy $ \hry ->
+  [ reClassName cix hry
+  | cix1 <- maybeToList $ classIndex cn hry
+  , cix <- toListOf (cixParents hry) cix1
+  ]
+
+super ::
+  (MonadHierarchy env m)
+  => ClassName -> m (Maybe (Maybe ClassName))
+super cn = views hierarchy $ \hry ->
+  item cn hry
+    <&> preview (hrySuper._Just.cixClassName hry)
+
+interfaces ::
+  (MonadHierarchy env m)
+  => ClassName -> m (Maybe [ClassName])
+interfaces cn = views hierarchy $ \hry ->
+  item cn hry
+  <&> toListOf (hryInterfaces.folding IS.toList.cixClassName hry)
+
+superClassSearch ::
+  (MonadHierarchy env m)
+  => ClassIndex -> ClassIndex -> m Bool
+superClassSearch ci1 ci2 = views hierarchy $ \hry ->
+  anyOf (cixSuperclasses hry) (== ci2) ci1
 
 data HEdge
   = Implement
   | Extend
   deriving (Show, Ord, Eq, Enum, Generic)
 
--- | Finds the path from a subclass A to the superclass B
+-- | Finds the paths from a subclass A to the superclass B
 subclassPath ::
-  forall env m. MonadHierarchy env m
+  (MonadHierarchy env m)
   => ClassName
   -> ClassName
-  -> m (Maybe [(ClassName, ClassName, HEdge)])
-subclassPath cn1 cn2 = runMaybeT $ do
-  ci1 <- MaybeT $ classIndex cn1
-  ci2 <- MaybeT $ classIndex cn2
-  imps <- unIndex ci2 <&> view hryImplementations
-  MaybeT . views hierarchy $ findpath imps ci1 ci2
+  -> m [[(ClassName, ClassName, HEdge)]]
+subclassPath cn1 cn2 = views hierarchy $ \hry ->
+  [ path
+  | ci1 <- maybeToList (classIndex cn1 hry)
+  , ci2 <- maybeToList (classIndex cn2 hry)
+  , path <- findpaths ci1 ci2 hry
+  ]
 
-  where
-    findpath ::
-      IS.IntSet
-      -> ClassIndex
-      -> ClassIndex
-      -> Hierarchy
-      -> Maybe [(ClassName, ClassName, HEdge)]
-    findpath imps a b hry =
-      fmap (map (\(a', b', e) -> (reClassName a' hry, reClassName b' hry, e)))
-      $ go a
-      where
-      go x
-        | x == b = return []
-        | otherwise = let itm = unIndex x hry in msum
-          [ do
-              c <- findOf (hrySuper._Just) (`IS.member` imps) itm
-              ((a, c, Extend):) <$> go c
-          , do
-              c <- findOf (hryInterfaces.folding IS.toList) (`IS.member` imps) itm
-              ((a, c, Implement):) <$> go c
-          ]
+-- | Find all paths from a subclass  to a superclass
+findpaths ::
+  ClassIndex
+  -> ClassIndex
+  -> Hierarchy
+  -> [[(ClassName, ClassName, HEdge)]]
+findpaths a b hry
+  | a == b = [[]]
+  | otherwise =
+    [ (reClassName a hry, reClassName y hry, e) : rest
+    | (y, e) <- toListOf (cixAnnotatedParents hry) a
+    , rest <- findpaths y b hry
+    ]
 
--- allStubs ::
---   MonadClassPool m
---   => m HierarchyStubs
--- allStubs =
---    M.fromList <$> mapClasses (\c -> (c^.className, toStub c))
+-- | Given a method id return all defitions of that method. That is all
+-- implementations of that method.
+definitions ::
+  MonadHierarchy env m
+  => AbsMethodId
+  -> m [AbsMethodId]
+definitions _ = views hierarchy $ \_ -> []
+  -- [
+  -- | cid <- classIndex (mid^.className) hry
+  -- ]
 
--- expandStubs ::
---   MonadClassPool m
---   => HierarchyStubs
---   -> m HierarchyStubs
--- expandStubs old = do
---   s <- allStubs
---   return $ s <> old
-
-
--- instance Hashable HEdge
+-- | Given an absolute method id find all superclasses that declare the
+-- method. This method also if that method is declared abstractly.
+-- This function also returns itself.
+-- This method stops on the first occurence of the method.
+declarations ::
+  MonadHierarchy env m
+  => AbsMethodId
+  -> m [(AbsMethodId, IsAbstract)]
+declarations =
+  undefined
 
 
--- data Hierarchy = Hierarchy
---   { _hryStubs :: HierarchyStubs
---   , _hryGraph :: Graph ClassName HEdge
---   }
-
--- makeLenses ''Hierarchy
-
--- getHierarchy ::
---   MonadClassPool m
---   => m ([ClassName], Hierarchy)
--- getHierarchy =
---   getHierarchyWithStubs mempty
-
--- getHierarchyWithStubs ::
---   MonadClassPool m
---   => HierarchyStubs
---   -> m ([ClassName], Hierarchy)
--- getHierarchyWithStubs =
---   expandStubs >=> return . calculateHierarchy
-
--- calculateHierarchy ::
---   HierarchyStubs
---   -> ([ClassName], Hierarchy)
--- calculateHierarchy stubs =
---   (missed, Hierarchy stubs (mkGraph nodes edges))
---   where
---     (nodes, edges) = stubs ^. ifolded.withIndex.to collection
---     missed = S.toList (nodes `S.difference` fromMap' stubs)
---     collection (cn, stub) =
---       let toedge x = to (cn,,x) in
---       ( cn `S.insert` view (hrySuper.folded. to S.singleton <> hryInterfaces) stub
---       , S.fromList $ toListOf (hrySuper.folded.toedge Extend <> hryInterfaces.folded.toedge Implement) stub
---       )
-
+-- | Given an absolute field location, return all locations where
+-- the field is declared, including itself.
+-- This methods stops at the first ocurrence of the field.
+fieldLocations ::
+  MonadHierarchy env m
+  => AbsFieldId
+  -> m [AbsFieldId]
+fieldLocations =
+  undefined
 
 -- -- | Return a set of classes that implements a method.
 -- definitions ::
@@ -579,119 +754,3 @@ subclassPath cn1 cn2 = runMaybeT $ do
 --           <> hryInterfaces.folded.to go._Just
 --         )
 --       ) hry
-
--- isSubclassOf :: Hierarchy -> ClassName -> ClassName -> Bool
--- isSubclassOf hry cn1 cn2 =
---   cn1 `L.elem` implementations hry cn2
-
-
--- -- | Finds the path from a subclass A to the superclass B
--- subclassPath :: Hierarchy -> ClassName -> ClassName -> Maybe [(ClassName, ClassName, HEdge)]
--- subclassPath hry a' b = go a'
---   where
---     imps = S.fromList $ implementations hry b
---     go a
---       | a == b = Just []
---       | otherwise =
---         case findOf (hryStubs.ix a.hrySuper._Just) (`S.member` imps) hry of
---           Just c -> ((a, c, Extend):) <$> go c
---           Nothing ->
---             case findOf (hryStubs.ix a.hryInterfaces.folded) (`S.member` imps) hry of
---               Just c -> ((a, c, Implement):) <$> go c
---               Nothing -> Nothing
-
-
-
-
--- isAbstract :: Hierarchy -> AbsMethodId -> Maybe Bool
--- isAbstract hry mid =
---   hry ^? hryStubs . ix (mid^.className) . hryMethods . ix (mid^.methodId)
-
--- -- higherMethods :: Hierarchy -> MethodName -> Fold ClassName AbsMethodId
--- -- higherMethods hry =
-
--- -- | A fold of all abstract super classes, this includes classes and
--- -- intefaces
--- abstractedSuperClasses :: HierarchyStub -> Hierarchy -> [HierarchyStub]
--- abstractedSuperClasses stub h =
---   toListOf (
---     (hrySuper._Just <> hryInterfaces.folded)
---     . folding (\cn -> h ^? hryStubs.ix cn)
---     . filtered (\n -> n ^. hryType `L.elem` [HInterface, HAbstract])
---     ) stub
-
--- isRequired ::
---   Hierarchy
---   -> AbsMethodId
---   -> Bool
--- isRequired hry m =
---   maybe False isAbstractInSupers $ hry ^. hryStubs.at (m ^.className)
---   where
---     isAbstractInSupers :: HierarchyStub -> Bool
---     isAbstractInSupers stb =
---       or (map hasAbstract $ abstractedSuperClasses stb hry)
-
---     hasAbstract :: HierarchyStub -> Bool
---     hasAbstract stb =
---       fromMaybe (isAbstractInSupers stb) $ stb ^. hryMethods.at mid
-
---     mid = m ^. methodId
-
---   -- where go
-
-
--- --   | mid ^. relMethodName.methodId == "<init>:()V" = True
--- --   | otherwise =
--- --     orOf
--- --     (
--- --       hryStubs
--- --       . ix (mid ^. inClassName)
--- --       . ( hrySuper._Just.to (isAbstractIn (mid ^. relMethodName))
--- --         )
--- --     )
-
--- --     case hry ^.
--- --       Nothing -> False
--- --       Just stub ->
--- --         orOf
--- --         ( hrySuper._Just.to (declaration hry.flip (set inClassName) mid)._Just
--- --         )
--- --         case stub ^?  of
--- --           Just w -> fromMaybe True (isAbstract hry w)
--- --           Nothing ->
--- --             orOf (hryInterfaces.folded.to go) stub
--- --   where
--- --     go cn =
--- --       case hry ^. hryStubs.at cn of
--- --         Nothing -> True
--- --         Just stub ->
--- --           orOf ( hryMethods . ix (mid^. relMethodName)
--- --                  <> hryInterfaces.folded.to go
--- --                ) stub
-
-
-
--- requiredMethods ::
---   Hierarchy
---   -> Class
---   -> [AbsMethodId]
--- requiredMethods hry cls =
---   cls ^.. classAbsMethodIds . filtered (isRequired hry)
-
--- methodDefinedIn ::
---   Hierarchy
---   -> MethodId
---   -> ClassName
---   -> Bool
--- methodDefinedIn hry mid cn =
---   orOf (hryStubs.at cn._Just.hryMethods.at mid._Just.to not) hry
-
--- -- | returns a list of possible call sites.
--- callSites ::
---   Hierarchy
---   -> AbsMethodId
---   -> [ AbsMethodId ]
--- callSites hry mid =
---   definitions hry mid ^.. folded . to (\cn -> mid & className .~ cn)
-
--- -- import qualified Data.Set.Lens       as S

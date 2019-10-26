@@ -540,11 +540,12 @@ fromClassFile = do
 
   _classSuper <- \cls ->
     case fmap csSuperclassSignature classSignature of
-      Just sp -> Just sp
-      Nothing
-        | B.cThisClass cls == "java/lang/Object" ->
+      _ | B.cThisClass cls == "java/lang/Object" ->
           Nothing
-        | otherwise ->
+      Just sp
+        -> Just sp
+      Nothing
+        ->
           Just $ ClassType (B.cSuperClass cls) []
 
   _classAccessFlags <-
