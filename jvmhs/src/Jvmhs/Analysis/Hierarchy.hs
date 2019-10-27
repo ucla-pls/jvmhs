@@ -40,7 +40,7 @@ module Jvmhs.Analysis.Hierarchy
   , inStub
 
   -- ** Classes
-  , item
+  -- , item
   , super
   , interfaces
   , parents
@@ -56,6 +56,7 @@ module Jvmhs.Analysis.Hierarchy
   -- ** Methods
   , definitions
   , declarations
+  , declaredMethods
 
   -- ** Fields
   , fieldLocations
@@ -106,9 +107,6 @@ import Data.Binary
 -- mtl
 import Control.Monad.Reader hiding (fail)
 import Control.Monad.Writer hiding (fail)
-
--- transformers
-import Control.Monad.Trans.Maybe
 
 -- base
 import Prelude hiding (fail)
@@ -289,7 +287,8 @@ allStubs =
    HierarchyStubs . M.fromList
    <$> mapClasses (\c -> (c^.className, toStub c))
 
--- | Expand a set of 'HierarchyStubs' with loaded classes.
+-- | Expand a set of 'HierarchyStubs' with loaded classes, will
+-- overload any new stubs.
 expandStubs ::
   MonadClassPool m
   => HierarchyStubs
@@ -416,10 +415,28 @@ cixImplementations :: Hierarchy -> Fold ClassIndex ClassIndex
 cixImplementations hry =
   cosmosOf (cixChildren hry . folding IS.toList)
 
-
 cixItem :: Hierarchy -> Getter ClassIndex HierarchyItem
 cixItem hry fn i =
   phantom . fn $ hry ^?! hierarchyItems . ix i
+
+-- cixStub :: Hierarchy -> Getter ClassIndex HierarchyStub
+-- cixStub hry =
+--   cixItem hry. hryStub
+
+cnIndex ::
+  Hierarchy -> Getter ClassName (Maybe ClassIndex)
+cnIndex hry fn cn =
+  phantom . fn $ hry ^? hierarchyClassIndicies . ix cn
+
+cnItem ::
+  Hierarchy -> Fold ClassName HierarchyItem
+cnItem hry =
+  cnIndex hry._Just.cixItem hry
+
+cnStub ::
+  Hierarchy -> Fold ClassName HierarchyStub
+cnStub hry =
+  cnItem hry.hryStub
 
 
 -- | Load all the classes from the classpool. Outputs the hierarchy and a
@@ -505,13 +522,6 @@ hierarchyFromStubs =
 type MonadHierarchy env m =
   (MonadReader env m, HasHierarchy env)
 
-classIndex :: MonadHierarchy env m => ClassName -> m (Maybe ClassIndex)
-classIndex cn =
-  preview (hierarchyClassIndicies.ix cn)
-
--- | Get a HierarchyItem
-item :: MonadHierarchy env m => ClassName -> m (Maybe HierarchyItem)
-item cn = classIndex cn >>= unIndicies
 
 -- | Get a HierarchyItem from an ClassIndex
 unIndex :: MonadHierarchy env m => ClassIndex -> m HierarchyItem
@@ -522,16 +532,16 @@ unIndex i =
 reClassName :: MonadHierarchy env m => ClassIndex -> m ClassName
 reClassName i = unIndex i <&> view hryClassName
 
-unIndicies :: (MonadHierarchy env m, Functor f)
-  => f ClassIndex -> m (f HierarchyItem)
-unIndicies fci = do
-  itms <- view hierarchyItems
-  pure $ fmap (V.unsafeIndex itms) fci
+-- unIndicies :: (MonadHierarchy env m, Functor f)
+--   => f ClassIndex -> m (f HierarchyItem)
+-- unIndicies fci = do
+--   itms <- view hierarchyItems
+--   pure $ fmap (V.unsafeIndex itms) fci
 
 -- | Get the stub associated with the 'ClassName'
 inStub :: MonadHierarchy env m => ClassName -> (Getter HierarchyStub a) -> m (Maybe a)
-inStub cn l = do
-  item cn <&> fmap (view $ hryStub . l)
+inStub cn l = views hierarchy $ \hry -> do
+  cn ^? cnStub hry . l
 
 -- | Returns a list of all classes that implement some interface, or extends
 -- a class, including the class itself.
@@ -539,11 +549,13 @@ children ::
   MonadHierarchy env m
   => ClassName
   -> m [ClassName]
-children = classIndex >=> \case
-  Just cix -> views hierarchy $ \hry ->
-    toListOf (cixChildren hry.folding IS.toList.cixItem hry.hryClassName) cix
-  Nothing ->
-    return []
+children cn = views hierarchy $ \hry ->
+  toListOf
+    ( cnItem hry
+    . hryChildren
+    . folding IS.toList
+    . cixClassName hry
+    ) cn
 
 -- | Returns a list of all classes that implement some interface, or extends
 -- a class, including the class itself.
@@ -551,11 +563,12 @@ implementations ::
   MonadHierarchy env m
   => ClassName
   -> m [ClassName]
-implementations = classIndex >=> \case
-  Just cix -> views hierarchy $ \hry ->
-    toListOf (cixImplementations hry.cixItem hry.hryClassName) cix
-  Nothing ->
-    return []
+implementations cn = views hierarchy $ \hry ->
+  toListOf
+  ( cnIndex hry . _Just
+  . cixImplementations hry
+  . cixClassName hry
+  ) cn
 
 infixl 5 `isSubclassOf`
 -- | Checks if the first class is a subclass or equal to the second.
@@ -570,10 +583,10 @@ infixl 5 `isSubclassOf'`
 isSubclassOf' ::
   (MonadHierarchy env m)
   => ClassName -> ClassName -> m (Maybe Bool)
-isSubclassOf' cn1 cn2 = runMaybeT $ do
-  ci1 <- MaybeT $ classIndex cn1
-  ci2 <- MaybeT $ classIndex cn2
-  lift $ superClassSearch ci1 ci2
+isSubclassOf' cn1 cn2 = views hierarchy $ \hry -> do
+  ci1 <- cn1 ^. cnIndex hry
+  ci2 <- cn2 ^. cnIndex hry
+  Just (superClassSearch ci1 ci2 hry)
   -- i2 <- MaybeT $ item cn2
   -- return $ ci1 `IS.member` (i2^.hryImplementations)
 
@@ -581,32 +594,25 @@ superclasses ::
   (MonadHierarchy env m)
   => ClassName -> m [ClassName]
 superclasses cn = views hierarchy $ \hry ->
-  [ reClassName cix hry
-  | cix1 <- maybeToList $ classIndex cn hry
-  , cix <- toListOf (cixSuperclasses hry) cix1
-  ]
+  toListOf (cnIndex hry._Just.cixSuperclasses hry.cixClassName hry) cn
 
 parents ::
   (MonadHierarchy env m)
   => ClassName -> m [ClassName]
 parents cn = views hierarchy $ \hry ->
-  [ reClassName cix hry
-  | cix1 <- maybeToList $ classIndex cn hry
-  , cix <- toListOf (cixParents hry) cix1
-  ]
+  toListOf (cnIndex hry._Just.cixParents hry.cixClassName hry) cn
 
 super ::
   (MonadHierarchy env m)
   => ClassName -> m (Maybe (Maybe ClassName))
 super cn = views hierarchy $ \hry ->
-  item cn hry
-    <&> preview (hrySuper._Just.cixClassName hry)
+  (cn ^? cnItem hry) <&> preview (hrySuper._Just.cixClassName hry)
 
 interfaces ::
   (MonadHierarchy env m)
   => ClassName -> m (Maybe [ClassName])
 interfaces cn = views hierarchy $ \hry ->
-  item cn hry
+  (cn ^? cnItem hry)
   <&> toListOf (hryInterfaces.folding IS.toList.cixClassName hry)
 
 superClassSearch ::
@@ -628,8 +634,8 @@ subclassPath ::
   -> m [[(ClassName, ClassName, HEdge)]]
 subclassPath cn1 cn2 = views hierarchy $ \hry ->
   [ path
-  | ci1 <- maybeToList (classIndex cn1 hry)
-  , ci2 <- maybeToList (classIndex cn2 hry)
+  | ci1 <- cn1 ^.. cnIndex hry._Just
+  , ci2 <- cn2 ^.. cnIndex hry._Just
   , path <- findpaths ci1 ci2 hry
   ]
 
@@ -657,10 +663,10 @@ definitions ::
   -> m [AbsMethodId]
 definitions mid = views hierarchy $ \hry ->
   [ mid & className .~ cn
-  | i <- maybeToList $ item (mid^.className) hry
-  , cn <-
-    i ^.. hryChildren . folding IS.toList
-        . cixItem hry . folding (go (mid^.methodId) hry)
+  | cn <-
+    mid ^.. className.cnItem hry
+    . hryChildren . folding IS.toList
+    . cixItem hry . folding (go (mid^.methodId) hry)
   ]
   where
     go m hry =
@@ -682,15 +688,29 @@ declarations ::
   => AbsMethodId
   -> m [(AbsMethodId, IsAbstract)]
 declarations mid = views hierarchy $ \hry ->
-  [ result
-  | i <- maybeToList $ classIndex (mid^.className) hry
-  , result <- i ^.. cixSuperclasses hry.cixItem hry.folding
+  mid ^.. className. cnIndex hry._Just
+    .cixSuperclasses hry.cixItem hry.folding
     (\x ->
        [ (mid & className .~ x^.hryClassName, b)
        | b <- x^.. hryStub.stubMethods.ix (mid^.methodId)
        ]
     )
-  ]
+
+-- Returns a list of declared methods and if they are abstract or not.
+declaredMethods ::
+  MonadHierarchy env m
+  => ClassName
+  -> m (M.HashMap MethodId (ClassName, IsAbstract))
+declaredMethods cn = views hierarchy $ \hry ->
+  cn ^. cnItem hry . to (go hry)
+  where
+    go :: Hierarchy
+      -> HierarchyItem
+      -> M.HashMap MethodId (ClassName, IsAbstract)
+    go hry i = flip view i $
+      hryStub . stubMethods . to(fmap (i^.hryClassName,))
+      <> hryParents . cixItem hry . to (go hry)
+ 
 
 -- | Given an absolute field location, return all locations where
 -- the field is declared, including itself.
@@ -700,9 +720,9 @@ fieldLocations ::
   -> m [AbsFieldId]
 fieldLocations fid = views hierarchy $ \hry ->
   [ fid & className .~ cn
-  | i <- maybeToList $ classIndex (fid^.className) hry
-  , cn <- i ^..
-    cixSuperclasses hry
+  | cn <- fid ^.. className
+    . cnIndex hry._Just
+    . cixSuperclasses hry
     . cixItem hry
     . filtered (view $ hryStub.stubFields.contains (fid^.fieldId))
     . hryClassName
