@@ -40,9 +40,6 @@ import qualified Data.Text as Text
 import Data.Text.Lazy.Builder as Text
 import qualified Data.Text.Lazy as LazyText
 
--- base
-import qualified Data.List as List
-
 -- jmvhs
 import Jvmhs.Data.Type
 
