@@ -1,5 +1,9 @@
 {-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-|
@@ -14,6 +18,9 @@ This module works with the BootstrapMethod. This is a work in progress.
 module Jvmhs.Data.BootstrapMethod
   where
 
+-- lens
+import Control.Lens
+
 import           Control.DeepSeq
 import           Data.Aeson
 import           GHC.Generics
@@ -25,6 +32,8 @@ newtype BootstrapMethod = BootstrapMethod
   }
   deriving (Show, Eq, Generic)
   deriving anyclass NFData
+
+makeWrapped ''BootstrapMethod
 
 fromBinaryBootstrapMethod :: B.BootstrapMethod B.High -> BootstrapMethod
 fromBinaryBootstrapMethod =
