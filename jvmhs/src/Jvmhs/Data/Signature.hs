@@ -22,9 +22,10 @@ module Jvmhs.Data.Signature
   , classTypeFromName
   , throwsSignatureFromName
   , throwsSignatureName
-
   , typeSignatureFromType
 
+  , _ThrowsClass
+  , _ThrowsTypeVariable
   , module Language.JVM.Attribute.Signature
   ) where
 
