@@ -85,19 +85,21 @@ instance Inspectable Method where
       classNames
       nothing
       (traverse.classNames)
-      traverse
+      (traverse.classNames)
+      (traverse.classNames)
+      (traverse.classNames)
       (traverse.classNames)
       classNames
 
-  methodNames =
-    traverseMethod
-      nothing
-      nothing
-      nothing
-      (traverse.methodNames)
-      nothing
-      nothing
-      nothing
+  -- methodNames =
+  --   traverseMethod
+  --     nothing
+  --     nothing
+  --     nothing
+  --     (traverse.methodNames)
+  --     nothing
+  --     nothing
+  --     nothing
 
 instance Inspectable BootstrapMethod where
 

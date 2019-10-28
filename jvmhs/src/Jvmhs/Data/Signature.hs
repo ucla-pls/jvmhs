@@ -19,6 +19,12 @@ simple ClassName.
 
 module Jvmhs.Data.Signature
   ( classTypeName
+  , classTypeFromName
+  , throwsSignatureFromName
+  , throwsSignatureName
+
+  , typeSignatureFromType
+
   , module Language.JVM.Attribute.Signature
   ) where
 
@@ -33,11 +39,16 @@ import qualified Data.Text as Text
 import Data.Text.Lazy.Builder as Text
 import qualified Data.Text.Lazy as LazyText
 
+-- base
+import qualified Data.List as List
+
 -- jmvhs
 import Jvmhs.Data.Type
 
 -- jvm-binary
 import Language.JVM.Attribute.Signature
+
+makePrisms ''ThrowsSignature
 
 -- | A classType getter from a ClassType
 classTypeName :: Getting f ClassType ClassName
@@ -52,6 +63,34 @@ getClassTypeName =
         ctsInnerClassName : getClassName ctsOuterClassType
       ClassType {..} ->
         [ctsClassName ^. fullyQualifiedName]
+
+classTypeFromName :: ClassName -> ClassType
+classTypeFromName cn =
+  case Text.split (== '$') (view fullyQualifiedName cn) of
+    t : rst -> List.foldl'
+      (\b t' -> InnerClassType t' b [])
+      (ClassType (review fullyQualifiedName t) [])
+      rst
+    [] -> error "Can't happen."
+
+throwsSignatureFromName :: ClassName -> ThrowsSignature
+throwsSignatureFromName cn =
+  ThrowsClass (classTypeFromName cn)
+
+throwsSignatureName :: Monoid f => Getting f ThrowsSignature ClassName
+throwsSignatureName =
+  _ThrowsClass . classTypeName
+
+referenceTypeFromRefType :: JRefType -> ReferenceType
+referenceTypeFromRefType = \case
+  JTArray a -> RefArrayType (typeSignatureFromType a)
+  JTClass a -> RefClassType (classTypeFromName a)
+
+typeSignatureFromType :: JType -> TypeSignature
+typeSignatureFromType = \case
+  JTBase a -> BaseType a
+  JTRef a  -> ReferenceType (referenceTypeFromRefType a)
+
 
 
 instance ToJSON (ClassSignature) where
@@ -69,3 +108,8 @@ instance ToJSON (TypeParameter) where
 instance ToJSON (ClassType) where
   toJSON = String . LazyText.toStrict . toLazyText . classTypeT
 
+instance ToJSON (ThrowsSignature) where
+  toJSON = String . LazyText.toStrict . toLazyText . throwsSignatureT
+
+instance ToJSON (TypeSignature) where
+  toJSON = String . LazyText.toStrict . toLazyText . typeSignatureT

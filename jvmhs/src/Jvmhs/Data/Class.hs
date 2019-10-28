@@ -230,15 +230,19 @@ instance HasMethodId Method where
 
 -- | This is the method
 data MethodContent = MethodContent
-  { _methodAccessFlags :: Set.Set MAccessFlag
+  { _methodAccessFlags     :: Set.Set MAccessFlag
   -- ^ the set of access flags
-  , _methodCode        :: Maybe Code
+  , _methodCode            :: Maybe Code
   -- ^ optionally the method can contain code
-  , _methodExceptions  :: [ ClassName ]
+  , _methodExceptions      :: [ ThrowsSignature ]
   -- ^ the method can have one or more exceptions
-  , _methodSignature   :: Maybe MethodSignature
-  -- ^ the signature of the method
-  , _methodAnnotations  :: Annotations
+  , _methodTypeParameters  :: [TypeParameter]
+  -- ^ a method can have specific type parameters
+  , _methodArguments       :: [TypeSignature]
+  -- ^ the arguments of method
+  , _methodReturn          :: Maybe TypeSignature
+  -- ^ the return type of the method
+  , _methodAnnotations     :: Annotations
   -- ^ the annotations of the method
   } deriving (Eq, Show, Generic, NFData)
 
@@ -333,11 +337,13 @@ traverseMethod ::
   -> Traversal' MethodDescriptor a
   -> Traversal' (Set.Set MAccessFlag) a
   -> Traversal' (Maybe Code) a
-  -> Traversal' [ClassName] a
-  -> Traversal' (Maybe MethodSignature) a
+  -> Traversal' [ ThrowsSignature ] a
+  -> Traversal' [ TypeParameter ] a
+  -> Traversal' [ TypeSignature ] a
+  -> Traversal' (Maybe TypeSignature) a
   -> Traversal' Annotations a
   -> Traversal' Method a
-traverseMethod tfn tfd taf tc tex ts tano g s =
+traverseMethod tfn tfd taf tc tex tp targ tret tano g s =
   mkMethod
   <$> (
     (<:>)
@@ -348,7 +354,9 @@ traverseMethod tfn tfd taf tc tex ts tano g s =
       <$> (taf g . view methodAccessFlags $ s)
       <*> (tc  g . view methodCode $ s)
       <*> (tex g . view methodExceptions $ s)
-      <*> (ts  g . view methodSignature $ s)
+      <*> (tp  g . view methodTypeParameters $ s)
+      <*> (targ  g . view methodArguments $ s)
+      <*> (tret  g . view methodReturn $ s)
       <*> (tano  g . view methodAnnotations $ s)
     )
 {-# INLINE traverseMethod #-}
@@ -445,6 +453,7 @@ instance FromJVMBinary (B.Field B.High) Field where
 instance FromJVMBinary (B.Method B.High) Method where
   _Binary = iso toBMethod fromBMethod
     where
+      fromBMethod :: B.Method B.High -> Method
       fromBMethod = do
         _name <- B.mName
         _desc <- B.mDescriptor
@@ -455,7 +464,7 @@ instance FromJVMBinary (B.Method B.High) Method where
         _methodCode <-
           fmap fromBinaryCode . B.mCode
 
-        _methodExceptions <-
+        _defaultMethodExceptions <-
           B.mExceptions
 
         _methodSignature <-
@@ -469,10 +478,40 @@ instance FromJVMBinary (B.Method B.High) Method where
           (readAnnotations <$> B.maVisibleAnnotations <*> B.maInvisibleAnnotations)
           . B.mAttributes
 
-        pure $ mkMethod
-          (_name <:> _desc)
-          (MethodContent {..})
+        pure $ do
+          let
+            _methodExceptions = maybe
+              (map throwsSignatureFromName $ _defaultMethodExceptions)
+              msThrows _methodSignature
 
+            _methodTypeParameters =
+              maybe [] msTypeParameters _methodSignature
+
+            _methodArguments =
+              maybe (map typeSignatureFromType . methodDescriptorArguments $ _desc)
+              msArguments _methodSignature
+
+            _methodReturn =
+              maybe (fmap typeSignatureFromType
+                     . asMaybeJType . methodDescriptorReturnType
+                     $ _desc)
+              msResults _methodSignature
+
+          mkMethod
+            (_name <:> _desc)
+            (MethodContent {..})
+
+
+      methodSignature :: Method -> MethodSignature
+      methodSignature = do
+        msTypeParameters <- view methodTypeParameters
+        msArguments <- view methodArguments
+        msResults <- view methodReturn
+        msThrows <- view methodExceptions
+        pure $
+          MethodSignature {..}
+
+      toBMethod :: Method -> B.Method B.High
       toBMethod =
         B.Method
           <$> unsafeCoerce . view methodAccessFlags
@@ -492,11 +531,11 @@ instance FromJVMBinary (B.Method B.High) Method where
 
                   maExceptions <-
                     compress (B.Exceptions . B.SizedList)
-                    . view methodExceptions
+                    . toListOf (methodExceptions.folded.throwsSignatureName)
 
                   maSignatures <-
                     maybeToList . fmap (Signature . methodSignatureToText)
-                    . view methodSignature
+                    . Just . methodSignature
 
                   maAnnotationDefault <- pure []
 
@@ -546,7 +585,7 @@ fromClassFile = do
         -> Just sp
       Nothing
         ->
-          Just $ ClassType (B.cSuperClass cls) []
+          Just . classTypeFromName $ B.cSuperClass cls
 
   _classAccessFlags <-
     B.cAccessFlags
@@ -555,7 +594,7 @@ fromClassFile = do
     case fmap csInterfaceSignatures classSignature of
       Just sp -> sp
       Nothing ->
-        [ ClassType i [] | i <- toListOf (folding B.cInterfaces) cls ]
+        [ classTypeFromName i | i <- toListOf (folding B.cInterfaces) cls ]
 
   _classFields <-
     toListOf (folded.from _Binary) . B.cFields
@@ -679,3 +718,4 @@ $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Inne
 
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
+
