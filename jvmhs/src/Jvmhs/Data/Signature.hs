@@ -26,6 +26,10 @@ module Jvmhs.Data.Signature
 
   , _ThrowsClass
   , _ThrowsTypeVariable
+
+
+  , isSimpleMethodSignature
+
   , module Language.JVM.Attribute.Signature
   ) where
 
@@ -85,6 +89,34 @@ typeSignatureFromType = \case
   JTBase a -> BaseType a
   JTRef a  -> ReferenceType (referenceTypeFromRefType a)
 
+isSimpleMethodSignature :: MethodSignature -> Bool
+isSimpleMethodSignature MethodSignature {..} = and
+  [ null msTypeParameters
+  , all isSimpleTypeSignature msArguments
+  , all isSimpleTypeSignature msResults
+  , all isSimpleThrowsSignature msThrows
+  ]
+
+isSimpleTypeSignature :: TypeSignature -> Bool
+isSimpleTypeSignature = \case
+  BaseType _ -> True
+  ReferenceType a -> isSimpleReferenceType a
+
+isSimpleReferenceType :: ReferenceType -> Bool
+isSimpleReferenceType = \case
+  RefArrayType a -> isSimpleTypeSignature a
+  RefClassType a -> isSimpleClassType a
+  RefTypeVariable _ -> False
+
+isSimpleClassType :: ClassType -> Bool
+isSimpleClassType = \case
+  ClassType _ [] -> True
+  _ -> False
+
+isSimpleThrowsSignature :: ThrowsSignature -> Bool
+isSimpleThrowsSignature = \case
+  ThrowsClass a -> isSimpleClassType a
+  ThrowsTypeVariable _ -> False
 
 
 instance ToJSON (ClassSignature) where

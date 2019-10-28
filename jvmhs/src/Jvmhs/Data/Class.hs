@@ -502,14 +502,17 @@ instance FromJVMBinary (B.Method B.High) Method where
             (MethodContent {..})
 
 
-      methodSignature :: Method -> MethodSignature
+      methodSignature :: Method -> (Maybe MethodSignature)
       methodSignature = do
         msTypeParameters <- view methodTypeParameters
         msArguments <- view methodArguments
         msResults <- view methodReturn
         msThrows <- view methodExceptions
-        pure $
-          MethodSignature {..}
+        pure $ do
+          let x = MethodSignature {..}
+          if isSimpleMethodSignature x
+            then Nothing
+            else Just x
 
       toBMethod :: Method -> B.Method B.High
       toBMethod =
@@ -535,7 +538,7 @@ instance FromJVMBinary (B.Method B.High) Method where
 
                   maSignatures <-
                     maybeToList . fmap (Signature . methodSignatureToText)
-                    . Just . methodSignature
+                    . methodSignature
 
                   maAnnotationDefault <- pure []
 
