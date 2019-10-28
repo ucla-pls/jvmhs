@@ -67,12 +67,8 @@ getClassTypeName =
 
 classTypeFromName :: ClassName -> ClassType
 classTypeFromName cn =
-  case Text.split (== '$') (view fullyQualifiedName cn) of
-    t : rst -> List.foldl'
-      (\b t' -> InnerClassType t' b [])
-      (ClassType (review fullyQualifiedName t) [])
-      rst
-    [] -> error "Can't happen."
+  -- Note the language is wierd here! Main.A is not Main$A, but Main<T>.A is!
+  ClassType cn []
 
 throwsSignatureFromName :: ClassName -> ThrowsSignature
 throwsSignatureFromName cn =
