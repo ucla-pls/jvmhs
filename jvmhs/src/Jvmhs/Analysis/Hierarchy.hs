@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE BlockArguments             #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE ApplicativeDo              #-}
@@ -36,6 +37,8 @@ module Jvmhs.Analysis.Hierarchy
 
   -- ** Queries
   , HEdge (..)
+  , SubclassPath (..), (<:), (<!)
+  , subclassEdges
 
   , inStub
 
@@ -48,18 +51,23 @@ module Jvmhs.Analysis.Hierarchy
 
   , children
   , implementations
+  , implementationPaths
  
   , isSubclassOf
   , isSubclassOf'
-  , subclassPath
+  , subclassPaths
 
   -- ** Methods
   , definitions
   , declarations
   , declaredMethods
 
+  , superDefinitionPaths
+  , superAbstractDeclarationPaths
+
   -- ** Fields
   , fieldLocations
+  , fieldLocationPaths
 
   -- * HierarchyStub
   -- $hierarchyStub
@@ -86,7 +94,7 @@ module Jvmhs.Analysis.Hierarchy
 
 
 -- lens
-import           Control.Lens hiding (children)
+import           Control.Lens hiding (children, (...))
 
 -- aeson
 import           Data.Aeson
@@ -111,6 +119,7 @@ import Control.Monad.Writer hiding (fail)
 -- base
 import Prelude hiding (fail)
 import           Data.Functor
+import           Data.Function
 import           Data.Foldable
 import           Data.Functor.Contravariant
 import           Control.Applicative
@@ -354,6 +363,61 @@ loadStubs fp =
 -- $hierarchy
 --
 
+-- | A Path is a list of subclass relationships.
+data SubclassPath
+  = SubclassOf !ClassName !HEdge SubclassPath
+  | Top !ClassName
+  deriving (Eq, Ord)
+
+instance Show SubclassPath where
+  showsPrec n cp =
+    case cp of
+      Top cn ->
+        showParen (n >= 9) $ showString "Top ". showsPrec 9 cn
+      SubclassOf cn Implement rest ->
+        showParen (n > 5) $
+        showsPrec 5 cn
+        . showString " <: "
+        . showsPrec 5 rest
+
+      SubclassOf cn Extend rest ->
+        showParen (n > 5) $
+        showsPrec 5 cn
+        . showString " <! "
+        . showsPrec 5 rest
+                          
+
+infixr 5 <:
+-- | Short for `flip SubclassOf Implement`
+(<:) :: ClassName -> SubclassPath -> SubclassPath
+(<:) = flip SubclassOf Implement
+
+infixr 5 <!
+-- | Short for `flip SubclassOf Extend`
+(<!) :: ClassName -> SubclassPath -> SubclassPath
+(<!) = flip SubclassOf Extend
+
+bottomOf :: SubclassPath -> ClassName
+bottomOf = \case
+  Top cn -> cn
+  SubclassOf cn _ _ -> cn
+
+subclassEdges :: SubclassPath -> [(ClassName, ClassName, HEdge)]
+subclassEdges = \case
+  SubclassOf cn e sc ->
+    (cn, bottomOf sc, e) : subclassEdges sc
+  Top _ ->
+    []
+
+  
+
+-- | A HEdge is describing whether
+data HEdge
+  = Implement
+  | Extend
+  deriving (Show, Ord, Eq, Enum, Generic)
+
+
 data Hierarchy = Hierarchy
   { _hierarchyClassIndicies :: !(M.HashMap ClassName Int)
   , _hierarchyItems         :: !(V.Vector HierarchyItem)
@@ -366,10 +430,7 @@ data HierarchyItem = HierarchyItem
   , _hryStub            :: HierarchyStub
   , _hrySuper           :: !(Maybe ClassIndex)
   , _hryInterfaces      :: !IS.IntSet
-  , _hryChildren        :: !IS.IntSet
-  -- ^ implementations are intentionally keept lazy so that it can be calulated
-  -- on the fly.
-  -- , _hryChildren        :: IS.IntSet -- The Imediate children
+  , _hryChildrenMap     :: !(IM.IntMap HEdge)
   }
 
 makeClassy ''Hierarchy
@@ -386,6 +447,14 @@ hryAnnotatedParents fn i =
   (hrySuper._Just.to(,Extend)) fn i
   *> (hryInterfaces.folding IS.toList.to(,Implement)) fn i
 
+-- | Fold over the superclasses of a 'HierarchyItem'.
+hryChildren :: Fold HierarchyItem ClassIndex
+hryChildren = hryChildrenMap . folding IM.keys
+
+-- | Fold over the superclasses of a 'HierarchyItem'.
+hryAnnotatedChildren :: Fold HierarchyItem (ClassIndex, HEdge)
+hryAnnotatedChildren = hryChildrenMap . folding IM.toList
+
 -- | Fold over the imidiate superclasses of a 'ClassIndex'.
 cixParents :: Hierarchy -> Fold ClassIndex ClassIndex
 cixParents hry =
@@ -395,10 +464,10 @@ cixClassName :: Hierarchy -> Fold ClassIndex ClassName
 cixClassName hry =
   cixItem hry . hryClassName
 
--- | Fold over the imidiate superclasses of a 'ClassIndex'.
-cixAnnotatedParents :: Hierarchy -> Fold ClassIndex (ClassIndex, HEdge)
-cixAnnotatedParents hry =
-  cixItem hry . hryAnnotatedParents
+-- -- | Fold over the imidiate superclasses of a 'ClassIndex'.
+-- cixAnnotatedParents :: Hierarchy -> Fold ClassIndex (ClassIndex, HEdge)
+-- cixAnnotatedParents hry =
+--   cixItem hry . hryAnnotatedParents
 
 -- | Fold over the superclasses of a 'ClassIndex'.
 cixSuperclasses :: Hierarchy -> Fold ClassIndex ClassIndex
@@ -406,14 +475,19 @@ cixSuperclasses hry =
   cosmosOf (cixParents hry)
 
 -- | Fold over the imidiate superclasses of a 'ClassIndex'.
-cixChildren :: Hierarchy -> Fold ClassIndex (IS.IntSet)
+cixChildren :: Hierarchy -> Fold ClassIndex ClassIndex
 cixChildren hry =
   cixItem hry . hryChildren
+
+-- -- | Fold over the imidiate superclasses of a 'ClassIndex'.
+-- cixAnnotatedChildren :: Hierarchy -> Fold ClassIndex (ClassIndex, HEdge)
+-- cixAnnotatedChildren hry =
+--   cixItem hry . hryAnnotatedChildren
 
 -- | Fold over the imidiate superclasses of a 'ClassIndex'.
 cixImplementations :: Hierarchy -> Fold ClassIndex ClassIndex
 cixImplementations hry =
-  cosmosOf (cixChildren hry . folding IS.toList)
+  cosmosOf (cixChildren hry)
 
 cixItem :: Hierarchy -> Getter ClassIndex HierarchyItem
 cixItem hry fn i =
@@ -438,7 +512,6 @@ cnStub ::
 cnStub hry =
   cnItem hry.hryStub
 
-
 -- | Load all the classes from the classpool. Outputs the hierarchy and a
 -- list of missing classes.
 computeHierarchy ::
@@ -458,6 +531,14 @@ computeHierarchyWithStubs stubs = do
   let (hry, a) = runWriter $ hierarchyFromStubsWarn (tell . Endo . (:)) stubs'
   return (appEndo a [], hry)
 
+newtype SemigroupIntMap a = SemigroupIntMap
+  { runSemigroupIntMap :: IM.IntMap a }
+
+instance Semigroup s => Semigroup (SemigroupIntMap s) where
+  a <> b = SemigroupIntMap $ (IM.unionWith (<>) `on` runSemigroupIntMap) a b
+
+instance Semigroup s => Monoid (SemigroupIntMap s) where
+  mempty = SemigroupIntMap (mempty)
 
 -- | Calculate the hierarchy and warn about missing items.
 hierarchyFromStubsWarn ::
@@ -472,38 +553,22 @@ hierarchyFromStubsWarn warn stubs = do
     _hryInterfaces <- IS.fromList . catMaybes <$>
       traverse findIdx (_hryStub ^.. stubInterfaces . folded)
     pure $
-      let _hryChildren = mempty
+      let _hryChildrenMap = mempty
       in HierarchyItem {..}
 
   pure $
     let
-      _children =
-        IM.unionsWith IS.union
-        . V.toList
-        . V.imap
-        (\i x ->
-            IM.unionsWith IS.union
-            ( x ^.. (hryInterfaces.folding (IS.toList) <> hrySuper._Just)
-              . to (\j -> IM.singleton j (IS.singleton i))
-            )
-        )
-        $ initial
+      _children = runSemigroupIntMap
+        $ view (ifolded . withIndex . to (uncurry collectChildren)) initial
+
+      collectChildren :: ClassIndex -> HierarchyItem -> SemigroupIntMap (IM.IntMap HEdge)
+      collectChildren idx = views
+        (hryInterfaces.folding IS.toList.to (,Implement) <> hrySuper._Just.to (,Extend))
+        \(i, e) -> SemigroupIntMap (IM.singleton i (IM.singleton idx e))
 
       _hierarchyItems = flip V.imap initial $ \i a ->
-        a { _hryChildren = fold $ IM.lookup i _children }
+        a { _hryChildrenMap = fold $ IM.lookup i _children }
 
-    --   _hierarchyItems = flip V.imap initial $
-    --       \i a ->
-    --         case _children IM.!? i of
-    --           _ | a ^. hryClassName == "java/lang/Object"
-    --               -> a { _hryImplementations = IS.fromList [0..V.length items] }
-    --           Just _myChildren ->
-    --             a { _hryImplementations = IS.singleton i
-    --                 <> foldMap (\i' -> (V.unsafeIndex _hierarchyItems i' ^. hryImplementations))
-    --                   (IS.toList _myChildren)
-    --               }
-    --           Nothing ->
-    --             a { _hryChildren = IS.singleton i }
     in Hierarchy {..}
 
   where
@@ -522,22 +587,6 @@ hierarchyFromStubs =
 type MonadHierarchy env m =
   (MonadReader env m, HasHierarchy env)
 
-
--- | Get a HierarchyItem from an ClassIndex
-unIndex :: MonadHierarchy env m => ClassIndex -> m HierarchyItem
-unIndex i =
-  flip V.unsafeIndex i <$> view hierarchyItems
-
--- | Get a HierarchyItem from an ClassIndex
-reClassName :: MonadHierarchy env m => ClassIndex -> m ClassName
-reClassName i = unIndex i <&> view hryClassName
-
--- unIndicies :: (MonadHierarchy env m, Functor f)
---   => f ClassIndex -> m (f HierarchyItem)
--- unIndicies fci = do
---   itms <- view hierarchyItems
---   pure $ fmap (V.unsafeIndex itms) fci
-
 -- | Get the stub associated with the 'ClassName'
 inStub :: MonadHierarchy env m => ClassName -> (Getter HierarchyStub a) -> m (Maybe a)
 inStub cn l = views hierarchy $ \hry -> do
@@ -548,14 +597,11 @@ inStub cn l = views hierarchy $ \hry -> do
 children ::
   MonadHierarchy env m
   => ClassName
-  -> m [ClassName]
+  -> m [(ClassName, HEdge)]
 children cn = views hierarchy $ \hry ->
-  toListOf
-    ( cnItem hry
-    . hryChildren
-    . folding IS.toList
-    . cixClassName hry
-    ) cn
+  [ (i ^?! cixClassName hry, edge)
+  | (i, edge) <- cn^..cnItem hry.hryAnnotatedChildren
+  ]
 
 -- | Returns a list of all classes that implement some interface, or extends
 -- a class, including the class itself.
@@ -569,6 +615,30 @@ implementations cn = views hierarchy $ \hry ->
   . cixImplementations hry
   . cixClassName hry
   ) cn
+
+-- | Returns a list of implementations classes, if they are abstract and
+-- the path to get there.
+implementationPaths ::
+  MonadHierarchy env m
+  => ClassName
+  -> m [(ClassName, IsAbstract, SubclassPath)]
+implementationPaths cn = views hierarchy $ \hry ->
+  [ (cn', isAbstract, path)
+  | it <- cn ^.. cnItem hry
+  , (cn', isAbstract, path) <- implementationPaths' it hry
+  ]
+
+implementationPaths' ::
+  HierarchyItem
+  -> Hierarchy
+  -> [(ClassName, IsAbstract, SubclassPath)]
+implementationPaths' it' hry = go (Top $ it'^.hryClassName) it' where
+  go p it =
+    (it^.hryClassName, it^.hryStub.stubIsAbstract, p) : concat
+    [ go (SubclassOf (item^.hryClassName) edge p) item
+    | (chidx, edge) <- it ^.. hryAnnotatedChildren
+    , let item = chidx ^. cixItem hry
+    ]
 
 infixl 5 `isSubclassOf`
 -- | Checks if the first class is a subclass or equal to the second.
@@ -621,37 +691,28 @@ superClassSearch ::
 superClassSearch ci1 ci2 = views hierarchy $ \hry ->
   anyOf (cixSuperclasses hry) (== ci2) ci1
 
-data HEdge
-  = Implement
-  | Extend
-  deriving (Show, Ord, Eq, Enum, Generic)
-
 -- | Finds the paths from a subclass A to the superclass B
-subclassPath ::
+subclassPaths ::
   (MonadHierarchy env m)
   => ClassName
   -> ClassName
-  -> m [[(ClassName, ClassName, HEdge)]]
-subclassPath cn1 cn2 = views hierarchy $ \hry ->
+  -> m [SubclassPath]
+subclassPaths cn1 cn2 = views hierarchy $ \hry ->
   [ path
   | ci1 <- cn1 ^.. cnIndex hry._Just
   , ci2 <- cn2 ^.. cnIndex hry._Just
   , path <- findpaths ci1 ci2 hry
-  ]
-
--- | Find all paths from a subclass  to a superclass
-findpaths ::
-  ClassIndex
-  -> ClassIndex
-  -> Hierarchy
-  -> [[(ClassName, ClassName, HEdge)]]
-findpaths a b hry
-  | a == b = [[]]
-  | otherwise =
-    [ (reClassName a hry, reClassName y hry, e) : rest
-    | (y, e) <- toListOf (cixAnnotatedParents hry) a
-    , rest <- findpaths y b hry
-    ]
+  ] where
+  -- | Find all paths from a subclass to a superclass
+  findpaths a' trg hry = go a' where
+    go a
+      | a == trg = [Top (a^?!cixClassName hry)]
+      | otherwise =
+        let it = a ^. cixItem hry in
+        [ SubclassOf (it^.hryClassName) e path
+        | (y, e) <- it ^.. hryAnnotatedParents
+        , path <- go y
+        ]
 
 -- | Given a method id return all defitions of that method. That is all
 -- implementations of that method.
@@ -665,20 +726,57 @@ definitions mid = views hierarchy $ \hry ->
   [ mid & className .~ cn
   | cn <-
     mid ^.. className.cnItem hry
-    . hryChildren . folding IS.toList
+    . hryChildren
     . cixItem hry . folding (go (mid^.methodId) hry)
-  ]
+  ] where
+  go m hry = view (hryStub . stubMethods . at m) >>= \case
+    Just True -> pure []
+    Just False -> toListOf hryClassName
+    Nothing ->
+      toListOf
+        $ hryChildren
+        . cixItem hry
+        . folding (go m hry)
+
+-- | Finds all defintions above a methodid.
+superDefinitionPaths ::
+  AbsMethodId
+  -> Hierarchy
+  -> [(AbsMethodId, SubclassPath)]
+superDefinitionPaths m = views hierarchy $ \hry ->
+  m^..className.cnItem hry.folding (superDefs hry)
   where
-    go m hry =
-      view (hryStub . stubMethods . at m) >>= \case
-        Just True -> pure []
-        Just False -> toListOf hryClassName
+    mid = m^.methodId
+    superDefs hry = go where
+      go item = case item ^. hryStub.stubMethods.at mid of
+        Just isAbstract ->
+          [ (m & className .~ item^.hryClassName, Top $ item^.hryClassName)
+          | not isAbstract
+          ]
         Nothing ->
-          toListOf
-            $ hryChildren
-            . folding IS.toList
-            . cixItem hry
-            . folding (go m hry)
+          [ (mx, SubclassOf (item^.hryClassName) edge path)
+          | (y, edge) <- item ^.. hryAnnotatedParents
+          , (mx, path) <- go (y^?!cixItem hry)
+          ]
+
+-- | Finds all declarations above the method, including itself.
+superAbstractDeclarationPaths ::
+  AbsMethodId
+  -> Hierarchy
+  -> [(AbsMethodId, SubclassPath)]
+superAbstractDeclarationPaths m = views hierarchy $ \hry ->
+  m^..className.cnItem hry.folding (superDefs hry)
+  where
+    mid = m^.methodId
+    superDefs hry = go where
+      go item = 
+        [ (m & className .~ item^.hryClassName, Top $ item^.hryClassName)
+        | True <- item ^.. hryStub.stubMethods.ix mid
+        ] ++
+        [ (mx, SubclassOf (item^.hryClassName) edge path)
+        | (y, edge) <- item ^.. hryAnnotatedParents
+        , (mx, path) <- go (y^?!cixItem hry)
+        ]
 
 -- | Given an absolute method id find all superclasses that declare the
 -- method. This method also if that method is declared abstractly.
@@ -727,6 +825,28 @@ fieldLocations fid = views hierarchy $ \hry ->
     . filtered (view $ hryStub.stubFields.contains (fid^.fieldId))
     . hryClassName
   ]
+
+-- | Find the posible locations of fields above this field declaration. It will
+-- stop when the first parents field have been detected.
+-- INFO: This does not take field overloading into account.
+fieldLocationPaths ::
+  AbsFieldId
+  -> Hierarchy
+  -> [(AbsFieldId, SubclassPath)]
+fieldLocationPaths f = views hierarchy $ \hry ->
+  f^..className.cnItem hry.folding (superDefs hry)
+  where
+    fid = f^.fieldId
+    superDefs hry = go where
+      go item = case item ^. hryStub.stubFields.contains fid of
+        True ->
+          [ (f & className .~ item^.hryClassName, Top $ item^.hryClassName) ]
+        False ->
+          [ (fx, SubclassOf (item^.hryClassName) edge path)
+          | (y, edge) <- item ^.. hryAnnotatedParents
+          , (fx, path) <- go (y^?!cixItem hry)
+          ]
+
 
 -- -- | Return a set of classes that implements a method.
 -- definitions ::

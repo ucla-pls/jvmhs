@@ -77,22 +77,105 @@ spec = do
 
     describe "subclassPath" $ do
       it "can find a path from string to object" $ \hry -> do
-        (head $ subclassPath "java/lang/String" "java/lang/Object" $ hry)
-        `shouldBe` [ ("java/lang/String", "java/lang/Object", Extend) ]
+        (head $ subclassPaths "java/lang/String" "java/lang/Object" $ hry)
+        `shouldBe` ("java/lang/String" <! Top "java/lang/Object")
 
       it "should find path from 'java/util/ArrayList' to 'java/util/List'" $ \hry -> do
-        (head $ subclassPath "java/util/ArrayList" "java/util/List" $ hry)
+        (head $ subclassPaths "java/util/ArrayList" "java/util/List" $ hry)
           `shouldBe`
-          [ ("java/util/ArrayList", "java/util/AbstractList", Extend)
-          , ("java/util/AbstractList", "java/util/List", Implement)
-          ]
+          ("java/util/ArrayList" <! "java/util/AbstractList" <: Top "java/util/List")
+        
 
       it "should find path from 'java/util/ArrayList' to 'java/lang/Object'" $ \hry -> do
-        (head $ subclassPath "java/util/ArrayList" "java/lang/Object" hry)
+        (head $ subclassPaths "java/util/ArrayList" "java/lang/Object" hry)
           `shouldBe`
-          [ ("java/util/ArrayList", "java/util/AbstractList", Extend)
-          , ("java/util/AbstractList", "java/util/AbstractCollection", Extend)
-          , ("java/util/AbstractCollection", "java/lang/Object", Extend)
+          ( "java/util/ArrayList"
+            <! "java/util/AbstractList"
+            <! "java/util/AbstractCollection"
+            <! Top "java/lang/Object"
+          )
+
+    describe "implementationPaths" $ do
+      it "should find the implementations of ArrayList" $ \hry -> do
+        implementationPaths "java/util/ArrayList" hry
+        `shouldContain`
+          [ ( "javax/management/relation/RoleUnresolvedList"
+            , False
+            , "javax/management/relation/RoleUnresolvedList"
+              <! Top "java/util/ArrayList"
+            )
+          ]
+      it "should find the implementations of List" $ \hry -> do
+        implementationPaths "java/util/List" hry
+        `shouldContain`
+          [ ( "java/util/List"
+            , True
+            , Top "java/util/List"
+            )
+          ]
+
+    -- describe "implementationPaths" $ do
+    --   it "should find the implementations of ArrayList" $ \hry -> do
+    --     implementationPaths "java/util/ArrayList" hry
+    --     `shouldContain`
+    --       [ ( "javax/management/relation/RoleUnresolvedList"
+    --         , False
+    --         , "javax/management/relation/RoleUnresolvedList"
+    --           <! Top "java/util/ArrayList"
+    --         )
+    --       ]
+    --   it "should find the implementations of List" $ \hry -> do
+    --     implementationPaths "java/util/List" hry
+    --     `shouldContain`
+    --       [ ( "java/util/List"
+    --         , True
+    --         , Top "java/util/List"
+    --         )
+    --       ]
+
+    describe "superDefinitionPaths" $ do
+      it "should find the definitions of javax/management/relation/RoleUnresolvedList.size:()I" $ \hry -> do
+        superDefinitionPaths "javax/management/relation/RoleUnresolvedList.size:()I" hry
+        `shouldBe`
+          [ ( "java/util/ArrayList.size:()I"
+            , "javax/management/relation/RoleUnresolvedList" <! Top "java/util/ArrayList")
+          ]
+
+
+    describe "superAbstractDeclarationPath" $ do
+      it "should find the declarations of List.size" $ \hry -> do
+        superAbstractDeclarationPaths "java/util/List.size:()I" hry
+        `shouldBe`
+          [ ("java/util/List.size:()I"
+            , Top "java/util/List")
+          , ("java/util/Collection.size:()I"
+            , "java/util/List" <: Top "java/util/Collection"
+            )
+          ]
+       
+      it "should find the declarations of ArrayList.size" $ \hry -> do
+        superAbstractDeclarationPaths "java/util/ArrayList.size:()I" hry
+        `shouldBe`
+          [ ( "java/util/AbstractCollection.size:()I"
+            , "java/util/ArrayList" <! "java/util/AbstractList" <! Top "java/util/AbstractCollection"
+            )
+          , ( "java/util/Collection.size:()I"
+            , "java/util/ArrayList" <! "java/util/AbstractList" <! "java/util/AbstractCollection" <: Top "java/util/Collection"
+            )
+          , ( "java/util/List.size:()I"
+            , "java/util/ArrayList" <! "java/util/AbstractList" <: Top "java/util/List"
+            )
+          , ( "java/util/Collection.size:()I"
+            , "java/util/ArrayList" <! "java/util/AbstractList"
+              <: "java/util/List"
+              <: Top "java/util/Collection"
+            )
+          , ( "java/util/List.size:()I"
+            , "java/util/ArrayList" <: Top "java/util/List"
+            ),
+            ( "java/util/Collection.size:()I"
+            , "java/util/ArrayList" <: "java/util/List" <: Top "java/util/Collection"
+            )
           ]
 
 
