@@ -51,7 +51,7 @@ data CHAInfo = CHAInfo
   , _chaImplements      :: Set.HashSet ClassName
   , _chaImplementedBy   :: Set.HashSet ClassName
   , _chaIsInterface     :: Bool
-  , _chaCallableMethods :: HashMap.HashMap MethodName (Set.HashSet ClassName)
+  , _chaCallableMethods :: HashMap.HashMap MethodId (Set.HashSet ClassName)
   } deriving (Show, Eq)
 
 makeLenses ''CHAInfo

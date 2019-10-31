@@ -21,7 +21,6 @@ import qualified Data.Csv                     as Csv
 
 -- jvmhs
 import           Jvmhs
-import           Jvmhs.Data.Named
 
 -- javaq
 import JavaQ.Command
@@ -38,25 +37,25 @@ listMethodsCmd :: CommandSpec
 listMethodsCmd = CommandSpec
   "list-methods"
   "A stream of method names."
-  [ Txt (\(c, m) -> view fullyQualifiedName c <> "." <> methodNameToText m)
-  , Csv (Csv.header ["class", "name"]) ((:[]) . Csv.toRecord)
+  [ Txt serialize
+  , Csv (Csv.header ["class", "name"]) ((:[]) . Csv.toRecord . (\m -> (m^.className, m^.methodId)))
   ]
-  . Stream $ Methods (\cn m -> (cn, m ^. name))
+  . Stream $ Methods (\cn m -> mkAbsMethodId cn m)
 
 listFieldsCmd :: CommandSpec
 listFieldsCmd = CommandSpec
   "list-fields"
   "A stream of field names."
-  [ Txt (\(c, f) -> view fullyQualifiedName c <> "." <> fieldNameToText f)
-  , Csv (Csv.header ["class", "name"]) ((:[]) . Csv.toRecord)
+  [ Txt serialize
+  , Csv (Csv.header ["class", "name"]) ((:[]) . Csv.toRecord . (\f -> (f^.className, f^.fieldId)) )
   ]
-  . Stream $ Fields (\cn f -> (cn, f ^. name))
+  . Stream $ Fields mkAbsFieldId
 
 
 containersCmd :: CommandSpec
 containersCmd = CommandSpec "containers"
   "A stream of class names and their containers."
-  [ Txt (\(a, c) -> view fullyQualifiedName a <> "\t" <> Text.pack (classContainerFilePath c))
+  [ Txt (\(a, c) -> serialize a <> "\t" <> Text.pack (classContainerFilePath c))
   , Csv (Csv.header ["name", "container"]) (\a -> [Csv.toRecord a])
   ]
   . Stream

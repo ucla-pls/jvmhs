@@ -72,16 +72,16 @@ addNode (HR hm) cls = HR hm'
       $ hm
 
     hi = getOrEmpty (cls ^. className)
-      & hrSuperclasses .~ superclasses
-      & hrImplements .~ interfaces
+      & hrSuperclasses .~ _superclasses
+      & hrImplements .~ _interfaces
       & hrIsInterface .~ isInterface cls
 
     -- Creates list of superclasses for node class
-    superclasses =
+    _superclasses =
       cls ^.. classSuper._Just.classTypeName.(id <> lookupCls.hrSuperclasses.folded)
 
     -- get all interfaces and then parent interfaces' interfaces
-    interfaces =
+    _interfaces =
       cls ^. classInterfaces.folded.classTypeName.(to Set.singleton <> lookupCls.hrImplements)
 
     extendedBy = Set.singleton (cls ^. className) <> hi ^. hrExtendedBy
@@ -89,20 +89,20 @@ addNode (HR hm) cls = HR hm'
 
     -- update all classes above me
     updatedSuperclasses =
-      foreachKey superclasses $ \i ->
+      foreachKey _superclasses $ \i ->
         i & hrExtendedBy <>~ extendedBy
 
     updatedImplementedByAbove =
-      foreachKey interfaces $ \i ->
+      foreachKey _interfaces $ \i ->
         i & hrImplementedBy <>~ extendedBy <> implementedBy
 
     -- update all classes lower than me
     updatedBelow =
       foreachKey (hi ^. (hrExtendedBy <> hrImplementedBy)) $ \i ->
-        i & hrImplements <>~ interfaces
+        i & hrImplements <>~ _interfaces
           & hrSuperclasses %~
           (\case
-              l | List.elem (cls ^. className) l -> l ++ superclasses
+              l | List.elem (cls ^. className) l -> l ++ _superclasses
               l -> l
           )
 

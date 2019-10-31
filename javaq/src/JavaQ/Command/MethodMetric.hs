@@ -34,7 +34,7 @@ import JavaQ.Command
 
 data MethodMetric = MethodMetric
   { mmClass :: ClassName
-  , mmName :: MethodName
+  , mmName :: MethodId
   } deriving (Show, Generic)
 
 $(Json.deriveToJSON Json.defaultOptions{Json.fieldLabelModifier = Json.camelTo2 '_' . drop 2} ''MethodMetric)

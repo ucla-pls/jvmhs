@@ -110,11 +110,11 @@ doc = D.text . Text.unpack
 instance Csv.ToField ClassName where
   toField = Csv.toField . view fullyQualifiedName
 
-instance Csv.ToField MethodName where
-  toField = Csv.toField . methodNameToText
+instance Csv.ToField MethodId where
+  toField = Csv.toField . serialize
 
-instance Csv.ToField FieldName where
-  toField = Csv.toField . fieldNameToText
+instance Csv.ToField FieldId where
+  toField = Csv.toField . serialize
 
 instance Csv.ToField ClassContainer where
   toField = Csv.toField . classContainerFilePath
