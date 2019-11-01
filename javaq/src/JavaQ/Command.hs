@@ -102,13 +102,11 @@ loadJavaqStubs ::
   => m HierarchyStubs
 loadJavaqStubs = do
   cache <- view cfgStdlibCache
-  stdlib <- computeStubsWithCache cache =<< createClassLoaderWithClassPath []
-
-  cp <- view cfgClassPath
-  scope <- computeStubs (ClassLoader [] [] cp)
+  cl <- liftIO =<< fromJreFolder [] <$> view cfgJre
+  stdlib <- computeStubsWithCache cache cl
+  scope <- computeStubs .ClassLoader [] [] =<< view cfgClassPath
   return (scope <> stdlib)
 
- 
 
 data CommandType a where
   -- Preprocess ::  -> (b -> CommandType a) -> CommandType a

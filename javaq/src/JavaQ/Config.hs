@@ -23,6 +23,7 @@ module JavaQ.Config where
 
 -- base
 import           Data.Foldable
+import           Data.Maybe
 import           System.Environment
 
 -- filepath
@@ -65,10 +66,11 @@ parseConfig mcp jre cmds = do
 
   _cfgCommandConfig <- do
     _cfgClassPath <-
-      option (maybeReader (Just . splitClassPath)) $ long "cp"
+      fmap (concat . fromMaybe (maybeToList mcp))
+      . optional . some . option (maybeReader (Just . splitClassPath)) $
+      long "cp"
       <> help "The classpath to search for classes. Defaults to $CLASSPATH."
       <> metavar "CLASSPATH"
-      <> (maybe mempty value $ mcp)
       <> showDefault
 
     _cfgJre <-
