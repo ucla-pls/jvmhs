@@ -38,17 +38,24 @@ spec = do
       withJREClassMethods [] "java/beans/VetoableChangeSupport"
         "can typecheck" doesTypeCheck
 
+      withJREClassMethods [] "sun/rmi/transport/DGCImpl_Skel"
+        "can typecheck" doesTypeCheck
+
+      withJREClassMethods [] "javax/management/remote/rmi/_RMIConnection_Stub"
+        "can typecheck" doesTypeCheck
+
+
     where
     doesTypeCheck :: AbsMethodId -> Method -> Hierarchy -> IO ()
     doesTypeCheck mn mth hry =
       forM_ (mth^.methodCode) $ \code -> do
         case typeCheck hry mn (mth^.methodAccessFlags.contains MStatic) code of
           (Just (i, err), res) -> do
-            debugInfo i code res
+            forM_ [max (i-10) 0..i] $ \j ->
+              debugInfo j code res
             expectationFailure $ "found type error: " ++ show i ++ " "++ show err
           (Nothing, _) ->
             return ()
-
     -- doesTypeCheck' :: AbsMethodId -> Method -> Hierarchy -> IO ()
     -- doesTypeCheck' mn mth hry =
     --   forM_ (mth^.methodCode) $ \code -> do

@@ -393,7 +393,20 @@ typeCheck ::
   -> (Maybe (B.ByteCodeIndex, TypeCheckError), V.Vector TypeCheckState)
 typeCheck hry mn isStatic code = V.createT $ do
   entries <- VM.replicate (V.length $ code ^.codeByteCode) defaultState
-  runExceptT (dfs entries [0]) <&> \case
+  runExceptT
+    (do
+      dfs entries [0]
+      forMOf_ (codeExceptionTable.folded) code $ \h -> do
+        hstate <- VM.read entries (h^.ehStart)
+        VM.write entries (h^.ehHandler) $ hstate
+          & tcStack .~
+          case h^.ehCatchType of
+            Just cn -> [ asTypeInfo cn ]
+            Nothing -> [ asTypeInfo ("java/lang/Throwable" :: ClassName) ]
+          & tcLocals .~ hstate^.tcLocals
+        dfs entries (h^.ehHandler:[])
+      --
+    ) <&> \case
       Right () -> (Nothing, entries)
       Left msg -> (Just msg, entries)
   where
@@ -412,7 +425,7 @@ typeCheck hry mn isStatic code = V.createT $ do
     [ ] -> return ()
     i:indicies -> do
       let a = code ^?! codeByteCode.ix i.to B.opcode
-      setExceptionState code entries i
+      -- setExceptionState code entries i
       s1 <- VM.read entries i
       s2 <- withExceptT (i,) $
         execStateT
@@ -469,21 +482,21 @@ debugInfo i (preview (codeByteCode.ix i) -> Just x) (preview (ix i) -> Just st) 
   putStrLn $ "BC:" <> show (B.offset x) <> " IX:" <> show i <> " - " <> show (B.opcode x)
 debugInfo i _ _ = error $ "Could not find "  <> show i
 
-setExceptionState ::
-  PrimMonad m
-  => Code
-  -> V.MVector (PrimState m) TypeCheckState
-  -> B.ByteCodeIndex
-  -> m ()
-setExceptionState code entries i =
-  forMOf_ (codeExceptionTable.folded.filtered (\h -> h^.ehHandler == i)) code $ \h -> do
-    hstate <- VM.read entries (h^.ehStart)
-    VM.write entries i $ hstate
-      & tcStack .~
-      case h^.ehCatchType of
-        Just cn -> [ asTypeInfo cn ]
-        Nothing -> [ asTypeInfo ("java/lang/Throwable" :: ClassName) ]
-      & tcLocals .~ hstate^.tcLocals
+-- setExceptionState ::
+--   PrimMonad m
+--   => Code
+--   -> V.MVector (PrimState m) TypeCheckState
+--   -> B.ByteCodeIndex
+--   -> m ()
+-- setExceptionState code entries i =
+--   forMOf_ (codeExceptionTable.folded.filtered (\h -> h^.ehHandler == i)) code $ \h -> do
+--     hstate <- VM.read entries (h^.ehStart)
+--     VM.write entries i $ hstate
+--       & tcStack .~
+--       case h^.ehCatchType of
+--         Just cn -> [ asTypeInfo cn ]
+--         Nothing -> [ asTypeInfo ("java/lang/Throwable" :: ClassName) ]
+--       & tcLocals .~ hstate^.tcLocals
 
 -- updateStates ::
 --   (MonadReader Hierarchy m, MonadError TypeCheckError m, PrimMonad m)
@@ -686,13 +699,15 @@ typecheck = \case
     setNext off
 
   Jsr off -> do
+    push (TRef [])
     setNext off
 
   Ret off -> do
-    check LInt =<< getLocal off
+    void . unpack (_TRef._Null)  =<< getLocal off
     -- See https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.10.2.5
     -- TODO: Do cracy jre resolution?
-    -- addNext off
+    noNext
+
 
   TableSwitch def table -> do
     check LInt =<< pop
