@@ -60,9 +60,10 @@ formatName = \case
   Json _ -> "json"
 
 data CommandConfig = CommandConfig
-  { _cfgClassPath :: ![FilePath]
-  , _cfgJre       :: !FilePath
-  , _cfgUseStdlib :: !Bool
+  { _cfgClassPath   :: ![FilePath]
+  , _cfgJre         :: !FilePath
+  , _cfgUseStdlib   :: !Bool
+  , _cfgStdlibCache :: !FilePath
   } deriving (Show)
 
 makeClassy ''CommandConfig
@@ -74,14 +75,40 @@ createClassLoader ::
   , MonadIO m)
   => m ClassLoader
 createClassLoader =
+  createClassLoaderWithClassPath =<< view cfgClassPath
+
+-- | Create a class loader from the config
+createClassLoaderWithClassPath ::
+  ( HasCommandConfig env
+  , MonadReader env m
+  , MonadIO m)
+  => [FilePath]
+  -> m ClassLoader
+createClassLoaderWithClassPath cp =
   view cfgUseStdlib >>= \case
     True ->
       ( fromJreFolder
-        <$> view cfgClassPath
+        <$> pure cp
         <*> view cfgJre
       ) >>= liftIO
     False ->
-     ClassLoader [] [] <$> view cfgClassPath
+     pure $ ClassLoader [] [] cp
+
+-- | Create a class loader from the config
+loadJavaqStubs ::
+  ( HasCommandConfig env
+  , MonadReader env m
+  , MonadIO m)
+  => m HierarchyStubs
+loadJavaqStubs = do
+  cache <- view cfgStdlibCache
+  stdlib <- computeStubsWithCache cache =<< createClassLoaderWithClassPath []
+
+  cp <- view cfgClassPath
+  scope <- computeStubs (ClassLoader [] [] cp)
+  return (scope <> stdlib)
+
+ 
 
 data CommandType a where
   -- Preprocess ::  -> (b -> CommandType a) -> CommandType a

@@ -86,6 +86,13 @@ parseConfig mcp jre cmds = do
     _cfgUseStdlib <-
       switch $ long "stdlib"
       <> help "Include the stdlib, jars from <jre>/lib and <jre>/lib/ext, on the classpath."
+
+    _cfgStdlibCache <-
+      strOption $ long "stdlib-cache"
+      <> help "Include the stdlib, jars from <jre>/lib and <jre>/lib/ext, on the classpath."
+      <> value "javaq.stdlib-cache.bin"
+      <> showDefault
+
     return $ CommandConfig {..}
 
   _cfgFast <-

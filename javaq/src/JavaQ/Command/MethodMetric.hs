@@ -15,7 +15,6 @@ module JavaQ.Command.MethodMetric where
 
 -- base
 import GHC.Generics (Generic)
-import Data.Either
 
 -- lens
 import Control.Lens
@@ -26,6 +25,9 @@ import qualified Data.Aeson.TH                as Json
 
 -- cassava
 import qualified Data.Csv                     as Csv
+
+-- vector
+import qualified Data.Vector as V
 
 -- jvmhs
 import Jvmhs
@@ -68,17 +70,24 @@ typecheckCmd = CommandSpec
   "typecheck"
   "Typecheck methods"
   [ Json id
+  , Csv (V.fromList ["method", "type-check"]) ((:[]) . Csv.toRecord)
   ]
   (Stream Methods fn)
   where
     fn = do
-      l <- createClassLoader
-      x <- computeStubs l
-      let hry = hierarchyFromStubs x
+      hry <- hierarchyFromStubs <$> loadJavaqStubs
       return $ \(cn, (m :: Method)) ->
-        m^.methodCode <&> \code ->
-          let result = typeCheck hry
-                (mkAbsMethodId cn m)
-                (m^.methodAccessFlags.contains MStatic)
-                code
-          in  (mkAbsMethodId cn m, isRight result)
+        (mkAbsMethodId cn m
+        , let
+            result =
+              m^.methodCode <&> \code ->
+              typeCheck hry
+              (mkAbsMethodId cn m)
+              (m^.methodAccessFlags.contains MStatic)
+              code
+          in case result of
+            Just (Right _) -> "success" :: Csv.Field
+            Just (Left _)  -> "failure"
+            Nothing        -> "nocode"
+
+        )
