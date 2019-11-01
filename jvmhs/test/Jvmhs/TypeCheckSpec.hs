@@ -1,24 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Jvmhs.TypeCheckSpec where
 
-import           Jvmhs
-import           Data.Either
 import           Data.Foldable
--- import           Jvmhs.Data.Code
-import           Jvmhs.TypeCheck
--- import           Jvmhs.Data.Named
--- import           Jvmhs.Data.Code
--- import           Jvmhs.TypeCheck
+
 import           SpecHelper
 
--- import           Text.Printf
-
--- import           Data.Maybe
-
--- import qualified Data.Vector as V
--- import qualified Language.JVM.Attribute.StackMapTable as B
--- import qualified Language.JVM.ByteCode as B
-
+import           Jvmhs
+import           Jvmhs.TypeCheck
 
 spec :: Spec
 spec = do
@@ -47,12 +35,19 @@ spec = do
       withJREClassMethods [] "com/apple/laf/ScreenMenuItemCheckbox"
         "can typecheck" doesTypeCheck
 
+      withJREClassMethods [] "java/beans/VetoableChangeSupport"
+        "can typecheck" doesTypeCheck
+
     where
     doesTypeCheck :: AbsMethodId -> Method -> Hierarchy -> IO ()
     doesTypeCheck mn mth hry =
       forM_ (mth^.methodCode) $ \code -> do
-        let r = typeCheck hry mn (mth^.methodAccessFlags.contains MStatic)  code
-        r `shouldSatisfy` isRight
+        case typeCheck hry mn (mth^.methodAccessFlags.contains MStatic) code of
+          (Just (i, err), res) -> do
+            debugInfo i code res
+            expectationFailure $ "found type error: " ++ show i ++ " "++ show err
+          (Nothing, _) ->
+            return ()
 
     -- doesTypeCheck' :: AbsMethodId -> Method -> Hierarchy -> IO ()
     -- doesTypeCheck' mn mth hry =

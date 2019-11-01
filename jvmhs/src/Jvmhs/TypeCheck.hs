@@ -42,7 +42,8 @@ module Jvmhs.TypeCheck
   , Checkable (..)
 
   , typeCheck
-  , typeCheckDebug
+  -- , typeCheckDebug
+  , debugInfo
   , TypeCheckState (..)
   , HasTypeCheckState (..)
 
@@ -124,15 +125,17 @@ instance AsLocalType TypeInfo where
     TTop -> error "Cannot convert Top to LocalType"
 
 instance AsLocalType ArrayType where
-  asLocalType = \case
-    AByte   -> LInt
-    AChar   -> LInt
-    AShort  -> LInt
-    AInt    -> LInt
-    ALong   -> LLong
-    AFloat  -> LFloat
-    ADouble -> LDouble
-    ARef    -> LRef
+
+instance AsTypeInfo ArrayType where
+  asTypeInfo = \case
+    AByte   -> TBase $ TInt
+    AChar   -> TBase $ TInt
+    AShort  -> TBase $ TInt
+    AInt    -> TBase $ TInt
+    ALong   -> TBase $ TLong
+    AFloat  -> TBase $ TFloat
+    ADouble -> TBase $ TDouble
+    ARef    -> TRef []
 
 instance AsLocalType B.JType where
 
@@ -328,6 +331,18 @@ unpack p ti =
     Nothing ->
       throwError (BadType ti)
 
+-- Return the type of array execpt if it the typeinfo is null in which case
+-- we return Nothing
+isArray ::
+  TypeChecker m
+  => TypeInfo
+  -> m (Maybe JType)
+isArray ti =
+  case ti ^? (_TRef.(_Single._JTArray.to Just <> _Null .to (const Nothing))) of
+    Just x -> return x
+    Nothing ->
+      throwError (BadType ti)
+
 check ::
   (Show a, Show b, Checkable a b, MonadError TypeCheckError m)
   => a -> b -> m ()
@@ -375,60 +390,84 @@ typeCheck ::
   -- ^ is the method static
   -> Code
   -- ^ the code to check
-  -> Either (B.ByteCodeIndex, TypeCheckError) (V.Vector TypeCheckState)
-typeCheck hry mn isStatic code = V.createT (runExceptT go) where
+  -> (Maybe (B.ByteCodeIndex, TypeCheckError), V.Vector TypeCheckState)
+typeCheck hry mn isStatic code = V.createT $ do
+  entries <- VM.replicate (V.length $ code ^.codeByteCode) defaultState
+  runExceptT (dfs entries [0]) <&> \case
+      Right () -> (Nothing, entries)
+      Left msg -> (Just msg, entries)
+  where
   defaultState =
     TypeCheckState
-    { _tcStack = [], _tcLocals = computeLocals mn isStatic, _tcNexts = []}
+    { _tcStack = []
+    , _tcLocals = computeLocals mn isStatic
+    , _tcNexts = []
+    }
 
-  go ::
-    (PrimMonad m)
-    => ExceptT (B.ByteCodeIndex, TypeCheckError) m (V.MVector (PrimState m) TypeCheckState)
-  go = do
-    entries <- VM.replicate (V.length $ code ^.codeByteCode) defaultState
-    iforMOf_ (codeByteCode.folded.to B.opcode) code $ \i a -> withExceptT (i,) $ do
+  dfs :: (PrimMonad m)
+    => V.MVector (PrimState m) TypeCheckState
+    -> [Int]
+    -> ExceptT (B.ByteCodeIndex, TypeCheckError) m ()
+  dfs entries = \case
+    [ ] -> return ()
+    i:indicies -> do
+      let a = code ^?! codeByteCode.ix i.to B.opcode
       setExceptionState code entries i
       s1 <- VM.read entries i
-      s2 <- execStateT (runReaderT (typecheck a) hry) (s1 & tcNexts .~ [i + 1])
-      runReaderT (updateStates entries s2) hry
+      s2 <- withExceptT (i,) $
+        execStateT
+        (runReaderT (typecheck a) hry)
+        (s1 & tcNexts .~ [i + 1])
 
-    return entries
+      recalculate <- fmap (map fst . filter snd) . forM (s2^.tcNexts) $ \i' -> do
+        prevState <- VM.read entries i'
+        case unifyState prevState s2 hry of
+          Just state' -> do
+            VM.write entries i' state'
+            return (i', prevState /= state')
+          Nothing     ->
+            throwError (i, InconsistentStates i prevState s2)
 
-typeCheckDebug ::
-  Hierarchy
-  -> AbsMethodId
-  -> Bool
-  -> Code
-  -> IO (Either (B.ByteCodeIndex, TypeCheckError) (V.Vector TypeCheckState))
-typeCheckDebug hry mn isStatic code = mapM V.freeze =<< runExceptT go where
-  defaultState =
-    TypeCheckState
-    { _tcStack = [], _tcLocals = computeLocals mn isStatic, _tcNexts = []}
+      dfs entries (recalculate ++ indicies)
 
-  go ::
-    ExceptT (B.ByteCodeIndex, TypeCheckError)
-    IO (V.MVector (PrimState IO) TypeCheckState)
-  go = do
-    entries <- VM.replicate (V.length $ code ^.codeByteCode) defaultState
-    iforMOf_ (codeByteCode.folded.to B.opcode) code $ \i a -> withExceptT (i,) $ do
-      setExceptionState code entries i
-      s1 <- VM.read entries i
-      debugInfo s1 i a
-      s2 <- execStateT (runReaderT (typecheck a) hry) (s1 & tcNexts .~ [i + 1])
-      runReaderT (updateStates entries s2) hry
+-- typeCheckDebug ::
+--   Hierarchy
+--   -> AbsMethodId
+--   -> Bool
+--   -> Code
+--   -> IO (Either (B.ByteCodeIndex, TypeCheckError) (V.Vector TypeCheckState))
+-- typeCheckDebug hry mn isStatic code = mapM V.freeze =<< runExceptT go where
+--   defaultState =
+--     TypeCheckState
+--     { _tcStack = [], _tcLocals = computeLocals mn isStatic, _tcNexts = []}
 
-    return entries
+--   go ::
+--     ExceptT (B.ByteCodeIndex, TypeCheckError)
+--     IO (V.MVector (PrimState IO) TypeCheckState)
+--   go = do
+--     entries <- VM.replicate (V.length $ code ^.codeByteCode) defaultState
+--     iforMOf_ (codeByteCode.folded.to B.opcode) code $ \i a -> withExceptT (i,) $ do
+--       setExceptionState code entries i
+--       s1 <- VM.read entries i
+--       debugInfo s1 i a
+--       s2 <- execStateT (runReaderT (typecheck a) hry) (s1 & tcNexts .~ [i + 1])
+--       runReaderT (updateStates entries s2) hry
 
-  debugInfo _state i a = liftIO $ do
-    putStrLn ""
-    putStrLn "Locals:"
-    iforM_ (_state^.tcLocals) $ \idx s ->
-      putStrLn ("  " <> show idx <> ": " <> show s)
-    putStrLn "Stack:"
-    iforM_ (_state^.tcStack) $ \idx s ->
-      putStrLn ("  " <> show idx <> ": " <> show s)
-    putStrLn ""
-    print (i, a)
+--     return entries
+
+
+debugInfo :: Int -> Code -> V.Vector TypeCheckState -> IO ()
+debugInfo i (preview (codeByteCode.ix i) -> Just x) (preview (ix i) -> Just st) = liftIO $ do
+  putStrLn ""
+  putStrLn "Locals:"
+  iforM_ (st^.tcLocals) $ \idx s ->
+    putStrLn ("  " <> show idx <> ": " <> show s)
+  putStrLn "Stack:"
+  forM_ (reverse $ zip [0..] (st^.tcStack)) $ \(idx :: Int, s) ->
+    putStrLn ("  " <> show idx <> ": " <> show s)
+  putStrLn ""
+  putStrLn $ "BC:" <> show (B.offset x) <> " IX:" <> show i <> " - " <> show (B.opcode x)
+debugInfo i _ _ = error $ "Could not find "  <> show i
 
 setExceptionState ::
   PrimMonad m
@@ -446,18 +485,17 @@ setExceptionState code entries i =
         Nothing -> [ asTypeInfo ("java/lang/Throwable" :: ClassName) ]
       & tcLocals .~ hstate^.tcLocals
 
-
-updateStates ::
-  (MonadReader Hierarchy m, MonadError TypeCheckError m, PrimMonad m)
-  => V.MVector (PrimState m) TypeCheckState
-  -> TypeCheckState
-  -> m ()
-updateStates entries _state =
-  forM_ (_state^.tcNexts) $ \i -> do
-    prevState <- VM.read entries i
-    ask >>= \hry -> case (unifyState prevState _state hry) of
-      Just state' -> VM.write entries i state'
-      Nothing     -> throwError (InconsistentStates i prevState _state)
+-- updateStates ::
+--   (MonadReader Hierarchy m, MonadError TypeCheckError m, PrimMonad m)
+--   => V.MVector (PrimState m) TypeCheckState
+--   -> TypeCheckState
+--   -> m ()
+-- updateStates entries _state =
+--   forM_ (_state^.tcNexts) $ \i -> do
+--     prevState <- VM.read entries i
+--     ask >>= \hry -> case (unifyState prevState _state hry) of
+--       Just state' -> VM.write entries i state'
+--       Nothing     -> throwError (InconsistentStates i prevState _state)
 
 unifyState ::
   TypeCheckState
@@ -518,6 +556,14 @@ typeSize = \case
 --  line 3: 0
 
 -- | Get an element only if it is the only one.
+_Null :: Prism' [a] ()
+_Null = prism' (const [])
+  (\case
+      (List.uncons -> Nothing) -> Just ()
+      _ -> Nothing
+  )
+
+-- | Get an element only if it is the only one.
 _Single :: Prism' [a] a
 _Single = prism' (:[])
   (\case
@@ -534,16 +580,22 @@ typecheck ::
 typecheck = \case
   ArrayLoad r -> do
     check LInt =<< pop
-    a <- unpack (_TRef._Single._JTArray) =<< pop
-    check r a
-    push a
+    a <- isArray =<< pop
+    case a of
+      Just x -> check r x
+      Nothing -> return ()
+    push r
 
   ArrayStore r -> do
     b <- pop
     check LInt =<< pop
-    a <- unpack (_TRef._Single._JTArray) =<< pop
-    b `checkSubtypeOf` a
-    check r a
+    a <- isArray =<< pop
+    case a of
+      Just x -> do
+        b `checkSubtypeOf` x
+        check r x
+      Nothing ->
+        return ()
 
   Push r -> do
     push r
@@ -705,7 +757,7 @@ typecheck = \case
     push (newArrayTypeType a)
 
   ArrayLength -> do
-    void . unpack (_TRef._Single._JTArray) =<< pop
+    void . isArray =<< pop
     push TInt
 
   Throw -> do
