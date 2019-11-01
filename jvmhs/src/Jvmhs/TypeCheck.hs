@@ -67,6 +67,10 @@ import qualified Data.IntMap                          as IntMap
 -- lens
 import           Control.Lens
 
+-- aeson
+import Data.Aeson hiding ((.=))
+import Data.Aeson.TH
+
 -- mtl
 import           Control.Monad.Except
 import           Control.Monad.Reader
@@ -862,3 +866,8 @@ typecheck = \case
       fail "Trying to swap a two sized value"
     push b
     push a
+
+$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''TypeCheckError)
+$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''TypeCheckState)
+$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''TypeInfo)
+$(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''TBase)
