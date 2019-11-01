@@ -15,6 +15,7 @@ module JavaQ.Command.MethodMetric where
 
 -- base
 import GHC.Generics (Generic)
+import Data.Either
 
 -- lens
 import Control.Lens
@@ -76,7 +77,8 @@ typecheckCmd = CommandSpec
       let hry = hierarchyFromStubs x
       return $ \(cn, (m :: Method)) ->
         m^.methodCode <&> \code ->
-          typeCheck hry
-            (mkAbsMethodId cn m)
-            (m^.methodAccessFlags.contains MStatic)
-            code
+          let x = typeCheck hry
+                (mkAbsMethodId cn m)
+                (m^.methodAccessFlags.contains MStatic)
+                code
+          in  (mkAbsMethodId cn m, isRight x)

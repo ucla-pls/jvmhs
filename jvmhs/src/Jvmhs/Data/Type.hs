@@ -379,6 +379,12 @@ instance ToJSON FieldId where
 instance ToJSON MethodId where
   toJSON = String . serialize
 
+instance ToJSON AbsFieldId where
+  toJSON = String . serialize
+
+instance ToJSON AbsMethodId where
+  toJSON = String . serialize
+
 instance FromJSON FieldId where
   parseJSON = withText "FieldId" (parserFromEither . deserialize)
 
