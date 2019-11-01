@@ -44,6 +44,9 @@ spec = do
       withJREClassMethods [] "java/util/function/BiConsumer"
         "can typecheck" doesTypeCheck
 
+      withJREClassMethods [] "com/apple/laf/ScreenMenuItemCheckbox"
+        "can typecheck" doesTypeCheck
+
     where
     doesTypeCheck :: AbsMethodId -> Method -> Hierarchy -> IO ()
     doesTypeCheck mn mth hry =
@@ -51,8 +54,8 @@ spec = do
         let r = typeCheck hry mn (mth^.methodAccessFlags.contains MStatic)  code
         r `shouldSatisfy` isRight
 
-    -- doesTypeCheck' :: Hierarchy -> AbsMethodId -> Method -> IO ()
-    -- doesTypeCheck' hry mn mth =
+    -- doesTypeCheck' :: AbsMethodId -> Method -> Hierarchy -> IO ()
+    -- doesTypeCheck' mn mth hry =
     --   forM_ (mth^.methodCode) $ \code -> do
     --     r <- typeCheckDebug hry mn (mth^.methodAccessFlags.contains MStatic)  code
     --     r `shouldSatisfy` isRight
