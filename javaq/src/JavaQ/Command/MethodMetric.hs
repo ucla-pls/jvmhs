@@ -77,8 +77,8 @@ typecheckCmd = CommandSpec
       let hry = hierarchyFromStubs x
       return $ \(cn, (m :: Method)) ->
         m^.methodCode <&> \code ->
-          let x = typeCheck hry
+          let result = typeCheck hry
                 (mkAbsMethodId cn m)
                 (m^.methodAccessFlags.contains MStatic)
                 code
-          in  (mkAbsMethodId cn m, isRight x)
+          in  (mkAbsMethodId cn m, isRight result)
