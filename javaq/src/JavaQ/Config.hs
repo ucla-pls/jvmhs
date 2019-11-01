@@ -48,10 +48,7 @@ import JavaQ.Command
 
 -- | The config
 data Config = Config
-  { _cfgClassPath      :: !ClassPath
-  , _cfgJre            :: !FilePath
-  , _cfgUseStdlib      :: !Bool
-  , _cfgFast           :: !Bool
+  { _cfgFast           :: !Bool
   , _cfgCommand        :: !Command
   , _cfgCommandConfig  :: !CommandConfig
   , _cfgComputeClosure :: !Bool
@@ -63,32 +60,33 @@ makeLenses ''Config
 instance HasCommandConfig Config where
   commandConfig = cfgCommandConfig
 
-
 parseConfig :: (Maybe ClassPath) -> FilePath -> [CommandSpec] -> Parser Config
 parseConfig mcp jre cmds = do
 
-  _cfgClassPath <-
-    option (maybeReader (Just . splitClassPath)) $ long "cp"
-    <> help "The classpath to search for classes. Defaults to $CLASSPATH."
-    <> metavar "CLASSPATH"
-    <> (maybe mempty value $ mcp)
-    <> showDefault
+  _cfgCommandConfig <- do
+    _cfgClassPath <-
+      option (maybeReader (Just . splitClassPath)) $ long "cp"
+      <> help "The classpath to search for classes. Defaults to $CLASSPATH."
+      <> metavar "CLASSPATH"
+      <> (maybe mempty value $ mcp)
+      <> showDefault
 
-  _cfgJre <-
-    option str $ long "jre"
-    <> helpDoc ( Just
-        $ "The jre folder to read stdlib from."
-        D.</> "Defaults to $JAVA_HOME/jre"
-        D.</> "or $(which java)/../jre."
-        D.</> "-"
-      )
-    <> metavar "JRE"
-    <> value jre
-    <> showDefault
+    _cfgJre <-
+      option str $ long "jre"
+      <> helpDoc ( Just
+          $ "The jre folder to read stdlib from."
+          D.</> "Defaults to $JAVA_HOME/jre"
+          D.</> "or $(which java)/../jre."
+          D.</> "-"
+        )
+      <> metavar "JRE"
+      <> value jre
+      <> showDefault
 
-  _cfgUseStdlib <-
-    switch $ long "stdlib"
-    <> help "Include the stdlib, jars from <jre>/lib and <jre>/lib/ext, on the classpath."
+    _cfgUseStdlib <-
+      switch $ long "stdlib"
+      <> help "Include the stdlib, jars from <jre>/lib and <jre>/lib/ext, on the classpath."
+    return $ CommandConfig {..}
 
   _cfgFast <-
     switch $ long "fast"
@@ -98,13 +96,6 @@ parseConfig mcp jre cmds = do
       <> "This can be much faster but it changes the behavior of some commands."
       )
 
-  _cfgCommandConfig <- do
-    _cfgHierarchy <- optional . option str
-      $ long "hierarchy"
-      <> hidden
-      <> help "The a file that contains the hierarchy, if already computed."
-
-    return $ CommandConfig {..}
 
   _cfgCommand <-
     argument (maybeReader $ findCommand cmds . Text.pack) $
@@ -122,7 +113,10 @@ parseConfig mcp jre cmds = do
     many . argument str $ metavar "CLASS .."
     <> help "Classes to investigate, if none present all will be listed."
 
-  return $ Config {..}
+  return $ do
+    let 
+
+    Config {..}
 
   where
     cmdSpec = head cmds

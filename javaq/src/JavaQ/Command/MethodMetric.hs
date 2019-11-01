@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell           #-}
 {-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE DeriveGeneric             #-}
 {-|
 Module      : JavaQ.Command.MethodMetric
@@ -27,7 +28,7 @@ import qualified Data.Csv                     as Csv
 
 -- jvmhs
 import Jvmhs
--- import Jvmhs.TypeCheck
+import Jvmhs.TypeCheck
 
 -- javaq
 import JavaQ.Command
@@ -61,13 +62,21 @@ methodmetricCmd = CommandSpec
     fn (cn, m) = MethodMetric cn (m^.methodId)
 
 
--- typecheckCmd :: CommandSpec
--- typecheckCmd = CommandSpec
---   "typecheck"
---   "Typecheck methods"
---   [ Json id
---   ]
---   (Stream $ Methods fn)
---   where
---     fn cn m = return
---       typeCheck hry
+typecheckCmd :: CommandSpec
+typecheckCmd = CommandSpec
+  "typecheck"
+  "Typecheck methods"
+  [ Json id
+  ]
+  (Stream Methods fn)
+  where
+    fn = do
+      l <- createClassLoader
+      x <- computeStubs l
+      let hry = hierarchyFromStubs x
+      return $ \(cn, (m :: Method)) ->
+        m^.methodCode <&> \code ->
+          typeCheck hry
+            (mkAbsMethodId cn m)
+            (m^.methodAccessFlags.contains MStatic)
+            code

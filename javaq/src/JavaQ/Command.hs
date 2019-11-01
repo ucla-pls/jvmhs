@@ -60,10 +60,28 @@ formatName = \case
   Json _ -> "json"
 
 data CommandConfig = CommandConfig
-  { _cfgHierarchy :: Maybe FilePath
+  { _cfgClassPath :: ![FilePath]
+  , _cfgJre       :: !FilePath
+  , _cfgUseStdlib :: !Bool
   } deriving (Show)
 
 makeClassy ''CommandConfig
+
+-- | Create a class loader from the config
+createClassLoader ::
+  ( HasCommandConfig env
+  , MonadReader env m
+  , MonadIO m)
+  => m ClassLoader
+createClassLoader =
+  view cfgUseStdlib >>= \case
+    True ->
+      ( fromJreFolder
+        <$> view cfgClassPath
+        <*> view cfgJre
+      ) >>= liftIO
+    False ->
+     ClassLoader [] [] <$> view cfgClassPath
 
 data CommandType a where
   -- Preprocess ::  -> (b -> CommandType a) -> CommandType a

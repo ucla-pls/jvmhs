@@ -51,7 +51,7 @@ import           JavaQ.Command.Base
 import           JavaQ.Command.ClassMetric
 import           JavaQ.Command.MethodMetric
 import           JavaQ.Command.Hierarchy
-import           JavaQ.Command.ClassHierarchyAnalysis
+-- import           JavaQ.Command.ClassHierarchyAnalysis
 
 main :: IO ()
 main = do
@@ -63,8 +63,8 @@ main = do
     , decompileCmd
     , classmetricsCmd
     , methodmetricCmd
+    , typecheckCmd
     , hierarchyCmd
-    , chaCmd
     ]
   runConfig config
 
@@ -105,8 +105,8 @@ runCommand classloader (Command _ (fmt :: Format a) tp) = do
 
         Methods -> inClasspool $ do
           streamClasses $ \cls -> liftIO $ do
-          forMOf_ (classMethods.folded) cls $ \m ->
-            applyFormat fmt (fn' (cls^.className, m))
+            forMOf_ (classMethods.folded) cls $ \m ->
+              applyFormat fmt (fn' (cls^.className, m))
 
         Fields -> inClasspool $ do
           streamClasses $ \cls -> liftIO $ do
@@ -172,16 +172,3 @@ runCommand classloader (Command _ (fmt :: Format a) tp) = do
             False -> do
               restrictTo classSet
               dothis
-
-
--- | Create a class loader from the config
-createClassLoader :: (MonadReader Config m, MonadIO m) => m ClassLoader
-createClassLoader =
-  view cfgUseStdlib >>= \case
-    True ->
-      ( fromJreFolder
-        <$> view cfgClassPath
-        <*> view cfgJre
-      ) >>= liftIO
-    False ->
-     ClassLoader [] [] <$> view cfgClassPath
