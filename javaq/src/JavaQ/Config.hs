@@ -46,7 +46,7 @@ import           Jvmhs
 -- javaq
 import JavaQ.Command
 
--- | The config file dictates the execution of the program
+-- | The config
 data Config = Config
   { _cfgClassPath      :: !ClassPath
   , _cfgJre            :: !FilePath
@@ -190,21 +190,21 @@ footerFromCommands cmds =
 
     formatCommandType :: [Format a] -> CommandType a -> D.Doc
     formatCommandType fmts = \case
-      Stream a ->
-        "stream" D.<+> D.brackets (formatIterator a) D.<+> D.tupled (map formatFormat fmts)
+      Stream a _ ->
+        "stream" D.<+> D.brackets (formatGranularity a) D.<+> D.tupled (map formatFormat fmts)
 
-      Accumulator a _ _  ->
-        "accum" D.<+> D.brackets (formatIterator a) D.<+> D.tupled (map formatFormat fmts)
+      Accumulator a _ _ _  ->
+        "accum" D.<+> D.brackets (formatGranularity a) D.<+> D.tupled (map formatFormat fmts)
 
       Algorithm _ ->
         "algorithm" D.<+> D.tupled (map formatFormat fmts)
 
-    formatIterator :: Iterator a -> D.Doc
-    formatIterator = \case
-      ClassNames _ -> "classnames"
-      ClassFiles _ -> "classfiles"
-      Classes _ -> "classes"
-      Methods _ -> "methods"
-      Fields _ -> "fields"
+    formatGranularity :: Granularity a -> D.Doc
+    formatGranularity = \case
+      ClassNames -> "classnames"
+      ClassFiles -> "classfiles"
+      Classes -> "classes"
+      Methods -> "methods"
+      Fields -> "fields"
 
     formatFormat = doc . formatName

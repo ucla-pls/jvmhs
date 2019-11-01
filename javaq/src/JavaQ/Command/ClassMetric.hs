@@ -72,9 +72,9 @@ classmetricsCmd = CommandSpec "class-metrics"
   [ Json id
   , Csv (Csv.headerOrder (undefined :: ClassMetric)) ((:[]) . Csv.toRecord)
   ]
-  . Stream $ ClassFiles fn
+  $ Stream ClassFiles (return $ \(cn, _, bs) -> fn cn bs)
   where
-    fn cn _ bts =
+    fn cn bts =
       let (hsh, ln) = SHA256.hashlazyAndLength bts
       in case readClassFile' True bts of
         Right clsf ->

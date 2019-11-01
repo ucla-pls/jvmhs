@@ -128,7 +128,4 @@ hierarchyCmd = CommandSpec
   "hierarchy"
   "Get information about the hierarchy."
   [ Json id ]
-  $ Accumulator
-  (Classes id)
-  emptyHR
-  addNode
+  $ Accumulator Classes (return id) emptyHR addNode

@@ -66,20 +66,30 @@ data CommandConfig = CommandConfig
 makeClassy ''CommandConfig
 
 data CommandType a where
-  Stream :: Iterator a -> CommandType a
-  Accumulator :: Iterator m -> a -> (a -> m -> a) -> CommandType a
-  -- Fold :: Monoid m => Iterator m -> CommandType m
+  -- Preprocess ::  -> (b -> CommandType a) -> CommandType a
+
+  Stream ::
+    Granularity x
+    -> ReaderT CommandConfig IO (x -> a)
+    -> CommandType a
+
+  Accumulator ::
+    Granularity x
+    -> ReaderT CommandConfig IO (x -> m)
+    -> a
+    -> (a -> m -> a)
+    -> CommandType a
+
   Algorithm ::
     (forall m c. (HasCommandConfig c, MonadIO m, MonadReader c m, MonadClassPool m) => m a)
     -> CommandType a
 
-data Iterator a
-  = ClassNames (ClassName -> ClassContainer -> a)
-  | ClassFiles (ClassName -> ClassContainer -> BL.ByteString -> a)
-  | Classes (Class -> a)
-  | Methods (ClassName -> Method -> a)
-  | Fields  (ClassName -> Field -> a)
-
+data Granularity a where
+  ClassNames :: Granularity (ClassName, ClassContainer)
+  ClassFiles :: Granularity (ClassName, ClassContainer, BL.ByteString)
+  Classes    :: Granularity Class
+  Methods    :: Granularity (ClassName, Method)
+  Fields     :: Granularity (ClassName, Field)
 
 -- | The `Command` is about how to query the code.
 data CommandSpec = forall a. CommandSpec

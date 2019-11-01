@@ -31,7 +31,7 @@ listClassesCmd = CommandSpec "list-classes"
   [ Txt (view fullyQualifiedName)
   , Csv (Csv.header ["name"]) (\a -> [Csv.record [ Csv.toField a ]])
   ]
-  . Stream $ ClassNames const
+  $ Stream ClassNames (return fst)
 
 listMethodsCmd :: CommandSpec
 listMethodsCmd = CommandSpec
@@ -40,7 +40,7 @@ listMethodsCmd = CommandSpec
   [ Txt serialize
   , Csv (Csv.header ["class", "name"]) ((:[]) . Csv.toRecord . (\m -> (m^.className, m^.methodId)))
   ]
-  . Stream $ Methods (\cn m -> mkAbsMethodId cn m)
+  $ Stream Methods (return $ uncurry mkAbsMethodId)
 
 listFieldsCmd :: CommandSpec
 listFieldsCmd = CommandSpec
@@ -49,7 +49,7 @@ listFieldsCmd = CommandSpec
   [ Txt serialize
   , Csv (Csv.header ["class", "name"]) ((:[]) . Csv.toRecord . (\f -> (f^.className, f^.fieldId)) )
   ]
-  . Stream $ Fields mkAbsFieldId
+  $ Stream  Fields (return $ uncurry mkAbsFieldId)
 
 
 containersCmd :: CommandSpec
@@ -58,13 +58,11 @@ containersCmd = CommandSpec "containers"
   [ Txt (\(a, c) -> serialize a <> "\t" <> Text.pack (classContainerFilePath c))
   , Csv (Csv.header ["name", "container"]) (\a -> [Csv.toRecord a])
   ]
-  . Stream
-  $ ClassNames (,)
+  $ Stream ClassNames (return id)
 
 decompileCmd :: CommandSpec
 decompileCmd = CommandSpec "decompile"
   "A stream of decompiled classes."
   [ Json id
   ]
-  . Stream
-  $ Classes id
+  $ Stream Classes (return id)

@@ -27,7 +27,7 @@ import qualified Data.Csv                     as Csv
 
 -- jvmhs
 import Jvmhs
-import Jvmhs.Data.Named
+-- import Jvmhs.TypeCheck
 
 -- javaq
 import JavaQ.Command
@@ -54,11 +54,20 @@ methodmetricCmd = CommandSpec
   "method-metrics"
   "A stream of method metrics."
   [ Json id
-  , Csv (Csv.headerOrder (undefined :: MethodMetric)) (map Csv.toRecord)
+  , Csv (Csv.headerOrder (undefined :: MethodMetric)) ((:[]). Csv.toRecord)
   ]
-  (Stream $ Classes fn)
+  (Stream Methods (return fn))
   where
-    fn cls =
-      [ MethodMetric (cls ^. className) mn
-      | Method (Named mn _) <- cls ^. classMethods
-      ]
+    fn (cn, m) = MethodMetric cn (m^.methodId)
+
+
+-- typecheckCmd :: CommandSpec
+-- typecheckCmd = CommandSpec
+--   "typecheck"
+--   "Typecheck methods"
+--   [ Json id
+--   ]
+--   (Stream $ Methods fn)
+--   where
+--     fn cn m = return
+--       typeCheck hry
