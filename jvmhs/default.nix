@@ -1,6 +1,6 @@
 { mkDerivation, aeson, attoparsec, base, binary, bytestring
-, containers, deepseq, directory, fgl, fgl-visualize, filepath
-, generic-random, hashable, hpack, hspec, hspec-discover
+, cassava, containers, deepseq, directory, fgl, fgl-visualize
+, filepath, generic-random, hashable, hpack, hspec, hspec-discover
 , hspec-expectations-pretty-diff, jvm-binary, lens, lens-action
 , mtl, primitive, process, QuickCheck, stdenv, tasty, text
 , transformers, unordered-containers, vector, zip-archive
@@ -10,14 +10,14 @@ mkDerivation {
   version = "0.0.1";
   src = ./.;
   libraryHaskellDepends = [
-    aeson attoparsec base binary bytestring containers deepseq
+    aeson attoparsec base binary bytestring cassava containers deepseq
     directory fgl fgl-visualize filepath hashable jvm-binary lens
     lens-action mtl primitive process text transformers
     unordered-containers vector zip-archive
   ];
   libraryToolDepends = [ hpack ];
   testHaskellDepends = [
-    aeson attoparsec base binary bytestring containers deepseq
+    aeson attoparsec base binary bytestring cassava containers deepseq
     directory fgl fgl-visualize filepath generic-random hashable hspec
     hspec-discover hspec-expectations-pretty-diff jvm-binary lens
     lens-action mtl primitive process QuickCheck tasty text

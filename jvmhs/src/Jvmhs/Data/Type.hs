@@ -102,6 +102,9 @@ import           Data.Aeson.Encoding     (text)
 import           Data.Aeson.TH
 import           Data.Aeson.Types        (Parser)
 
+-- cassava
+import qualified Data.Csv as Csv
+
 -- bytestring
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Char8   as C
@@ -363,6 +366,12 @@ parserFromEither = either error return
 
 instance ToJSON JType where
   toJSON = String . serialize
+
+instance Csv.ToField AbsMethodId where
+  toField = Csv.toField . serialize
+
+instance Csv.ToField AbsFieldId where
+  toField = Csv.toField . serialize
 
 instance FromJSON JType where
   parseJSON = withText "JType" (parserFromEither . deserialize)

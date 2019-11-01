@@ -27,27 +27,28 @@ extra-source-files:
 dependencies:
   - base >= 4.10 && < 4.13
   - jvm-binary >= 0.6.0 && < 0.9.0
-  - lens
   - aeson
-  - lens-action
-  - zip-archive
+  - attoparsec
+  - binary
   - bytestring
-  - directory
-  - filepath
-  - process
+  - cassava
   - containers
-  - text
-  - vector
-  - mtl
-  - transformers
   - deepseq
-  - unordered-containers
-  - hashable
+  - directory
   - fgl
   - fgl-visualize
-  - attoparsec
+  - filepath
+  - hashable
+  - lens
+  - lens-action
+  - mtl
   - primitive
-  - binary
+  - process
+  - text
+  - transformers
+  - unordered-containers
+  - vector
+  - zip-archive
 
 library:
   source-dirs: src
