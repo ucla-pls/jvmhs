@@ -86,8 +86,8 @@ typecheckCmd = CommandSpec
               (m^.methodAccessFlags.contains MStatic)
               code
           in case result of
-            Just (Right _) -> "success" :: Csv.Field
-            Just (Left _)  -> "failure"
-            Nothing        -> "nocode"
+            Just (Nothing, _)   -> "success" :: Csv.Field
+            Just (Just _, _)    -> "failure"
+            Nothing             -> "nocode"
 
         )
