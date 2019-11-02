@@ -417,7 +417,7 @@ typeCheck hry mn isStatic code = V.createT $ do
             Just cn -> [ asTypeInfo cn ]
             Nothing -> [ asTypeInfo ("java/lang/Throwable" :: ClassName) ]
           & tcLocals .~ hstate^.tcLocals
-        dfs entries (h^.ehHandler:[])
+        dfs entries [h^.ehHandler]
       --
     ) <&> \case
       Right () -> (Nothing, entries)
@@ -438,6 +438,7 @@ typeCheck hry mn isStatic code = V.createT $ do
     [ ] -> return ()
     i:indicies -> do
       let a = code ^?! codeByteCode.ix i.to B.opcode
+
       -- setExceptionState code entries i
       s1 <- VM.read entries i
       s2 <- withExceptT (i,) $
@@ -445,16 +446,28 @@ typeCheck hry mn isStatic code = V.createT $ do
         (runReaderT (typecheck a) hry)
         (s1 & tcNexts .~ [i + 1])
 
-      recalculate <- fmap (map fst . filter snd) . forM (s2^.tcNexts) $ \i' -> do
-        prevState <- VM.read entries i'
-        case unifyState prevState s2 hry of
-          Just state' -> do
-            VM.write entries i' state'
-            return (i', prevState /= state')
-          Nothing     ->
-            throwError (i, InconsistentStates i prevState s2)
+      recalculate <- forM (s2^.tcNexts) (unifyOnto entries s2)
 
-      dfs entries (recalculate ++ indicies)
+      execptions <- forM [ h | h <- code ^.codeExceptionTable, h^.ehStart == i ] $ \h ->
+        let
+          hstate = s1
+            & tcStack .~
+            case h^.ehCatchType of
+              Just cn -> [ asTypeInfo cn ]
+              Nothing -> [ asTypeInfo ("java/lang/Throwable" :: ClassName) ]
+            & tcNexts .~ []
+        in unifyOnto entries hstate (h^.ehHandler)
+
+      dfs entries ([ i' | (i', b) <- recalculate ++ execptions, b ] ++ indicies)
+
+  unifyOnto entries s2 i = do
+    prevState <- VM.read entries i
+    case unifyState prevState s2 hry of
+      Just meetState -> do
+        VM.write entries i meetState
+        return (i, prevState /= meetState)
+      Nothing     ->
+        throwError (i, InconsistentStates i prevState s2)
 
 -- typeCheckDebug ::
 --   Hierarchy

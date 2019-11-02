@@ -53,6 +53,9 @@ spec = do
       withJREClassMethods [] "com/sun/beans/TypeResolver"
         "can typecheck" doesTypeCheck
 
+      withJREClassMethods [] "sun/print/PSPrinterJob$PrinterSpooler"
+        "can typecheck" doesTypeCheck
+
     where
     doesTypeCheck :: AbsMethodId -> Method -> Hierarchy -> IO ()
     doesTypeCheck mn mth hry =
