@@ -35,7 +35,7 @@ module Jvmhs.TypeCheck
   , _TFloat
 
   , AsTypeInfo (..)
-  , AsLocalType (..)
+  -- , AsLocalType (..)
 
   , typecheck
   , TypeChecker
@@ -102,6 +102,7 @@ data TypeInfo
   | TRef  ![JRefType]
   -- ^ Empty list means null
   | TTop
+  -- ^ All types
   deriving (Show, Eq, Ord, Generic)
 
 makePrisms ''TBase
@@ -109,22 +110,30 @@ makePrisms ''TypeInfo
 
 type Instruction = B.ByteCodeOpr B.High
 
-class AsLocalType a where
-  asLocalType :: a -> LocalType
+-- class AsLocalType a where
+--   asLocalType :: a -> LocalType
 
-  default asLocalType :: AsTypeInfo a => a -> LocalType
-  asLocalType = asLocalType . asTypeInfo
+--   default asLocalType :: AsTypeInfo a => a -> LocalType
+--   asLocalType = asLocalType . asTypeInfo
 
-instance AsLocalType TypeInfo where
-  asLocalType = \case
-    TBase TInt  -> LInt
-    TBase TLong     -> LLong
-    TBase TFloat    -> LFloat
-    TBase TDouble   -> LDouble
-    TRef _ -> LRef
-    TTop -> error "Cannot convert Top to LocalType"
+-- instance AsLocalType TypeInfo where
+--   asLocalType = \case
+--     TBase TInt  -> LInt
+--     TBase TLong     -> LLong
+--     TBase TFloat    -> LFloat
+--     TBase TDouble   -> LDouble
+--     TRef _ -> LRef
+--     TTop -> error "Cannot convert Top to LocalType"
 
-instance AsLocalType ArrayType where
+-- instance AsLocalType ArrayType where
+
+instance AsTypeInfo LocalType where
+  asTypeInfo = \case
+    LInt    -> TBase $ TInt
+    LLong   -> TBase $ TLong
+    LFloat  -> TBase $ TFloat
+    LDouble -> TBase $ TDouble
+    LRef    -> TRef []
 
 instance AsTypeInfo ArrayType where
   asTypeInfo = \case
@@ -136,8 +145,6 @@ instance AsTypeInfo ArrayType where
     AFloat  -> TBase $ TFloat
     ADouble -> TBase $ TDouble
     ARef    -> TRef []
-
-instance AsLocalType B.JType where
 
 -- | Since there are many types in the Java eco system It would be nice to all
 -- cast them to a single type system.
@@ -177,7 +184,8 @@ instance AsTypeInfo (Maybe B.JValue) where
     Nothing -> TRef []
     Just a -> asTypeInfo a
 
-instance AsLocalType ArithmeticType
+-- instance AsLocalType ArithmeticType
+
 instance AsTypeInfo ArithmeticType where
   asTypeInfo = TBase . \case
     MInt    -> TInt
@@ -201,20 +209,23 @@ makePrisms ''B.JRefType
 class Checkable a b where
   checkEq :: a -> b -> Bool
 
-instance AsTypeInfo b => Checkable TypeInfo b where
-  checkEq a b = a == asTypeInfo b
+-- instance AsTypeInfo b => Checkable TypeInfo b where
+--   checkEq a b = a == asTypeInfo b
 
-instance AsTypeInfo b => Checkable JType b where
+-- instance AsTypeInfo b => Checkable JType b where
+--   checkEq a b = asTypeInfo a == asTypeInfo b
+
+instance (AsTypeInfo a, AsTypeInfo b) => Checkable a b where
   checkEq a b = asTypeInfo a == asTypeInfo b
 
-instance AsLocalType b => Checkable LocalType b where
-  checkEq a b = a == asLocalType b
+-- instance AsTypeInfo b => Checkable LocalType b where
+--   checkEq a b = a == asLocalType b
 
-instance AsLocalType b => Checkable ArrayType b where
-  checkEq a b = asLocalType a == asLocalType b
+-- instance AsLocalType b => Checkable ArrayType b where
+--   checkEq a b = asLocalType a == asLocalType b
 
-instance AsLocalType b => Checkable ArithmeticType b where
-  checkEq a b = asLocalType a == asLocalType b
+-- instance AsLocalType b => Checkable ArithmeticType b where
+--   checkEq a b = asLocalType a == asLocalType b
 
 data TypeCheckState =
   TypeCheckState
@@ -294,6 +305,7 @@ isSubtypeOf = curry $ \case
     | a <- toList as
     , b <- toList bs
     ]
+  (_         , TTop   ) -> return True
   (a         , b      ) -> return (a == b)
 
 -- | Checks if a is S is a subtype of T.
@@ -336,21 +348,22 @@ unpack p ti =
 isArray ::
   TypeChecker m
   => TypeInfo
-  -> m (Maybe JType)
+  -> m TypeInfo
 isArray ti =
-  case ti ^? (_TRef.(_Single._JTArray.to Just <> _Null .to (const Nothing))) of
-    Just x -> return x
+  case foldl (\a b -> a >>= meet (asTypeInfo b)) (Just TTop) (ti ^.._TRef.folded._JTArray) of
+    Just x ->
+      return x
     Nothing ->
       throwError (BadType ti)
 
-check ::
-  (Show a, Show b, Checkable a b, MonadError TypeCheckError m)
-  => a -> b -> m ()
-check a b
-  | checkEq a b =
-    return ()
-  | otherwise =
-    throwError (NotEqual (show a) (show b))
+-- check ::
+--   (AsTypeInfo a, AsTypeInfo b, Show a, Show b, MonadError TypeCheckError m)
+--   => a -> b -> m ()
+-- check a b
+--   | checkEq a b =
+--     return ()
+--   | otherwise =
+--     throwError (NotEqual (show a) (show b))
 
 infixl 5 `checkSubtypeOf`
 -- | Checks if two types are equal or if A can be cast to B.
@@ -539,8 +552,11 @@ meet = curry $ \case
     | otherwise -> Nothing
   (TRef as, TRef bs)
     -> Just . TRef $ List.nub (as ++ bs)
-  (_, _) ->
-    Nothing
+  (TTop, a)
+    -> Just a
+  (a, TTop)
+    -> Just a
+  _ -> Nothing
 
 
 computeLocals ::
@@ -592,45 +608,44 @@ typecheck ::
   -> m ()
 typecheck = \case
   ArrayLoad r -> do
-    check LInt =<< pop
-    a <- isArray =<< pop
-    case a of
-      Just x -> check r x
-      Nothing -> return ()
+    pop >>= (`checkSubtypeOf` TInt)
+    pop >>= isArray >>= \case
+      TTop -> return ()
+      a -> a `checkSubtypeOf` r
     push r
 
   ArrayStore r -> do
     b <- pop
-    check LInt =<< pop
-    a <- isArray =<< pop
-    case a of
-      Just x -> do
-        b `checkSubtypeOf` x
-        check r x
-      Nothing ->
-        return ()
+    pop >>= (`checkSubtypeOf` TInt)
+    at' <- isArray =<< pop
+
+    case at' of
+      TTop -> return ()
+      a -> a `checkSubtypeOf` r
+
+    b `checkSubtypeOf` at'
 
   Push r -> do
     push r
 
   Load r addr -> do
     lt <- getLocal addr
-    check r lt
+    lt `checkSubtypeOf` r
     push lt
 
   Store r addr -> do
     t <- pop
-    check r t
+    t `checkSubtypeOf` r
     putLocal t addr
 
   BinaryOpr _ at' -> do
-    check at' =<< pop
-    check at' =<< pop
+    pop >>= (`checkSubtypeOf ` at')
+    pop >>= (`checkSubtypeOf ` at')
     push at'
 
   Neg r -> do
     a <- pop
-    check r a
+    a `checkSubtypeOf` r
     push a
 
   BitOpr x s -> do
@@ -644,55 +659,54 @@ typecheck = \case
                 UShR -> MInt
                 _    -> MLong
             )
-    a <- pop
-    check at' a
-    check bt' =<< pop
+    pop >>= (`checkSubtypeOf` at')
+    pop >>= (`checkSubtypeOf` bt')
     push bt'
 
 
   IncrLocal addr _ -> do
-    check LInt =<< getLocal addr
+    getLocal addr >>= (`checkSubtypeOf` TInt)
 
   Cast cst -> case cst of
     CastDown _ -> do
-      check LInt =<< pop
+      pop >>= (`checkSubtypeOf` TInt)
       push TInt
     CastTo a b -> do
       -- TODO: check for inequality
-      check a =<< pop
+      pop >>= (`checkSubtypeOf` a)
       push b
 
   CompareLongs -> do
-    check LLong =<< pop
-    check LLong =<< pop
+    pop >>= (`checkSubtypeOf` TLong)
+    pop >>= (`checkSubtypeOf` TLong)
     push TInt
 
   CompareFloating _ size -> do
     case size of
       One -> do
-        check LFloat =<< pop
-        check LFloat =<< pop
+        pop >>= (`checkSubtypeOf` TFloat)
+        pop >>= (`checkSubtypeOf` TFloat)
       Two -> do
-        check LDouble =<< pop
-        check LDouble =<< pop
+        pop >>= (`checkSubtypeOf` TDouble)
+        pop >>= (`checkSubtypeOf` TDouble)
     push TInt
 
   If _ a off -> do
     case a of
       B.One ->
-        check LInt =<< pop
+        pop >>= (`checkSubtypeOf` TInt)
       B.Two -> do
-        check LInt =<< pop
-        check LInt =<< pop
+        pop >>= (`checkSubtypeOf` TInt)
+        pop >>= (`checkSubtypeOf` TInt)
     addNext off
 
   IfRef _ a off -> do
     case a of
       B.One -> do
-        check LRef =<< pop
+        pop >>= (`checkSubtypeOf` TRef [])
       B.Two -> do
-        check LRef =<< pop
-        check LRef =<< pop
+        pop >>= (`checkSubtypeOf` TRef [])
+        pop >>= (`checkSubtypeOf` TRef [])
     addNext off
 
   Goto off -> do
@@ -710,12 +724,12 @@ typecheck = \case
 
 
   TableSwitch def table -> do
-    check LInt =<< pop
+    pop >>= (`checkSubtypeOf` TInt)
     setNext def
     mapM_ addNext (switchOffsets table)
 
   LookupSwitch def l -> do
-    check LInt =<< pop
+    pop >>= (`checkSubtypeOf` TInt)
     setNext def
     mapM_ (addNext.snd) l
 
@@ -768,7 +782,7 @@ typecheck = \case
     push (B.JTClass a)
 
   NewArray a@(NewArrayType n _) -> do
-    replicateM_ (fromIntegral n) (pop >>= check LInt)
+    replicateM_ (fromIntegral n) (pop >>= (`checkSubtypeOf` TInt))
     push (newArrayTypeType a)
 
   ArrayLength -> do
@@ -797,7 +811,7 @@ typecheck = \case
   Return a -> do
     case a of
       Just a' ->
-        check a' =<< pop
+        pop >>= (`checkSubtypeOf` a')
       Nothing  ->
         return ()
     noNext

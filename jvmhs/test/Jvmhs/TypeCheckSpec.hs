@@ -44,6 +44,14 @@ spec = do
       withJREClassMethods [] "javax/management/remote/rmi/_RMIConnection_Stub"
         "can typecheck" doesTypeCheck
 
+      -- withJREClassMethods [] "sun/reflect/annotation/AnnotationParser"
+      --   "can typecheck" doesTypeCheck
+
+      withJREClassMethods [] "sun/print/RasterPrintJob"
+        "can typecheck" doesTypeCheck
+
+      withJREClassMethods [] "com/sun/beans/TypeResolver"
+        "can typecheck" doesTypeCheck
 
     where
     doesTypeCheck :: AbsMethodId -> Method -> Hierarchy -> IO ()
