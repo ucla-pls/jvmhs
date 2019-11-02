@@ -44,9 +44,6 @@ spec = do
       withJREClassMethods [] "javax/management/remote/rmi/_RMIConnection_Stub"
         "can typecheck" doesTypeCheck
 
-      -- withJREClassMethods [] "sun/reflect/annotation/AnnotationParser"
-      --   "can typecheck" doesTypeCheck
-
       withJREClassMethods [] "sun/print/RasterPrintJob"
         "can typecheck" doesTypeCheck
 

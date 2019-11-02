@@ -41,6 +41,8 @@ module Jvmhs.TypeCheck
   , TypeChecker
   , Checkable (..)
 
+  , meet
+
   , typeCheck
   -- , typeCheckDebug
   , debugInfo
