@@ -64,6 +64,7 @@ import           GHC.Generics                         (Generic)
 
 -- containers
 import qualified Data.IntMap                          as IntMap
+import qualified Data.IntSet                          as IS
 
 -- lens
 import           Control.Lens
@@ -407,18 +408,7 @@ typeCheck ::
 typeCheck hry mn isStatic code = V.createT $ do
   entries <- VM.replicate (V.length $ code ^.codeByteCode) defaultState
   runExceptT
-    (do
-      dfs entries [0]
-      forMOf_ (codeExceptionTable.folded) code $ \h -> do
-        hstate <- VM.read entries (h^.ehStart)
-        VM.write entries (h^.ehHandler) $ hstate
-          & tcStack .~
-          case h^.ehCatchType of
-            Just cn -> [ asTypeInfo cn ]
-            Nothing -> [ asTypeInfo ("java/lang/Throwable" :: ClassName) ]
-          & tcLocals .~ hstate^.tcLocals
-        dfs entries [h^.ehHandler]
-      --
+    (dfs entries (IS.fromList [0]) -- :code^..codeExceptionTable.folded.ehHandler))
     ) <&> \case
       Right () -> (Nothing, entries)
       Left msg -> (Just msg, entries)
@@ -432,11 +422,12 @@ typeCheck hry mn isStatic code = V.createT $ do
 
   dfs :: (PrimMonad m)
     => V.MVector (PrimState m) TypeCheckState
-    -> [Int]
+    -> IS.IntSet
     -> ExceptT (B.ByteCodeIndex, TypeCheckError) m ()
-  dfs entries = \case
-    [ ] -> return ()
-    i:indicies -> do
+  dfs entries is = case IS.minView is of
+    Nothing ->
+      return ()
+    Just (i, indicies) -> do
       let a = code ^?! codeByteCode.ix i.to B.opcode
 
       -- setExceptionState code entries i
@@ -446,9 +437,10 @@ typeCheck hry mn isStatic code = V.createT $ do
         (runReaderT (typecheck a) hry)
         (s1 & tcNexts .~ [i + 1])
 
-      recalculate <- forM (s2^.tcNexts) (unifyOnto entries s2)
+      recalculate <-
+        forM (s2^.tcNexts) (unifyOnto entries s2)
 
-      execptions <- forM [ h | h <- code ^.codeExceptionTable, h^.ehStart == i ] $ \h ->
+      exceptions <- forM [ h | h <- code ^.codeExceptionTable, h^.ehStart == i ] $ \h ->
         let
           hstate = s1
             & tcStack .~
@@ -458,7 +450,7 @@ typeCheck hry mn isStatic code = V.createT $ do
             & tcNexts .~ []
         in unifyOnto entries hstate (h^.ehHandler)
 
-      dfs entries ([ i' | (i', b) <- recalculate ++ execptions, b ] ++ indicies)
+      dfs entries (IS.fromList [ i' | (i', b) <- recalculate ++ exceptions, b ] <> indicies)
 
   unifyOnto entries s2 i = do
     prevState <- VM.read entries i

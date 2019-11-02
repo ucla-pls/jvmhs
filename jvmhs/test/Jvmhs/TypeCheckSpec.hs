@@ -56,6 +56,9 @@ spec = do
       withJREClassMethods [] "sun/print/PSPrinterJob$PrinterSpooler"
         "can typecheck" doesTypeCheck
 
+      withJREClassMethods [] "org/omg/CORBA/CharSeqHelper"
+        "can typecheck" doesTypeCheck
+
     where
     doesTypeCheck :: AbsMethodId -> Method -> Hierarchy -> IO ()
     doesTypeCheck mn mth hry =
