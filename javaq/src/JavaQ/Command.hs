@@ -36,6 +36,9 @@ import qualified Data.Aeson as Json
 -- text
 import qualified Data.Text                    as Text
 
+-- binary
+import Data.Binary
+
 -- cassava
 import qualified Data.Csv                     as Csv
 
@@ -52,12 +55,14 @@ data Format a where
   Txt :: (a -> Text.Text) -> Format a
   Csv :: Csv.Header -> (a -> [Csv.Record]) -> Format a
   Json :: Json.ToJSON b => (a -> b) -> Format a
+  Binary :: Binary b => (a -> b) -> Format a
 
 formatName :: Format a -> Text.Text
 formatName = \case
   Txt _ -> "txt"
   Csv _ _ -> "csv"
   Json _ -> "json"
+  Binary _ -> "bin"
 
 data CommandConfig = CommandConfig
   { _cfgClassPath   :: ![FilePath]

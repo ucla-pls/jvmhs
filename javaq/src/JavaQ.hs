@@ -19,6 +19,9 @@ module JavaQ where
 import           Data.Foldable
 import           System.IO
 
+-- binary
+import qualified Data.Binary as Binary
+
 -- bytestring
 import qualified Data.ByteString.Lazy.Char8   as BL
 
@@ -147,6 +150,9 @@ runCommand classloader (Command _ (fmt :: Format a) tp) = do
       BL.putStr . Csv.encode . fn
     Json fn ->
       BL.putStrLn . Json.encode . fn
+    Binary fn ->
+      BL.putStrLn . Binary.encode . fn
+
 
   inClasspool ::
     forall m. (MonadReader Config m, MonadIO m)
