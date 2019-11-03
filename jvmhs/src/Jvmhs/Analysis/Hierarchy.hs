@@ -78,6 +78,8 @@ module Jvmhs.Analysis.Hierarchy
   , HierarchyStubs (..)
 
   -- ** Creation
+  , toStub
+  , toSingletonStubs
   , computeStubs
   , computeStubsWithCache
 
@@ -208,6 +210,10 @@ toStub = do
 newtype HierarchyStubs = HierarchyStubs
   { asStubMap :: M.HashMap ClassName HierarchyStub
   } deriving (Show, Eq, Generic, ToJSON, FromJSON, Monoid, Semigroup)
+
+toSingletonStubs :: Class -> HierarchyStubs
+toSingletonStubs c =
+  HierarchyStubs $ M.singleton (c^.className) (toStub c)
 
 compress :: HierarchyStubs -> CompressedStubs
 compress = do
