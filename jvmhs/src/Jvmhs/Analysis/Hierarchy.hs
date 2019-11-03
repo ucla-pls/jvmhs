@@ -63,7 +63,7 @@ module Jvmhs.Analysis.Hierarchy
   , declaredMethods
 
   , superDefinitionPaths
-  , superAbstractDeclarationPaths
+  , superDeclarationPaths
 
   -- ** Fields
   , fieldLocations
@@ -738,7 +738,7 @@ definitions mid = views hierarchy $ \hry ->
         . cixItem hry
         . folding (go m hry)
 
--- | Finds all defintions above a methodid.
+-- | Finds all defintions above a methodid, including itself.
 superDefinitionPaths ::
   AbsMethodId
   -> Hierarchy
@@ -759,24 +759,47 @@ superDefinitionPaths m = views hierarchy $ \hry ->
           , (mx, path) <- go (y^?!cixItem hry)
           ]
 
--- | Finds all declarations above the method, including itself.
-superAbstractDeclarationPaths ::
+-- | Finds all declarations above a methodid, including itself.
+superDeclarationPaths ::
   AbsMethodId
   -> Hierarchy
-  -> [(AbsMethodId, SubclassPath)]
-superAbstractDeclarationPaths m = views hierarchy $ \hry ->
+  -> [(AbsMethodId, IsAbstract, SubclassPath)]
+superDeclarationPaths m = views hierarchy $ \hry ->
   m^..className.cnItem hry.folding (superDefs hry)
   where
     mid = m^.methodId
     superDefs hry = go where
-      go item = 
-        [ (m & className .~ item^.hryClassName, Top $ item^.hryClassName)
-        | True <- item ^.. hryStub.stubMethods.ix mid
+      go item =
+        [ ( m & className .~ item^.hryClassName
+          , a
+          , Top $ item^.hryClassName
+          )
+        | a <- item ^.. hryStub.stubMethods.ix mid
         ] ++
-        [ (mx, SubclassOf (item^.hryClassName) edge path)
+        [ (mx, a, SubclassOf (item^.hryClassName) edge path)
         | (y, edge) <- item ^.. hryAnnotatedParents
-        , (mx, path) <- go (y^?!cixItem hry)
+        , (mx, a, path) <- go (y^?!cixItem hry)
         ]
+
+
+-- -- | Finds all abstract declarations above the method, including itself.
+-- superAbstractDeclarationPaths ::
+--   AbsMethodId
+--   -> Hierarchy
+--   -> [(AbsMethodId, SubclassPath)]
+-- superAbstractDeclarationPaths m = views hierarchy $ \hry ->
+--   m^..className.cnItem hry.folding (superDefs hry)
+--   where
+--     mid = m^.methodId
+--     superDefs hry = go where
+--       go item =
+--         [ (m & className .~ item^.hryClassName, Top $ item^.hryClassName)
+--         | True <- item ^.. hryStub.stubMethods.ix mid
+--         ] ++
+--         [ (mx, SubclassOf (item^.hryClassName) edge path)
+--         | (y, edge) <- item ^.. hryAnnotatedParents
+--         , (mx, path) <- go (y^?!cixItem hry)
+--         ]
 
 -- | Given an absolute method id find all superclasses that declare the
 -- method. This method also if that method is declared abstractly.

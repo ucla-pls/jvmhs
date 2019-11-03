@@ -142,38 +142,51 @@ spec = do
           ]
 
 
-    describe "superAbstractDeclarationPath" $ do
+    describe "superDeclarationPath" $ do
       it "should find the declarations of List.size" $ \hry -> do
-        superAbstractDeclarationPaths "java/util/List.size:()I" hry
+        superDeclarationPaths "java/util/List.size:()I" hry
         `shouldBe`
           [ ("java/util/List.size:()I"
+            , True
             , Top "java/util/List")
           , ("java/util/Collection.size:()I"
+            , True
             , "java/util/List" <: Top "java/util/Collection"
             )
           ]
        
       it "should find the declarations of ArrayList.size" $ \hry -> do
-        superAbstractDeclarationPaths "java/util/ArrayList.size:()I" hry
+        superDeclarationPaths "java/util/ArrayList.size:()I" hry
         `shouldBe`
-          [ ( "java/util/AbstractCollection.size:()I"
+          [
+            ( "java/util/ArrayList.size:()I"
+            , False
+            , Top "java/util/ArrayList"
+            )
+          , ( "java/util/AbstractCollection.size:()I"
+            , True
             , "java/util/ArrayList" <! "java/util/AbstractList" <! Top "java/util/AbstractCollection"
             )
           , ( "java/util/Collection.size:()I"
+            , True
             , "java/util/ArrayList" <! "java/util/AbstractList" <! "java/util/AbstractCollection" <: Top "java/util/Collection"
             )
           , ( "java/util/List.size:()I"
+            , True
             , "java/util/ArrayList" <! "java/util/AbstractList" <: Top "java/util/List"
             )
           , ( "java/util/Collection.size:()I"
+            , True
             , "java/util/ArrayList" <! "java/util/AbstractList"
               <: "java/util/List"
               <: Top "java/util/Collection"
             )
           , ( "java/util/List.size:()I"
+            , True
             , "java/util/ArrayList" <: Top "java/util/List"
             ),
             ( "java/util/Collection.size:()I"
+            , True
             , "java/util/ArrayList" <: "java/util/List" <: Top "java/util/Collection"
             )
           ]
