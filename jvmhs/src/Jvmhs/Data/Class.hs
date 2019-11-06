@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE ApplicativeDo         #-}
@@ -480,9 +481,10 @@ instance FromJVMBinary (B.Method B.High) Method where
 
         pure $ do
           let
-            _methodExceptions = maybe
-              (map throwsSignatureFromName $ _defaultMethodExceptions)
-              msThrows _methodSignature
+            _methodExceptions =
+              zipWith (\a -> \case Just b -> b; Nothing -> throwsSignatureFromName a)
+              _defaultMethodExceptions
+              (map Just (maybe [] msThrows _methodSignature) ++ repeat Nothing)
 
             _methodTypeParameters =
               maybe [] msTypeParameters _methodSignature
