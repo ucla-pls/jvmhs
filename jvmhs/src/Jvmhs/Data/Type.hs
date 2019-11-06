@@ -35,6 +35,7 @@ module Jvmhs.Data.Type
   , strCls
   , splitClassName
   , fullyQualifiedName
+  , isInnerClass
   , package
   , shorthand
 
@@ -148,6 +149,10 @@ splitClassName :: Iso' ClassName [Text.Text]
 splitClassName = fullyQualifiedName . split where
   split = iso (Text.splitOn "/") (Text.intercalate "/")
 {-# INLINABLE splitClassName #-}
+
+-- | Checks if an class is an Inner Class
+isInnerClass :: ClassName -> Bool
+isInnerClass = Text.any (== '$') . view fullyQualifiedName
 
 type Package = [ Text.Text ]
 
