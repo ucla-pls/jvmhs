@@ -481,6 +481,19 @@ instance FromJVMBinary (B.Method B.High) Method where
 
         pure $ do
           let
+            -- TODO: A method signature encoded by the Signature attribute may not
+            -- correspond exactly to the method descriptor in the method_info
+            -- structure (§4.3.3). In particular, there is no assurance that the
+            -- number of formal parameter types in the method signature is the same
+            -- as the number of parameter descriptors in the method descriptor. The
+            -- numbers are the same for most methods, but certain constructors in
+            -- the Java programming language have an implicitly declared parameter
+            -- which a compiler represents with a parameter descriptor but may omit
+            -- from the method signature. See the note in §4.7.18 for a similar
+            -- situation involving parameter annotations.
+
+
+
             _methodExceptions =
               zipWith (\a -> \case Just b -> b; Nothing -> throwsSignatureFromName a)
               _defaultMethodExceptions
