@@ -12,36 +12,33 @@ License     : BSD-3-Clause
 Maintainer  : kalhauge@cs.ucla.edu
 
 ClassType is a combination of the Signature, Annotation, and the
-
 simple ClassName.
-
 -}
 
 module Jvmhs.Data.Signature
   ( classTypeName
   , throwsSignatureName
-
   , _ThrowsClass
   , _ThrowsTypeVariable
-
   , module Language.JVM.Attribute.Signature
-  ) where
+  )
+where
 
 -- aeson
-import Data.Aeson
+import           Data.Aeson
 
 -- lens
-import Control.Lens
+import           Control.Lens
 
 -- text
-import Data.Text.Lazy.Builder as Text
-import qualified Data.Text.Lazy as LazyText
+import           Data.Text.Lazy.Builder        as Text
+import qualified Data.Text.Lazy                as LazyText
 
 -- jmvhs
-import Jvmhs.Data.Type
+import           Jvmhs.Data.Type
 
 -- jvm-binary
-import Language.JVM.Attribute.Signature
+import           Language.JVM.Attribute.Signature
 
 makePrisms ''ThrowsSignature
 
@@ -50,8 +47,7 @@ classTypeName :: Getting f ClassType ClassName
 classTypeName = Control.Lens.to classTypeToName
 
 throwsSignatureName :: Monoid f => Getting f ThrowsSignature ClassName
-throwsSignatureName =
-  _ThrowsClass . classTypeName
+throwsSignatureName = _ThrowsClass . classTypeName
 
 instance ToJSON (ClassSignature) where
   toJSON = String . classSignatureToText

@@ -1,15 +1,15 @@
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE ApplicativeDo         #-}
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DerivingStrategies    #-}
-{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-|
@@ -28,7 +28,7 @@ To quickly access information about the class-file use the
 module Jvmhs.Data.Class
   ( -- * Data structures
     -- ** Class
-    Class (..)
+    Class(..)
   , className
   , classTypeName
   , classAbsFieldIds
@@ -41,17 +41,15 @@ module Jvmhs.Data.Class
   , classMethod
 
   -- ** Field
-
-  , Field (..)
+  , Field(..)
   , fieldId
 
   -- ** Method
-  , Method (..)
+  , Method(..)
   , methodId
   , methodReturnType
   , methodArgumentTypes
-
-  , InnerClass (..)
+  , InnerClass(..)
   , innerClass
   , innerOuterClass
   , innerClassName
@@ -67,57 +65,62 @@ module Jvmhs.Data.Class
   -- , mapAsMethodList
 
   -- ** Wraped Types
-  , CAccessFlag (..)
-  , MAccessFlag (..)
-  , FAccessFlag (..)
-  , ICAccessFlag (..)
-
-  , BootstrapMethod (..)
-  , Code (..)
-
-  ) where
+  , CAccessFlag(..)
+  , MAccessFlag(..)
+  , FAccessFlag(..)
+  , ICAccessFlag(..)
+  , BootstrapMethod(..)
+  , Code(..)
+  )
+where
 
 -- base
 import           Control.Monad
 import           Data.Either
+import           Data.Foldable                 as F
 import           Data.Maybe
-import           Data.Foldable as F
 import           Data.Word
-import           GHC.Generics                            (Generic)
+import           GHC.Generics                   ( Generic )
 import           Unsafe.Coerce
 
 -- deep-seq
 import           Control.DeepSeq
 
 -- lens
-import           Control.Lens hiding ((.=))
+import           Control.Lens            hiding ( (.=) )
 
 -- aeson
 import           Data.Aeson
 import           Data.Aeson.TH
 
 -- text
-import qualified Data.Text                               as Text
+import qualified Data.Text                     as Text
 
 -- containers
-import qualified Data.Set                                as Set
+import qualified Data.Set                      as Set
 
 -- jvm-binary
-import qualified Language.JVM                            as B
-import qualified Language.JVM.Attribute.BootstrapMethods as B
-import qualified Language.JVM.Attribute.ConstantValue    as B
-import qualified Language.JVM.Attribute.EnclosingMethod  as B
-import qualified Language.JVM.Attribute.Exceptions       as B
-import qualified Language.JVM.Attribute.InnerClasses     as B
-import qualified Language.JVM.Attribute.Annotations      as B
+import qualified Language.JVM                  as B
+import qualified Language.JVM.Attribute.Annotations
+                                               as B
+import qualified Language.JVM.Attribute.BootstrapMethods
+                                               as B
+import qualified Language.JVM.Attribute.ConstantValue
+                                               as B
+import qualified Language.JVM.Attribute.EnclosingMethod
+                                               as B
+import qualified Language.JVM.Attribute.Exceptions
+                                               as B
+import qualified Language.JVM.Attribute.InnerClasses
+                                               as B
 
 -- jvmhs
+import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
-import           Jvmhs.Data.Annotation
+import           Jvmhs.Data.Named
 import           Jvmhs.Data.Signature
 import           Jvmhs.Data.Type
-import           Jvmhs.Data.Named
 
 -- | This is the class
 data Class = Class
@@ -149,7 +152,7 @@ data Class = Class
 
 -- | This is the field
 data Field = Field
-  { _fieldDesc          :: FieldId
+  { _fieldDesc        :: FieldId
   -- ^ the description of the field
   , _fieldAccessFlags :: Set.Set FAccessFlag
   -- ^ the set of access flags
@@ -157,27 +160,27 @@ data Field = Field
   -- ^ an optional value
   , _fieldSignature   :: Maybe FieldSignature
   -- ^ the signature of the field
-  , _fieldAnnotations   :: Annotations
+  , _fieldAnnotations :: Annotations
   -- ^ the annotations of the field
   } deriving (Eq, Show, Generic, NFData)
 
 -- | This is the method
 data Method = Method
-  { _methodDesc            :: MethodId
+  { _methodDesc           :: MethodId
   -- ^ the description of the method
-  , _methodAccessFlags     :: Set.Set MAccessFlag
+  , _methodAccessFlags    :: Set.Set MAccessFlag
   -- ^ the set of access flags
-  , _methodCode            :: Maybe Code
+  , _methodCode           :: Maybe Code
   -- ^ optionally the method can contain code
-  , _methodExceptions      :: [ ThrowsSignature ]
+  , _methodExceptions     :: [ ThrowsSignature ]
   -- ^ the method can have one or more exceptions
-  , _methodTypeParameters  :: [TypeParameter]
+  , _methodTypeParameters :: [TypeParameter]
   -- ^ a method can have specific type parameters
-  , _methodArguments       :: [TypeSignature]
+  , _methodArguments      :: [TypeSignature]
   -- ^ the arguments of method
-  , _methodReturn          :: Maybe TypeSignature
+  , _methodReturn         :: Maybe TypeSignature
   -- ^ the return type of the method
-  , _methodAnnotations     :: Annotations
+  , _methodAnnotations    :: Annotations
   -- ^ the annotations of the method
   } deriving (Eq, Show, Generic, NFData)
 
@@ -216,35 +219,32 @@ instance HasMethodId Method where
   {-# INLINE methodId #-}
 
 
+-- | Fold over the absolute method ids of the class
 classAbsMethodIds :: Fold Class AbsMethodId
 classAbsMethodIds =
-  (selfIndex <. classMethods.folded)
-  . withIndex
-  . to (uncurry mkAbsMethodId)
+  (selfIndex <. classMethods . folded) . withIndex . to (uncurry mkAbsMethodId)
 
+-- | Fold over the absoulte fieldIds of the class
 classAbsFieldIds :: Fold Class AbsFieldId
 classAbsFieldIds =
-  (selfIndex <. classFields.folded)
-  . withIndex
-  . to (uncurry mkAbsFieldId)
+  (selfIndex <. classFields . folded) . withIndex . to (uncurry mkAbsFieldId)
 
+-- | Choose a field in a class by a 'FieldId'
 classField :: FieldId -> Getter Class (Maybe Field)
-classField fid =
-  classFields . to (find (\a -> a ^. fieldId == fid))
+classField fid = classFields . to (find (\a -> a ^. fieldId == fid))
 
+-- | Choose a method in a class by a 'MethodId'
 classMethod :: MethodId -> Getter Class (Maybe Method)
-classMethod mid =
-  classMethods . to (find (\a -> a ^. methodId == mid))
+classMethod mid = classMethods . to (find (\a -> a ^. methodId == mid))
 
 -- | The dependencies of a class
-dependencies :: Class -> [ ClassName ]
+dependencies :: Class -> [ClassName]
 dependencies =
-  toListOf $ (classSuper._Just <> classInterfaces.folded).classTypeName
+  toListOf $ (classSuper . _Just <> classInterfaces . folded) . classTypeName
 
 -- | Check if a class is an interface
 isInterface :: Class -> Bool
-isInterface cls =
-  B.CInterface `Set.member` (cls^.classAccessFlags)
+isInterface cls = B.CInterface `Set.member` (cls ^. classAccessFlags)
 
 -- instance FromJVMBinary (B.Field B.High) Field where
 --   _Binary =
@@ -493,11 +493,11 @@ isInterface cls =
  -  pure $ Class (Named _className (ClassContent {..}))
  -}
 
-readAnnotations ::
-  [B.RuntimeVisibleAnnotations B.High] ->
-  [B.RuntimeInvisibleAnnotations B.High] -> Annotations
-readAnnotations vis invis =
-  Annotations
+readAnnotations
+  :: [B.RuntimeVisibleAnnotations B.High]
+  -> [B.RuntimeInvisibleAnnotations B.High]
+  -> Annotations
+readAnnotations vis invis = Annotations
   (concatMap (toList . B.asListOfRuntimeVisibleAnnotations) vis)
   (concatMap (toList . B.asListOfRuntimeInvisibleAnnotations) invis)
 
@@ -681,4 +681,3 @@ $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Inne
 
 -- classFieldList :: Lens' Class [Field]
 -- classFieldList = classFields . mapAsFieldList
-
