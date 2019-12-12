@@ -24,36 +24,30 @@ Maintainer  : kalhuage@cs.ucla.edu
 
 -}
 module Jvmhs.TypeCheck
-  ( TypeInfo (..)
+  ( TypeInfo(..)
   , _TRef
   , _TBase
-
-  , TBase (..)
+  , TBase(..)
   , _TInt
   , _TLong
   , _TDouble
   , _TFloat
-
-  , AsTypeInfo (..)
+  , AsTypeInfo(..)
   -- , AsLocalType (..)
-
   , typecheck
   , TypeChecker
-  , Checkable (..)
-
+  , Checkable(..)
   , meet
-
   , typeCheck
   -- , typeCheckDebug
   , debugInfo
-  , TypeCheckState (..)
-  , HasTypeCheckState (..)
-
-
+  , TypeCheckState(..)
+  , HasTypeCheckState(..)
   , _JTArray
   , _JTClass
   , _Single
-  ) where
+  )
+where
 
 -- base
 import           Control.Exception
@@ -61,19 +55,19 @@ import           Control.Monad
 import           Control.Monad.Primitive
 import           Data.Function
 import           Data.Foldable
-import qualified Data.List                            as List
-import           GHC.Generics                         (Generic)
+import qualified Data.List                     as List
+import           GHC.Generics                   ( Generic )
 
 -- containers
-import qualified Data.IntMap                          as IntMap
-import qualified Data.IntSet                          as IS
+import qualified Data.IntMap                   as IntMap
+import qualified Data.IntSet                   as IS
 
 -- lens
 import           Control.Lens
 
 -- aeson
-import Data.Aeson hiding ((.=))
-import Data.Aeson.TH
+import           Data.Aeson              hiding ( (.=) )
+import           Data.Aeson.TH
 
 -- mtl
 import           Control.Monad.Except
@@ -81,12 +75,12 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 
 -- vector
-import qualified Data.Vector                          as V
-import qualified Data.Vector.Mutable                  as VM
+import qualified Data.Vector                   as V
+import qualified Data.Vector.Mutable           as VM
 
 -- jvm-binary
-import qualified Language.JVM                         as B
-import           Language.JVM.ByteCode                as B
+import qualified Language.JVM                  as B
+import           Language.JVM.ByteCode         as B
 
 -- jvmhs
 import           Jvmhs.Analysis.Hierarchy
@@ -158,13 +152,13 @@ instance AsTypeInfo TypeInfo where
   asTypeInfo = id
 
 instance AsTypeInfo ClassName where
-  asTypeInfo = TRef . (:[]) . JTClass
+  asTypeInfo = TRef . (: []) . JTClass
 
 instance AsTypeInfo TBase where
   asTypeInfo = TBase
 
 instance AsTypeInfo B.JRefType where
-  asTypeInfo = TRef . (:[])
+  asTypeInfo = TRef . (: [])
 
 instance AsTypeInfo B.JBaseType where
   asTypeInfo = TBase . \case
@@ -180,12 +174,12 @@ instance AsTypeInfo B.JBaseType where
 instance AsTypeInfo B.JType where
   asTypeInfo = \case
     JTBase b -> asTypeInfo b
-    JTRef a -> asTypeInfo a
+    JTRef  a -> asTypeInfo a
 
 instance AsTypeInfo (Maybe B.JValue) where
   asTypeInfo = \case
     Nothing -> TRef []
-    Just a -> asTypeInfo a
+    Just a  -> asTypeInfo a
 
 -- instance AsLocalType ArithmeticType
 
@@ -198,13 +192,13 @@ instance AsTypeInfo ArithmeticType where
 
 instance AsTypeInfo B.JValue where
   asTypeInfo = \case
-    B.VInteger _ -> TBase TInt
-    B.VLong _    -> TBase TLong
-    B.VFloat _   -> TBase TFloat
-    B.VDouble _  -> TBase TDouble
-    B.VString _  -> TRef [JTClass "java/lang/String"]
-    B.VClass _    -> TRef [JTClass "java/lang/Class"]
-    B.VMethodType _ -> TRef [JTClass "java/lang/invoke/MethodType"]
+    B.VInteger      _ -> TBase TInt
+    B.VLong         _ -> TBase TLong
+    B.VFloat        _ -> TBase TFloat
+    B.VDouble       _ -> TBase TDouble
+    B.VString       _ -> TRef [JTClass "java/lang/String"]
+    B.VClass        _ -> TRef [JTClass "java/lang/Class"]
+    B.VMethodType   _ -> TRef [JTClass "java/lang/invoke/MethodType"]
     B.VMethodHandle _ -> TRef [JTClass "java/lang/invoke/MethodHandle"]
 
 makePrisms ''B.JRefType
@@ -249,8 +243,11 @@ data TypeCheckError
 
 instance Exception TypeCheckError
 
-type TypeChecker m =
-  (MonadState TypeCheckState m, MonadReader Hierarchy m, MonadError TypeCheckError m)
+type TypeChecker m
+  = ( MonadState TypeCheckState m
+    , MonadReader Hierarchy m
+    , MonadError TypeCheckError m
+    )
 
 makeClassy ''TypeCheckState
 
@@ -258,106 +255,74 @@ getLocal :: TypeChecker m => LocalAddress -> m TypeInfo
 getLocal addr = do
   let idx = fromIntegral addr
   use (tcLocals . at idx) >>= \case
-    Just l ->
-      return l
-    Nothing ->
-      throwError (NoLocal addr)
+    Just l  -> return l
+    Nothing -> throwError (NoLocal addr)
 
-putLocal ::
-  (TypeChecker m, Show a, AsTypeInfo a)
-  => a
-  -> LocalAddress
-  -> m ()
+putLocal :: (TypeChecker m, Show a, AsTypeInfo a) => a -> LocalAddress -> m ()
 putLocal a i = do
   tcLocals . at (fromIntegral i) .= Just (asTypeInfo a)
 
 pop :: TypeChecker m => m TypeInfo
 pop = use tcStack >>= \case
-  [] -> throwError EmptyStack
-  a:rest -> do
+  []       -> throwError EmptyStack
+  a : rest -> do
     tcStack .= rest
     return a
 
 push :: TypeChecker m => AsTypeInfo t => t -> m ()
-push t =
-  tcStack %= (asTypeInfo t:)
+push t = tcStack %= (asTypeInfo t :)
 
 -- currentByteCodeIndex :: TypeChecker ByteCodeIndex
 -- currentByteCodeIndex =
 --   use tcCurrentByteCodeIndex
 
 addNext :: TypeChecker m => B.ByteCodeIndex -> m ()
-addNext n =
-  tcNexts %= (n:)
+addNext n = tcNexts %= (n :)
 
 setNext :: TypeChecker m => B.ByteCodeIndex -> m ()
-setNext n =
-  noNext >> addNext n
+setNext n = noNext >> addNext n
 
 noNext :: TypeChecker m => m ()
-noNext =
-  tcNexts .= []
+noNext = tcNexts .= []
 
 -- |
-isSubtypeOf ::
-  (MonadReader Hierarchy m)
-  => TypeInfo -> TypeInfo -> m Bool
+isSubtypeOf :: (MonadReader Hierarchy m) => TypeInfo -> TypeInfo -> m Bool
 isSubtypeOf = curry $ \case
-  (TRef as, TRef bs) -> asks $ \r -> and
-    [(a `isSubReftypeOf` b) r
-    | a <- toList as
-    , b <- toList bs
-    ]
-  (_         , TTop   ) -> return True
-  (a         , b      ) -> return (a == b)
+  (TRef as, TRef bs) -> asks
+    $ \r -> and [ (a `isSubReftypeOf` b) r | a <- toList as, b <- toList bs ]
+  (_, TTop) -> return True
+  (a, b   ) -> return (a == b)
 
 -- | Checks if a is S is a subtype of T.
-isSubReftypeOf ::
-  (MonadReader Hierarchy m)
-  => JRefType
-  -> JRefType
-  -> m Bool
+isSubReftypeOf :: (MonadReader Hierarchy m) => JRefType -> JRefType -> m Bool
 isSubReftypeOf = \case
   JTClass s -> \case
-    JTClass t ->
-      isSubclassOf s t
-    _ -> return False
+    JTClass t -> isSubclassOf s t
+    _         -> return False
   JTArray s -> \case
-    JTArray t ->
-      case (s, t) of
-        (JTRef s', JTRef t') ->
-          s' `isSubReftypeOf` t'
-        _ ->
-          return $ s == t
-    JTClass t ->
-      return $ List.elem t
-      [ "java/lang/Object"
-      , "java/lang/Cloneable"
-      , "java/io/Serializable"]
+    JTArray t -> case (s, t) of
+      (JTRef s', JTRef t') -> s' `isSubReftypeOf` t'
+      _                    -> return $ s == t
+    JTClass t -> return $ List.elem
+      t
+      ["java/lang/Object", "java/lang/Cloneable", "java/io/Serializable"]
 
-unpack ::
-  TypeChecker m
-  => (APrism' TypeInfo a)
-  -> TypeInfo
-  -> m a
-unpack p ti =
-  case ti ^? clonePrism p of
-    Just x -> return x
-    Nothing ->
-      throwError (BadType ti)
+unpack :: TypeChecker m => (APrism' TypeInfo a) -> TypeInfo -> m a
+unpack p ti = case ti ^? clonePrism p of
+  Just x  -> return x
+  Nothing -> throwError (BadType ti)
 
 -- Return the type of array execpt if it the typeinfo is null in which case
 -- we return Nothing
-isArray ::
-  TypeChecker m
-  => TypeInfo
-  -> m TypeInfo
+isArray :: TypeChecker m => TypeInfo -> m TypeInfo
 isArray ti =
-  case foldl (\a b -> a >>= meet (asTypeInfo b)) (Just TTop) (ti ^.._TRef.folded._JTArray) of
-    Just x ->
-      return x
-    Nothing ->
-      throwError (BadType ti)
+  case
+      foldl (\a b -> a >>= meet (asTypeInfo b))
+            (Just TTop)
+            (ti ^.. _TRef . folded . _JTArray)
+    of
+      Just x  -> return x
+      Nothing -> throwError (BadType ti)
 
 -- check ::
 --   (AsTypeInfo a, AsTypeInfo b, Show a, Show b, MonadError TypeCheckError m)
@@ -371,12 +336,9 @@ isArray ti =
 infixl 5 `checkSubtypeOf`
 -- | Checks if two types are equal or if A can be cast to B.
 -- This means A is a subclass of B
-checkSubtypeOf ::
-  (AsTypeInfo a, AsTypeInfo b, TypeChecker m)
-  => a -> b -> m ()
-checkSubtypeOf a b =
-  unlessM (asTypeInfo a `isSubtypeOf` asTypeInfo b) $
-    throwError (NotSubtype (asTypeInfo a) (asTypeInfo b))
+checkSubtypeOf :: (AsTypeInfo a, AsTypeInfo b, TypeChecker m) => a -> b -> m ()
+checkSubtypeOf a b = unlessM (asTypeInfo a `isSubtypeOf` asTypeInfo b)
+  $ throwError (NotSubtype (asTypeInfo a) (asTypeInfo b))
 
 -- infixl 5 `checkIntersectOf`
 -- checkIntersectOf ::
@@ -392,13 +354,13 @@ checkSubtypeOf a b =
 unlessM :: Monad m => m Bool -> m () -> m ()
 unlessM mbool munit = mbool >>= \case
   True  -> return ()
-  False -> munit;
+  False -> munit
 
 -- whenM :: Monad m => m Bool -> m () -> m ()
 -- whenM = unlessM . (not <$>)
 
-typeCheck ::
-  Hierarchy
+typeCheck
+  :: Hierarchy
   -- ^ A class hierarchy.
   -> AbsMethodId
   -- ^ the absolute name of the method to check
@@ -406,53 +368,57 @@ typeCheck ::
   -- ^ is the method static
   -> Code
   -- ^ the code to check
-  -> (Maybe (B.ByteCodeIndex, TypeCheckError), V.Vector TypeCheckState)
+  -> ( Maybe (B.ByteCodeIndex, TypeCheckError)
+     , V.Vector TypeCheckState
+     )
 typeCheck hry mn isStatic code = V.createT $ do
-  entries <- VM.replicate (V.length $ code ^.codeByteCode) defaultState
-  runExceptT
-    (dfs entries (IS.fromList [0]) -- :code^..codeExceptionTable.folded.ehHandler))
-    ) <&> \case
-      Right () -> (Nothing, entries)
-      Left msg -> (Just msg, entries)
-  where
-  defaultState =
-    TypeCheckState
-    { _tcStack = []
-    , _tcLocals = computeLocals mn isStatic
-    , _tcNexts = []
-    }
+  entries <- VM.replicate (V.length $ code ^. codeByteCode) defaultState
+  runExceptT (dfs entries (IS.fromList [0]) -- :code^..codeExceptionTable.folded.ehHandler))
+                                           ) <&> \case
+    Right ()  -> (Nothing, entries)
+    Left  msg -> (Just msg, entries)
+ where
+  defaultState = TypeCheckState { _tcStack  = []
+                                , _tcLocals = computeLocals mn isStatic
+                                , _tcNexts  = []
+                                }
 
-  dfs :: (PrimMonad m)
+  dfs
+    :: (PrimMonad m)
     => V.MVector (PrimState m) TypeCheckState
     -> IS.IntSet
     -> ExceptT (B.ByteCodeIndex, TypeCheckError) m ()
   dfs entries is = case IS.minView is of
-    Nothing ->
-      return ()
+    Nothing            -> return ()
     Just (i, indicies) -> do
-      let a = code ^?! codeByteCode.ix i.to B.opcode
+      let a = code ^?! codeByteCode . ix i . to B.opcode
 
       -- setExceptionState code entries i
       s1 <- VM.read entries i
-      s2 <- withExceptT (i,) $
-        execStateT
-        (runReaderT (typecheck a) hry)
-        (s1 & tcNexts .~ [i + 1])
+      s2 <- withExceptT (i, )
+        $ execStateT (runReaderT (typecheck a) hry) (s1 & tcNexts .~ [i + 1])
 
-      recalculate <-
-        forM (s2^.tcNexts) (unifyOnto entries s2)
+      recalculate <- forM (s2 ^. tcNexts) (unifyOnto entries s2)
 
-      exceptions <- forM [ h | h <- code ^.codeExceptionTable, h^.ehStart == i ] $ \h ->
-        let
-          hstate = s1
-            & tcStack .~
-            case h^.ehCatchType of
-              Just cn -> [ asTypeInfo cn ]
-              Nothing -> [ asTypeInfo ("java/lang/Throwable" :: ClassName) ]
-            & tcNexts .~ []
-        in unifyOnto entries hstate (h^.ehHandler)
+      exceptions  <-
+        forM [ h | h <- code ^. codeExceptionTable, h ^. ehStart == i ]
+          $ \h ->
+              let hstate =
+                      s1
+                        &  tcStack
+                        .~ case h ^. ehCatchType of
+                             Just cn -> [asTypeInfo cn]
+                             Nothing ->
+                               [asTypeInfo ("java/lang/Throwable" :: ClassName)]
+                        &  tcNexts
+                        .~ []
+              in  unifyOnto entries hstate (h ^. ehHandler)
 
-      dfs entries (IS.fromList [ i' | (i', b) <- recalculate ++ exceptions, b ] <> indicies)
+      dfs
+        entries
+        (  IS.fromList [ i' | (i', b) <- recalculate ++ exceptions, b ]
+        <> indicies
+        )
 
   unifyOnto entries s2 i = do
     prevState <- VM.read entries i
@@ -460,8 +426,7 @@ typeCheck hry mn isStatic code = V.createT $ do
       Just meetState -> do
         VM.write entries i meetState
         return (i, prevState /= meetState)
-      Nothing     ->
-        throwError (i, InconsistentStates i prevState s2)
+      Nothing -> throwError (i, InconsistentStates i prevState s2)
 
 -- typeCheckDebug ::
 --   Hierarchy
@@ -490,17 +455,19 @@ typeCheck hry mn isStatic code = V.createT $ do
 
 
 debugInfo :: Int -> Code -> V.Vector TypeCheckState -> IO ()
-debugInfo i (preview (codeByteCode.ix i) -> Just x) (preview (ix i) -> Just st) = liftIO $ do
-  putStrLn ""
-  putStrLn "Locals:"
-  iforM_ (st^.tcLocals) $ \idx s ->
-    putStrLn ("  " <> show idx <> ": " <> show s)
-  putStrLn "Stack:"
-  forM_ (reverse $ zip [0..] (st^.tcStack)) $ \(idx :: Int, s) ->
-    putStrLn ("  " <> show idx <> ": " <> show s)
-  putStrLn ""
-  putStrLn $ "BC:" <> show (B.offset x) <> " IX:" <> show i <> " - " <> show (B.opcode x)
-debugInfo i _ _ = error $ "Could not find "  <> show i
+debugInfo i (preview (codeByteCode.ix i) -> Just x) (preview (ix i) -> Just st)
+  = liftIO $ do
+    putStrLn ""
+    putStrLn "Locals:"
+    iforM_ (st ^. tcLocals)
+      $ \idx s -> putStrLn ("  " <> show idx <> ": " <> show s)
+    putStrLn "Stack:"
+    forM_ (reverse $ zip [0 ..] (st ^. tcStack))
+      $ \(idx :: Int, s) -> putStrLn ("  " <> show idx <> ": " <> show s)
+    putStrLn ""
+    putStrLn $ "BC:" <> show (B.offset x) <> " IX:" <> show i <> " - " <> show
+      (B.opcode x)
+debugInfo i _ _ = error $ "Could not find " <> show i
 
 -- setExceptionState ::
 --   PrimMonad m
@@ -530,58 +497,47 @@ debugInfo i _ _ = error $ "Could not find "  <> show i
 --       Just state' -> VM.write entries i state'
 --       Nothing     -> throwError (InconsistentStates i prevState _state)
 
-unifyState ::
-  TypeCheckState
-  -> TypeCheckState
-  -> Hierarchy
-  -> Maybe TypeCheckState
+unifyState
+  :: TypeCheckState -> TypeCheckState -> Hierarchy -> Maybe TypeCheckState
 unifyState stk1 stk2 _ = do
-  _tcStack <- (unify `on` view tcStack) stk1 stk2
+  _tcStack  <- (unify `on` view tcStack) stk1 stk2
   _tcLocals <- Just $ (IntMap.unionWith unify' `on` view tcLocals) stk2 stk1
-  _tcNexts <- Just $ (List.union `on` view tcNexts) stk1 stk2
-  return $ TypeCheckState {..}
-  where
-    unify' a b = case meet a b of
-      Just a' -> a'
-      Nothing -> TTop
+  _tcNexts  <- Just $ (List.union `on` view tcNexts) stk1 stk2
+  return $ TypeCheckState { .. }
+ where
+  unify' a b = case meet a b of
+    Just a' -> a'
+    Nothing -> TTop
 
-    unify (a:s1) (b:s2) = do
-      x <- meet a b
-      (x:) <$> unify s1 s2
-    unify [] s2 =
-      return s2
-    unify _ _ = Nothing
+  unify (a : s1) (b : s2) = do
+    x <- meet a b
+    (x :) <$> unify s1 s2
+  unify [] s2 = return s2
+  unify _  _  = Nothing
 
 meet :: TypeInfo -> TypeInfo -> Maybe TypeInfo
 meet = curry $ \case
-  (TBase a, TBase b)
-    | a == b    -> Just (TBase a)
-    | otherwise -> Nothing
-  (TRef as, TRef bs)
-    -> Just . TRef $ List.nub (as ++ bs)
-  (TTop, a)
-    -> Just a
-  (a, TTop)
-    -> Just a
-  _ -> Nothing
+  (TBase a, TBase b) | a == b    -> Just (TBase a)
+                     | otherwise -> Nothing
+  (TRef as, TRef bs) -> Just . TRef $ List.nub (as ++ bs)
+  (TTop   , a      ) -> Just a
+  (a      , TTop   ) -> Just a
+  _                  -> Nothing
 
 
-computeLocals ::
-  AbsMethodId
-  -> Bool
-  -> IntMap.IntMap TypeInfo
+computeLocals :: AbsMethodId -> Bool -> IntMap.IntMap TypeInfo
 computeLocals mn isStatic = do
   IntMap.fromList $ zip (scanl (\n a -> n + typeSize a) 0 types) types
-  where
-    types =
-      [ asTypeInfo (mn^.className) | not isStatic ] ++
-      (mn ^.. methodArgumentTypes.folded.to asTypeInfo)
+ where
+  types =
+    [ asTypeInfo (mn ^. className) | not isStatic ]
+      ++ (mn ^.. methodArgumentTypes . folded . to asTypeInfo)
 
 typeSize :: TypeInfo -> Int
 typeSize = \case
   TBase TDouble -> 2
-  TBase TLong -> 2
-  _ -> 1
+  TBase TLong   -> 2
+  _             -> 1
 
 --stack=1, locals=0, args_size=0
 --   0: getstatic     #1  // Field $VALUES:[Lnet/dhleong/acl/enums/AlertStatus;
@@ -593,24 +549,29 @@ typeSize = \case
 
 -- | Get an element only if it is the only one.
 _Null :: Prism' [a] ()
-_Null = prism' (const [])
+_Null = prism'
+  (const [])
   (\case
-      (List.uncons -> Nothing) -> Just ()
-      _ -> Nothing
+    (List.uncons -> Nothing) -> Just ()
+    _                        -> Nothing
   )
 
 -- | Get an element only if it is the only one.
 _Single :: Prism' [a] a
-_Single = prism' (:[])
+_Single = prism'
+  (: [])
   (\case
-      (List.uncons -> Just (a, [])) -> Just a
-      _ -> Nothing
+    (List.uncons -> Just (a, [])) -> Just a
+    _                             -> Nothing
   )
 
 -- | Given a single `Instruction` lets typecheck it.
-typecheck ::
-  forall m.
-  (MonadState TypeCheckState m, MonadReader Hierarchy m, MonadError TypeCheckError m)
+typecheck
+  :: forall m
+   . ( MonadState TypeCheckState m
+     , MonadReader Hierarchy m
+     , MonadError TypeCheckError m
+     )
   => Instruction
   -> m ()
 typecheck = \case
@@ -618,7 +579,7 @@ typecheck = \case
     pop >>= (`checkSubtypeOf` TInt)
     pop >>= isArray >>= \case
       TTop -> return ()
-      a -> a `checkSubtypeOf` r
+      a    -> a `checkSubtypeOf` r
     push r
 
   ArrayStore r -> do
@@ -628,7 +589,7 @@ typecheck = \case
 
     case at' of
       TTop -> return ()
-      a -> a `checkSubtypeOf` r
+      a    -> a `checkSubtypeOf` r
 
     b `checkSubtypeOf` at'
 
@@ -646,8 +607,8 @@ typecheck = \case
     putLocal t addr
 
   BinaryOpr _ at' -> do
-    pop >>= (`checkSubtypeOf ` at')
-    pop >>= (`checkSubtypeOf ` at')
+    pop >>= (`checkSubtypeOf` at')
+    pop >>= (`checkSubtypeOf` at')
     push at'
 
   Neg r -> do
@@ -661,10 +622,10 @@ typecheck = \case
           Two ->
             ( MLong
             , case x of
-                ShL  -> MInt
-                ShR  -> MInt
-                UShR -> MInt
-                _    -> MLong
+              ShL  -> MInt
+              ShR  -> MInt
+              UShR -> MInt
+              _    -> MLong
             )
     pop >>= (`checkSubtypeOf` at')
     pop >>= (`checkSubtypeOf` bt')
@@ -700,8 +661,7 @@ typecheck = \case
 
   If _ a off -> do
     case a of
-      B.One ->
-        pop >>= (`checkSubtypeOf` TInt)
+      B.One -> pop >>= (`checkSubtypeOf` TInt)
       B.Two -> do
         pop >>= (`checkSubtypeOf` TInt)
         pop >>= (`checkSubtypeOf` TInt)
@@ -724,7 +684,7 @@ typecheck = \case
     setNext off
 
   Ret off -> do
-    void . unpack (_TRef._Null)  =<< getLocal off
+    void . unpack (_TRef . _Null) =<< getLocal off
     -- See https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.10.2.5
     -- TODO: Do cracy jre resolution?
     noNext
@@ -738,12 +698,12 @@ typecheck = \case
   LookupSwitch def l -> do
     pop >>= (`checkSubtypeOf` TInt)
     setNext def
-    mapM_ (addNext.snd) l
+    mapM_ (addNext . snd) l
 
   Get fa fid -> do
     case fa of
       B.FldStatic -> return ()
-      B.FldField -> do
+      B.FldField  -> do
         pop >>= (`checkSubtypeOf` fid ^. className)
     push (fid ^. fieldType)
 
@@ -752,38 +712,36 @@ typecheck = \case
     pop >>= (`checkSubtypeOf` fid ^. fieldType)
     case fa of
       B.FldStatic -> return ()
-      B.FldField -> do
+      B.FldField  -> do
         pop >>= (`checkSubtypeOf` fid ^. className)
 
   Invoke a -> do
     case a of
       InvkVirtual m -> do
         popArguments m
-        pop >>= (`checkSubtypeOf` m ^.asInClass.className)
+        pop >>= (`checkSubtypeOf` m ^. asInClass . className)
         pushReturn m
       InvkStatic (B.AbsVariableMethodId _ m) -> do
         popArguments m
         pushReturn m
       InvkSpecial (B.AbsVariableMethodId _ m) -> do
         popArguments m
-        pop >>= (`checkSubtypeOf` m ^.asInClass.className)
+        pop >>= (`checkSubtypeOf` m ^. asInClass . className)
         pushReturn m
       InvkInterface _ (B.AbsInterfaceMethodId m) -> do
         popArguments m
-        pop >>= (`checkSubtypeOf` m ^.asInClass.className)
+        pop >>= (`checkSubtypeOf` m ^. asInClass . className)
         pushReturn m
       InvkDynamic (B.InvokeDynamic _ m) -> do
         popArguments m
         pushReturn m
-    where
-      popArguments :: HasMethodId a => a -> m ()
-      popArguments m =
-        forM_ (reverse $ m ^. methodArgumentTypes) $ \b -> do
-          pop >>= (`checkSubtypeOf` b)
+   where
+    popArguments :: HasMethodId a => a -> m ()
+    popArguments m = forM_ (reverse $ m ^. methodArgumentTypes) $ \b -> do
+      pop >>= (`checkSubtypeOf` b)
 
-      pushReturn :: HasMethodId a => a -> m ()
-      pushReturn m =
-        forMOf_ (methodReturnType._Just) m push
+    pushReturn :: HasMethodId a => a -> m ()
+    pushReturn m = forMOf_ (methodReturnType . _Just) m push
 
   New a -> do
     push (B.JTClass a)
@@ -812,147 +770,142 @@ typecheck = \case
     void . unpack _TRef =<< pop
     push (B.JTRef trg)
 
-  Monitor _ ->
-    void . unpack _TRef =<< pop
+  Monitor _ -> void . unpack _TRef =<< pop
 
-  Return a -> do
+  Return  a -> do
     case a of
-      Just a' ->
-        pop >>= (`checkSubtypeOf` a')
-      Nothing  ->
-        return ()
+      Just a' -> pop >>= (`checkSubtypeOf` a')
+      Nothing -> return ()
     noNext
 
-  Nop -> return ()
+  Nop      -> return ()
 
-  Pop size ->
-    case size of
-      One -> do
-        a <- pop
-        when (typeSize a == 2) $
-          fail "Trying to pop a two sized value"
-      Two -> do
-        a <- pop
-        unless (typeSize a == 2) $ do
-          b <- pop
-          when (typeSize b == 2) $
-            fail "Trying to pop a two sized value, as the second parameter"
-
-  Dup size ->
-    case size of
-      One -> do
-        a <- pop
-        when (typeSize a == 2) $
-          fail "Trying to dup a two sized value"
-        push a
-        push a
-      Two -> do
-        a <- pop
-        if typeSize a == 2
-          then do
-          push a
-          push a
-          else do
-          b <- pop
-          push b; push a; push b; push a
-
-  DupX1 size ->
-    case size of
-      One -> do
-        a <- pop
-        when (typeSize a == 2) $
-          fail "Trying to dupX1 a two sized value"
+  Pop size -> case size of
+    One -> do
+      a <- pop
+      when (typeSize a == 2) $ fail "Trying to pop a two sized value"
+    Two -> do
+      a <- pop
+      unless (typeSize a == 2) $ do
         b <- pop
-        when (typeSize b == 2) $
-          fail "Trying to skip a two sized value (dupX1)"
-        push a
-        push b
-        push a
-      Two -> do
-        a <- pop
-        if (typeSize a == 2)
-          then do
+        when (typeSize b == 2)
+          $ fail "Trying to pop a two sized value, as the second parameter"
+
+  Dup size -> case size of
+    One -> do
+      a <- pop
+      when (typeSize a == 2) $ fail "Trying to dup a two sized value"
+      push a
+      push a
+    Two -> do
+      a <- pop
+      if typeSize a == 2
+        then do
+          push a
+          push a
+        else do
           b <- pop
-          when (typeSize b == 2) $
-            fail "Trying to skip a two sized value (dupX1)"
+          push b
           push a
           push b
-          else do
+          push a
+
+  DupX1 size -> case size of
+    One -> do
+      a <- pop
+      when (typeSize a == 2) $ fail "Trying to dupX1 a two sized value"
+      b <- pop
+      when (typeSize b == 2) $ fail "Trying to skip a two sized value (dupX1)"
+      push a
+      push b
+      push a
+    Two -> do
+      a <- pop
+      if (typeSize a == 2)
+        then do
           b <- pop
-          when (typeSize b == 2) $
-            fail "Trying to dupX1 a two sized value, as the second parameter"
+          when (typeSize b == 2)
+            $ fail "Trying to skip a two sized value (dupX1)"
+          push a
+          push b
+        else do
+          b <- pop
+          when (typeSize b == 2) $ fail
+            "Trying to dupX1 a two sized value, as the second parameter"
           c <- pop
-          when (typeSize c == 2) $
-            fail "Trying to skip a two sized value (dupX1)"
+          when (typeSize c == 2)
+            $ fail "Trying to skip a two sized value (dupX1)"
           push b
           push a
           push c
           push b
-        push a
+      push a
 
-  DupX2 size ->
-    case size of
-      One -> do
-        a <- pop
-        when (typeSize a == 2) $
-          fail "Trying to dupX2 a two sized value"
-        b <- pop
-        if (typeSize b == 2)
-          then do
-          push a; push b; push a
-          else do
+  DupX2 size -> case size of
+    One -> do
+      a <- pop
+      when (typeSize a == 2) $ fail "Trying to dupX2 a two sized value"
+      b <- pop
+      if (typeSize b == 2)
+        then do
+          push a
+          push b
+          push a
+        else do
           c <- pop
-          when (typeSize c == 2) $
-            fail "Trying to skip a two sized value (dupX2), as the second parameter"
-          push a; push c; push b; push a
-      Two -> do
-        a <- pop
-        if (typeSize a == 2)
-          then do
+          when (typeSize c == 2)
+            $ fail
+                "Trying to skip a two sized value (dupX2), as the second parameter"
+          push a
+          push c
+          push b
+          push a
+    Two -> do
+      a <- pop
+      if (typeSize a == 2)
+        then do
           b <- pop
           if (typeSize b == 2)
             then do
-            push a
-            push b
-            push a
+              push a
+              push b
+              push a
             else do
-            c <- pop
-            when (typeSize c == 2) $
-              fail "Trying to skip a two sized value (dupX2)"
-            push a
-            push c
-            push b
-            push a
-          else do
+              c <- pop
+              when (typeSize c == 2)
+                $ fail "Trying to skip a two sized value (dupX2)"
+              push a
+              push c
+              push b
+              push a
+        else do
           b <- pop
-          when (typeSize b == 2) $
-            fail "Trying to copy a two sized value (dupX2) as the second parameter"
+          when (typeSize b == 2) $ fail
+            "Trying to copy a two sized value (dupX2) as the second parameter"
           c <- pop
           if (typeSize c == 2)
             then do
-            push b
-            push a
-            push c
-            push b
-            push a
+              push b
+              push a
+              push c
+              push b
+              push a
             else do
-            d <- pop
-            when (typeSize d == 2) $
-              fail "Trying to skip a two sized value (dupX2)"
-            push b
-            push a
-            push d
-            push c
-            push b
-            push a
+              d <- pop
+              when (typeSize d == 2)
+                $ fail "Trying to skip a two sized value (dupX2)"
+              push b
+              push a
+              push d
+              push c
+              push b
+              push a
 
   Swap -> do
     a <- pop
-    when (typeSize a == 2) $
-      fail "Trying to swap a two sized value"
+    when (typeSize a == 2) $ fail "Trying to swap a two sized value"
     b <- pop
-    when (typeSize b == 2) $
-      fail "Trying to swap a two sized value"
+    when (typeSize b == 2) $ fail "Trying to swap a two sized value"
     push b
     push a
 
