@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+
 {-|
 Module      : Jvmhs.Data.ClassType
 Copyright   : (c) Christian Gram Kalhauge, 2018
@@ -14,15 +15,21 @@ Maintainer  : kalhauge@cs.ucla.edu
 ClassType is a combination of the Signature, Annotation, and the
 simple ClassName.
 -}
-
 module Jvmhs.Data.Signature
   ( classTypeName
   , throwsSignatureName
   , _ThrowsClass
   , _ThrowsTypeVariable
+  , AnnotatedClassType(..)
   , module Language.JVM.Attribute.Signature
   )
 where
+
+-- base
+import           GHC.Generics                   ( Generic )
+
+-- deepseq
+import           Control.DeepSeq                ( NFData )
 
 -- aeson
 import           Data.Aeson
@@ -31,8 +38,8 @@ import           Data.Aeson
 import           Control.Lens
 
 -- text
-import           Data.Text.Lazy.Builder        as Text
 import qualified Data.Text.Lazy                as LazyText
+import           Data.Text.Lazy.Builder        as Text
 
 -- jmvhs
 import           Jvmhs.Data.Type
@@ -41,6 +48,14 @@ import           Jvmhs.Data.Type
 import           Language.JVM.Attribute.Signature
 
 makePrisms ''ThrowsSignature
+
+-- | A ClassType with annotations
+data AnnotatedClassType =
+  AnnotatedClassType
+    { _classTypeName :: ()
+    , _classTypeAnnotation :: ()
+    }
+  deriving (Eq, Show, Generic, NFData)
 
 -- | A classType getter from a ClassType
 classTypeName :: Getting f ClassType ClassName

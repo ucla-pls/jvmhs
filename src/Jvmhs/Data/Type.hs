@@ -26,11 +26,11 @@ This *will* create orhpaned instances, so do not import without
 
 -}
 module Jvmhs.Data.Type
-  ( FromJVMBinary (..)
+  ( FromJVMBinary(..)
 
   -- * ClassName
   , ClassName
-  , HasClassName (..)
+  , HasClassName(..)
   , dotCls
   , strCls
   , splitClassName
@@ -40,87 +40,81 @@ module Jvmhs.Data.Type
   , shorthand
 
   -- * MethodId
-  , MethodId (..)
-  , HasMethodId (..)
+  , MethodId(..)
+  , HasMethodId(..)
   , methodIdName
   , methodIdDescriptor
-
-  , MethodDescriptor (..)
+  , MethodDescriptor(..)
   , methodDArguments
   , methodDReturnType
-
-  , ReturnDescriptor (..)
+  , ReturnDescriptor(..)
 
   -- * FieldId
-  , FieldId (..)
-  , HasFieldId (..)
+  , FieldId(..)
+  , HasFieldId(..)
   , fieldIdName
   , fieldIdDescriptor
-
-  , FieldDescriptor (..)
+  , FieldDescriptor(..)
   , fieldDType
 
   -- * InClass and InRefType
-  , InClass (..)
+  , InClass(..)
   , inClassNameL
   , inClassIdL
-
-  , InRefType (..)
+  , InRefType(..)
   , inRefTypeL
   , inRefTypeIdL
   , asInClass
-
-  , AbsMethodId (..)
+  , AbsMethodId(..)
   , mkAbsMethodId
- 
-  , AbsFieldId (..)
+  , AbsFieldId(..)
   , mkAbsFieldId
 
 
   -- * Access Flags
-  , MAccessFlag (..)
-  , FAccessFlag (..)
-  , CAccessFlag (..)
-  , ICAccessFlag (..)
+  , MAccessFlag(..)
+  , FAccessFlag(..)
+  , CAccessFlag(..)
+  , ICAccessFlag(..)
 
   -- * Re-exports
-  , B.JValue (..)
-  , JType (..)
-  , JBaseType (..)
-  , JRefType (..)
-  , AsNameAndType (..)
-  , WithName (..)
-
+  , B.JValue(..)
+  , JType(..)
+  , JBaseType(..)
+  , JRefType(..)
+  , AsNameAndType(..)
+  , WithName(..)
   , module Language.JVM.TextSerializable
-  ) where
+  )
+where
 
 -- lens
 import           Control.Lens
 
 -- aeson
 import           Data.Aeson
-import           Data.Aeson.Encoding     (text)
+import           Data.Aeson.Encoding            ( text )
 import           Data.Aeson.TH
-import           Data.Aeson.Types        (Parser)
+import           Data.Aeson.Types               ( Parser )
 
 -- cassava
-import qualified Data.Csv as Csv
+import qualified Data.Csv                      as Csv
 
 -- bytestring
-import qualified Data.ByteString         as BS
-import qualified Data.ByteString.Char8   as C
+import qualified Data.ByteString               as BS
+import qualified Data.ByteString.Char8         as C
 
 -- hashable
 import           Data.Hashable
 
 -- base
-import qualified Data.Text               as Text
+import qualified Data.Text                     as Text
 
 -- jvm-binary
 import           Language.JVM.AccessFlag
 import           Language.JVM.TextSerializable
-import qualified Language.JVM.Constant   as B
-import  Language.JVM.Type
+import qualified Language.JVM.Constant         as B
+import           Language.JVM.Type
 
 -- * Wrap
 class FromJVMBinary b n | n -> b where
@@ -138,56 +132,48 @@ instance HasClassName ClassName where
 instance Hashable ClassName where
   hashWithSalt i a = i `hashWithSalt` (view _Wrapped a)
 
-fullyQualifiedName ::
-  Iso' ClassName Text.Text
-fullyQualifiedName =
-   _Wrapped
+fullyQualifiedName :: Iso' ClassName Text.Text
+fullyQualifiedName = _Wrapped
 {-# INLINABLE fullyQualifiedName #-}
 
 -- | Splits a ClassName in it's components
 splitClassName :: Iso' ClassName [Text.Text]
-splitClassName = fullyQualifiedName . split where
-  split = iso (Text.splitOn "/") (Text.intercalate "/")
+splitClassName = fullyQualifiedName . split
+  where split = iso (Text.splitOn "/") (Text.intercalate "/")
 {-# INLINABLE splitClassName #-}
 
 -- | Checks if an class is an Inner Class
 isInnerClass :: ClassName -> Bool
 isInnerClass = Text.any (== '$') . view fullyQualifiedName
 
-type Package = [ Text.Text ]
+type Package = [Text.Text]
 
 -- | The package name of the class name
 package :: Traversal' ClassName Package
-package =
-  splitClassName . _init
+package = splitClassName . _init
 {-# INLINABLE package #-}
 
 -- | The shorthand name of the class name
 shorthand :: Traversal' ClassName Text.Text
-shorthand =
-  splitClassName . _last
+shorthand = splitClassName . _last
 {-# INLINABLE shorthand #-}
 
 instance ToJSON ClassName where
   toJSON = String . view fullyQualifiedName
 
 instance ToJSONKey ClassName where
-  toJSONKey = ToJSONKeyText f (text . f)
-    where f = view fullyQualifiedName
+  toJSONKey = ToJSONKeyText f (text . f) where f = view fullyQualifiedName
 
 -- * NameAndType
 
 instance Hashable a => Hashable (B.NameAndType a) where
-  hashWithSalt i (B.NameAndType a b) =
-    i `hashWithSalt`
-    a `hashWithSalt`
-    b
+  hashWithSalt i (B.NameAndType a b) = i `hashWithSalt` a `hashWithSalt` b
 
 ntNameL :: Lens' (NameAndType a) Text.Text
 ntNameL = lens ntName (\(NameAndType _ b) a -> NameAndType a b)
 
 ntDescriptorL :: Lens' (NameAndType a) a
-ntDescriptorL = lens ntDescriptor (\(NameAndType a _)  b -> NameAndType a b)
+ntDescriptorL = lens ntDescriptor (\(NameAndType a _) b -> NameAndType a b)
 
 makeWrapped ''MethodId
 makeWrapped ''ReturnDescriptor
@@ -203,29 +189,23 @@ methodIdDescriptor = _Wrapped . ntDescriptorL
 -- | Get a the argument types from a method descriptor
 methodDArguments :: Lens' MethodDescriptor [JType]
 methodDArguments =
-  lens methodDescriptorArguments
-  (\md a -> md { methodDescriptorArguments = a })
+  lens methodDescriptorArguments (\md a -> md { methodDescriptorArguments = a })
 
 -- | Get a the return type from a method descriptor
 methodDReturnType :: Lens' MethodDescriptor (Maybe JType)
 methodDReturnType =
   lens methodDescriptorReturnType
-  (\md a -> md { methodDescriptorReturnType = a})
-  . _Wrapped
+       (\md a -> md { methodDescriptorReturnType = a })
+    . _Wrapped
 
 instance Hashable JBaseType where
-  hashWithSalt i a =
-    i `hashWithSalt` jBaseTypeToChar a
+  hashWithSalt i a = i `hashWithSalt` jBaseTypeToChar a
 
 instance Hashable ReturnDescriptor where
-  hashWithSalt i (ReturnDescriptor a) =
-    i `hashWithSalt` a
+  hashWithSalt i (ReturnDescriptor a) = i `hashWithSalt` a
 
 instance Hashable MethodDescriptor where
-  hashWithSalt i (MethodDescriptor a b) =
-    i `hashWithSalt`
-    a `hashWithSalt`
-    b
+  hashWithSalt i (MethodDescriptor a b) = i `hashWithSalt` a `hashWithSalt` b
 
 class HasMethodId a where
   methodId :: Lens' a MethodId
@@ -250,11 +230,11 @@ class HasMethodId a where
     methodDescriptor . methodDReturnType
   {-# INLINE methodReturnType #-}
 
-instance HasMethodId MethodId where methodId = id
+instance HasMethodId MethodId where
+  methodId = id
 
 instance Hashable MethodId where
   hashWithSalt i a = i `hashWithSalt` (view _Wrapped a)
-
 
 -- * FieldId
 
@@ -270,8 +250,7 @@ fieldIdDescriptor = _Wrapped . ntDescriptorL
 
 -- | Get the type from a field descriptor
 fieldDType :: Iso' FieldDescriptor JType
-fieldDType =
-  coerced
+fieldDType = coerced
 {-# INLINE fieldDType #-}
 
 class HasFieldId a where
@@ -290,14 +269,14 @@ class HasFieldId a where
   fieldType = fieldDescriptor . fieldDType
   {-# INLINE fieldType #-}
 
-instance HasFieldId FieldId where fieldId = id
+instance HasFieldId FieldId where
+  fieldId = id
 
 instance Hashable FieldId where
   hashWithSalt i a = i `hashWithSalt` (view _Wrapped a)
 
 instance Hashable FieldDescriptor where
-  hashWithSalt i (FieldDescriptor a) =
-    i `hashWithSalt` a
+  hashWithSalt i (FieldDescriptor a) = i `hashWithSalt` a
 
 -- * JType
 
@@ -315,10 +294,10 @@ instance Hashable JType where
 -- * InClass
 
 inClassNameL :: Lens' (InClass a) ClassName
-inClassNameL = lens inClassName (\a b -> a {inClassName = b})
+inClassNameL = lens inClassName (\a b -> a { inClassName = b })
 
 inClassIdL :: Lens (InClass a) (InClass b) a b
-inClassIdL = lens inClassId (\a b -> a {inClassId = b})
+inClassIdL = lens inClassId (\a b -> a { inClassId = b })
 
 instance HasClassName (InClass a) where
   className = inClassNameL
@@ -326,18 +305,18 @@ instance HasClassName (InClass a) where
 -- * InRefType
 
 inRefTypeL :: Lens' (InRefType a) JRefType
-inRefTypeL = lens inRefType (\a b -> a {inRefType = b})
+inRefTypeL = lens inRefType (\a b -> a { inRefType = b })
 
 inRefTypeIdL :: Lens (InRefType a) (InRefType b) a b
-inRefTypeIdL = lens inRefTypeId (\a b -> a {inRefTypeId = b})
+inRefTypeIdL = lens inRefTypeId (\a b -> a { inRefTypeId = b })
 
-asInClass :: (Profunctor p, Contravariant f)
-  => Optic' p f (InRefType a) (InClass a)
+asInClass
+  :: (Profunctor p, Contravariant f) => Optic' p f (InRefType a) (InClass a)
 asInClass = to inRefTypeAsInClass
 
 
 mkAbsFieldId :: (HasClassName b, HasFieldId a) => b -> a -> AbsFieldId
-mkAbsFieldId cn a = AbsFieldId $ InClass (cn^.className) (a^.fieldId)
+mkAbsFieldId cn a = AbsFieldId $ InClass (cn ^. className) (a ^. fieldId)
 
 makeWrapped ''AbsFieldId
 
@@ -351,10 +330,10 @@ instance HasFieldId (InRefType FieldId) where
   fieldId = inRefTypeIdL
 
 mkAbsMethodId :: (HasClassName b, HasMethodId a) => b -> a -> AbsMethodId
-mkAbsMethodId cn a = AbsMethodId $ InClass (cn^.className) (a^.methodId)
+mkAbsMethodId cn a = AbsMethodId $ InClass (cn ^. className) (a ^. methodId)
 
 makeWrapped ''AbsMethodId
- 
+
 instance HasMethodId AbsMethodId where
   methodId = _Wrapped . inClassIdL
 

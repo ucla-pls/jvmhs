@@ -114,6 +114,7 @@ import qualified Language.JVM.Attribute.Exceptions
 import qualified Language.JVM.Attribute.InnerClasses
                                                as B
 
+
 -- jvmhs
 import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.BootstrapMethod
@@ -152,15 +153,17 @@ data Class = Class
 
 -- | This is the field
 data Field = Field
-  { _fieldDesc        :: FieldId
-  -- ^ the description of the field
-  , _fieldAccessFlags :: Set.Set FAccessFlag
+  { _fieldName        :: ! Text.Text
+  -- ^ the name of the field
+  , _fieldType        :: ! AnnotatedClassType
+  -- ^ the type of the field
+  , _fieldAccessFlags :: ! (Set.Set FAccessFlag)
   -- ^ the set of access flags
-  , _fieldValue       :: Maybe JValue
+  , _fieldValue       :: ! (Maybe JValue)
   -- ^ an optional value
-  , _fieldSignature   :: Maybe FieldSignature
+  , _fieldSignature   :: ! (Maybe FieldSignature)
   -- ^ the signature of the field
-  , _fieldAnnotations :: Annotations
+  , _fieldAnnotations :: ! Annotations
   -- ^ the annotations of the field
   } deriving (Eq, Show, Generic, NFData)
 

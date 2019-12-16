@@ -1,4 +1,4 @@
-:set -fwarn-unused-binds -fwarn-unused-imports
+:set -fwarn-unused-binds -fwarn-unused-imports -fWall
 :set -isrc
 :set -itest
 :load Spec
