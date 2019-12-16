@@ -42,8 +42,6 @@ module Jvmhs.Data.Type
   -- * MethodId
   , MethodId(..)
   , HasMethodId(..)
-  , methodIdName
-  , methodIdDescriptor
   , MethodDescriptor(..)
   , methodDArguments
   , methodDReturnType
@@ -52,10 +50,7 @@ module Jvmhs.Data.Type
   -- * FieldId
   , FieldId(..)
   , HasFieldId(..)
-  , fieldIdName
-  , fieldIdDescriptor
   , FieldDescriptor(..)
-  , fieldDType
 
   -- * InClass and InRefType
   , InClass(..)
@@ -178,18 +173,11 @@ ntDescriptorL = lens ntDescriptor (\(NameAndType a _) b -> NameAndType a b)
 makeWrapped ''MethodId
 makeWrapped ''ReturnDescriptor
 
-methodIdName :: Lens' MethodId Text.Text
-methodIdName = _Wrapped . ntNameL
-{-# INLINE methodIdName #-}
-
-methodIdDescriptor :: Lens' MethodId MethodDescriptor
-methodIdDescriptor = _Wrapped . ntDescriptorL
-{-# INLINE methodIdDescriptor #-}
-
 -- | Get a the argument types from a method descriptor
 methodDArguments :: Lens' MethodDescriptor [JType]
 methodDArguments =
   lens methodDescriptorArguments (\md a -> md { methodDescriptorArguments = a })
+{-# INLINE methodDArguments #-}
 
 -- | Get a the return type from a method descriptor
 methodDReturnType :: Lens' MethodDescriptor (Maybe JType)
@@ -197,6 +185,7 @@ methodDReturnType =
   lens methodDescriptorReturnType
        (\md a -> md { methodDescriptorReturnType = a })
     . _Wrapped
+{-# INLINE methodDReturnType #-}
 
 instance Hashable JBaseType where
   hashWithSalt i a = i `hashWithSalt` jBaseTypeToChar a
@@ -210,25 +199,25 @@ instance Hashable MethodDescriptor where
 class HasMethodId a where
   methodId :: Lens' a MethodId
 
-  methodName :: Lens' a Text.Text
-  methodName = methodId . methodIdName
-  {-# INLINE methodName #-}
+  methodIdName :: Lens' a Text.Text
+  methodIdName = methodId . _Wrapped . ntNameL
+  {-# INLINE methodIdName #-}
 
-  methodDescriptor :: Lens' a MethodDescriptor
-  methodDescriptor = methodId . methodIdDescriptor
-  {-# INLINE methodDescriptor #-}
+  methodIdDescriptor :: Lens' a MethodDescriptor
+  methodIdDescriptor = methodId . _Wrapped . ntDescriptorL
+  {-# INLINE methodIdDescriptor #-}
 
   -- | Get the type of field
-  methodArgumentTypes :: Lens' a [JType]
-  methodArgumentTypes =
-    methodDescriptor . methodDArguments
-  {-# INLINE methodArgumentTypes #-}
+  methodIdArgumentTypes :: Lens' a [JType]
+  methodIdArgumentTypes =
+    methodIdDescriptor . methodDArguments
+  {-# INLINE methodIdArgumentTypes #-}
 
   -- | Get the return type
-  methodReturnType :: Lens' a (Maybe JType)
-  methodReturnType =
-    methodDescriptor . methodDReturnType
-  {-# INLINE methodReturnType #-}
+  methodIdReturnType :: Lens' a (Maybe JType)
+  methodIdReturnType =
+    methodIdDescriptor . methodDReturnType
+  {-# INLINE methodIdReturnType #-}
 
 instance HasMethodId MethodId where
   methodId = id
@@ -240,37 +229,36 @@ instance Hashable MethodId where
 
 makeWrapped ''FieldId
 
-fieldIdName :: Lens' FieldId Text.Text
-fieldIdName = _Wrapped . ntNameL
-{-# INLINE fieldIdName #-}
-
-fieldIdDescriptor :: Lens' FieldId FieldDescriptor
-fieldIdDescriptor = _Wrapped . ntDescriptorL
-{-# INLINE fieldIdDescriptor #-}
-
 -- | Get the type from a field descriptor
 fieldDType :: Iso' FieldDescriptor JType
 fieldDType = coerced
 {-# INLINE fieldDType #-}
 
 class HasFieldId a where
-  fieldId :: Lens' a FieldId
+  fieldId :: Getter a FieldId
 
-  fieldName :: Lens' a Text.Text
-  fieldName = fieldId . fieldIdName
-  {-# INLINE fieldName #-}
+  fieldIdName :: Getter a Text.Text
+  fieldIdName = fieldId . _Wrapped . ntNameL
+  {-# INLINE fieldIdName #-}
 
-  fieldDescriptor :: Lens' a FieldDescriptor
-  fieldDescriptor = fieldId . fieldIdDescriptor
-  {-# INLINE fieldDescriptor #-}
+  fieldIdDescriptor :: Getter a FieldDescriptor
+  fieldIdDescriptor = fieldId . _Wrapped . ntDescriptorL
+  {-# INLINE fieldIdDescriptor #-}
 
   -- | Get the type of field
-  fieldType :: Lens' a JType
-  fieldType = fieldDescriptor . fieldDType
-  {-# INLINE fieldType #-}
+  fieldIdType :: Getter a JType
+  fieldIdType = fieldIdDescriptor . fieldDType
+  {-# INLINE fieldIdType #-}
 
 instance HasFieldId FieldId where
   fieldId = id
+  {-# INLINE fieldId #-}
+
+  fieldIdName = _Wrapped . ntNameL
+  {-# INLINE fieldIdName #-}
+
+  fieldIdDescriptor = _Wrapped . ntDescriptorL
+  {-# INLINE fieldIdDescriptor #-}
 
 instance Hashable FieldId where
   hashWithSalt i a = i `hashWithSalt` (view _Wrapped a)

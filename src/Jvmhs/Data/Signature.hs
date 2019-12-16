@@ -84,3 +84,5 @@ instance ToJSON (ThrowsSignature) where
 
 instance ToJSON (TypeSignature) where
   toJSON = String . LazyText.toStrict . toLazyText . typeSignatureT
+
+instance ToJSON AnnotatedClassType where

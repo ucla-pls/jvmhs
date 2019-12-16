@@ -14,9 +14,13 @@ This module inspects the bytecode data structure.
 
 module Jvmhs.Inspection where
 
--- import qualified Data.Set                             as Set
+-- base
+import           Data.Foldable
+
+-- text
 import qualified Data.Text                     as Text
 
+-- lens
 import           Control.Lens
 
 import           Jvmhs.Data.Class
@@ -30,39 +34,33 @@ import qualified Language.JVM.Attribute.StackMapTable
                                                as B
 
 class Inspectable a where
-  classNames :: Traversal' a ClassName
+  classNames :: (Monoid (t ClassName)) => LensLike' (Const (t ClassName)) a ClassName
   classNames _ = pure
-
-  methodNames :: Traversal' a AbsMethodId
-  methodNames _ = pure
 
 nothing :: Traversal' a b
 nothing = const pure
 {-# INLINE nothing #-}
 
 instance Inspectable Class where
-  classNames = traverseClass id
-                             (traverse . classNames)
-                             nothing
-                             (traverse . classNames)
-                             (traverse . classNames)
-                             (traverse . classNames)
-                             (traverse . classNames)
-                             (traverse . classNames)
-                             (traverse . tuple id (_Just . classNames))
-                             (traverse . classNames)
-                             classNames
+  classNames = fold
+    [ className
+    , classTypeParameters . folded . classNames
+    , classSuper . _Just . classNames
+    , classInterfaces . folded . classNames
+    , classFields . folded . classNames
+    , classMethods . folded . classNames
+    , classBootstrapMethods . folded . classNames
+    , classEnclosingMethod . _Just . tuple id (_Just . classNames)
+    , classInnerClasses . folded . classNames
+    , classAnnotations . classNames
+    ]
 
-tuple :: Traversal' a b -> Traversal' c b -> Traversal' (a, c) b
+tuple
+  :: Applicative f => LensLike' f a b -> LensLike' f c b -> LensLike' f (a, c) b
 tuple fl fr g s = (,) <$> (fl g . fst $ s) <*> (fr g . snd $ s)
 
 instance Inspectable Field where
-  classNames = traverseField nothing
-                             classNames
-                             nothing
-                             (traverse . classNames)
-                             (traverse . classNames)
-                             classNames
+  classNames = fold [fieldType . classNames, fieldValue . _Just . classNames]
 
 instance Inspectable InnerClass where
   classNames g s =
@@ -75,38 +73,26 @@ instance Inspectable InnerClass where
 instance Inspectable Annotations where
   classNames _ = pure
 
-instance Inspectable Method where
-  classNames = traverseMethod nothing
-                              classNames
-                              nothing
-                              (traverse . classNames)
-                              (traverse . classNames)
-                              (traverse . classNames)
-                              (traverse . classNames)
-                              (traverse . classNames)
-                              classNames
+instance Inspectable AnnotatedClassType where
 
-  -- methodNames =
-  --   traverseMethod
-  --     nothing
-  --     nothing
-  --     nothing
-  --     (traverse.methodNames)
-  --     nothing
-  --     nothing
-  --     nothing
+instance Inspectable Method where
+  classNames = fold
+    [ methodParameters . folded . classNames
+    , methodReturnType . _Just . classNames
+    , methodTypeParameters . folded . classNames
+    , methodCode . _Just . classNames
+    , methodExceptions . folded . classNames
+    ]
 
 instance Inspectable BootstrapMethod where
 
 instance Inspectable Code where
-  classNames = traverseCode nothing
-                            nothing
-                            (traverse . classNames)
-                            (traverse . classNames)
-                            (traverse . classNames)
+  classNames = fold
+    [ codeByteCode . folded . classNames
+    , codeExceptionTable . folded . classNames
+    , codeStackMap . folded . classNames
+    ]
 
-  methodNames =
-    traverseCode nothing nothing (traverse . methodNames) nothing nothing
 
 instance Inspectable ByteCodeInst where
   classNames g (B.ByteCodeInst off i) = B.ByteCodeInst off <$> case i of
@@ -121,9 +107,6 @@ instance Inspectable ByteCodeInst where
     B.InstanceOf c -> B.InstanceOf <$> classNames g c
     _              -> pure i
 
-  methodNames g (B.ByteCodeInst off i) = B.ByteCodeInst off <$> case i of
-    B.Invoke r -> B.Invoke <$> methodNames g r
-    _          -> pure i
 
 instance Inspectable ExceptionHandler where
   classNames = traverseExceptionHandler nothing nothing nothing traverse
@@ -148,13 +131,6 @@ instance Inspectable (B.Invocation B.High) where
     B.InvkStatic  r     -> B.InvkStatic <$> classNames g r
     B.InvkInterface w r -> B.InvkInterface w <$> classNames g r
     B.InvkDynamic r     -> B.InvkDynamic <$> classNames g r
-
-  methodNames g o = case o of
-    B.InvkSpecial r     -> B.InvkSpecial <$> methodNames g r
-    B.InvkVirtual r     -> B.InvkVirtual <$> methodNames g r
-    B.InvkStatic  r     -> B.InvkStatic <$> methodNames g r
-    B.InvkInterface w r -> B.InvkInterface w <$> methodNames g r
-    B.InvkDynamic r     -> B.InvkDynamic <$> methodNames g r
 
 instance Inspectable JRefType where
   classNames g a = case a of
@@ -196,22 +172,14 @@ instance Inspectable B.AbsInterfaceMethodId where
   classNames g (B.AbsInterfaceMethodId x) =
     B.AbsInterfaceMethodId <$> classNames g x
 
-  methodNames g (B.AbsInterfaceMethodId x) =
-    B.AbsInterfaceMethodId <$> methodNames g x
-
 instance Inspectable B.AbsVariableMethodId where
   classNames g (B.AbsVariableMethodId b x) =
     B.AbsVariableMethodId b <$> classNames g x
 
-  -- methodNames g (B.AbsVariableMethodId b x) =
-  --   B.AbsVariableMethodId b <$> methodNames g x
 
 instance Inspectable AbsMethodId where
   classNames g (AbsMethodId a) = AbsMethodId <$> classNames g a
 
-  -- methodNames g (B.InClass cn ci) =
-  --   (\(cn', ci') -> B.InClass (cn' ^. _Binary) ( ci' ^. _Binary))
-  --   <$> g (cn ^. from _Binary, ci ^. from _Binary)
 
 instance Inspectable (B.InvokeDynamic B.High) where
   classNames g (B.InvokeDynamic i dr) = B.InvokeDynamic i <$> classNames g dr
@@ -327,5 +295,6 @@ instance Inspectable TypeSignature where
     _                -> pure t
 
 inspectAllClassNames
-  :: (Traversable f, Inspectable b) => Traversal' (f b) ClassName
-inspectAllClassNames = traverse . classNames
+  :: (Inspectable a, Foldable f, Monoid (t ClassName))
+  => LensLike' (Const (t ClassName)) (f a) ClassName
+inspectAllClassNames = folded . classNames

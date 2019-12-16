@@ -29,10 +29,21 @@ module Jvmhs.Data.Class
   ( -- * Data structures
     -- ** Class
     Class(..)
-  , className
   , classTypeName
   , classAbsFieldIds
   , classAbsMethodIds
+
+  -- *** Lenses
+  , className
+  , classTypeParameters
+  , classSuper
+  , classInterfaces
+  , classFields
+  , classMethods
+  , classBootstrapMethods
+  , classEnclosingMethod
+  , classInnerClasses
+  , classAnnotations
 
   -- *** Helpers
   , isInterface
@@ -42,13 +53,22 @@ module Jvmhs.Data.Class
 
   -- ** Field
   , Field(..)
-  , fieldId
+  , fieldName
+  , fieldType
+  , fieldAccessFlags
+  , fieldValue
 
   -- ** Method
   , Method(..)
-  , methodId
+  , methodName
+  , methodParameters
   , methodReturnType
-  , methodArgumentTypes
+  , methodTypeParameters
+  , methodAccessFlags
+  , methodCode
+  , methodExceptions
+
+  -- ** InnerClass
   , InnerClass(..)
   , innerClass
   , innerOuterClass
@@ -160,31 +180,36 @@ data Field = Field
   -- ^ the set of access flags
   , _fieldValue       :: ! (Maybe JValue)
   -- ^ an optional value
-  , _fieldSignature   :: ! (Maybe FieldSignature)
-  -- ^ the signature of the field
-  , _fieldAnnotations :: ! Annotations
-  -- ^ the annotations of the field
+  -- , _fieldSignature   :: ! (Maybe FieldSignature)
+  -- -- ^ the signature of the field
+  -- , _fieldAnnotations :: ! Annotations
+  -- -- ^ the annotations of the field
   } deriving (Eq, Show, Generic, NFData)
 
 -- | This is the method
 data Method = Method
-  { _methodDesc           :: MethodId
-  -- ^ the description of the method
-  , _methodAccessFlags    :: Set.Set MAccessFlag
-  -- ^ the set of access flags
-  , _methodCode           :: Maybe Code
-  -- ^ optionally the method can contain code
-  , _methodExceptions     :: [ ThrowsSignature ]
-  -- ^ the method can have one or more exceptions
-  , _methodTypeParameters :: [TypeParameter]
+  { _methodName           :: ! Text.Text
+  -- ^ the name of the method
+  , _methodParameters     :: ! [ AnnotatedClassType ]
+  -- ^ the method parameters
+  , _methodReturnType     :: ! (Maybe AnnotatedClassType)
+  -- ^ the method return type
+  , _methodTypeParameters :: ! [TypeParameter]
   -- ^ a method can have specific type parameters
-  , _methodArguments      :: [TypeSignature]
-  -- ^ the arguments of method
-  , _methodReturn         :: Maybe TypeSignature
-  -- ^ the return type of the method
-  , _methodAnnotations    :: Annotations
-  -- ^ the annotations of the method
+  , _methodAccessFlags    :: ! (Set.Set MAccessFlag)
+  -- ^ the set of access flags
+  , _methodCode           :: ! (Maybe Code)
+  -- ^ optionally the method can contain code
+  , _methodExceptions     :: ! [ThrowsSignature]
+  -- ^ the method can have one or more exceptions
   } deriving (Eq, Show, Generic, NFData)
+
+-- , _methodArguments      :: ! [TypeSignature]
+  -- -- ^ the arguments of method
+  -- , _methodReturn         :: ! (Maybe TypeSignature)
+  -- -- ^ the return type of the method
+  -- , _methodAnnotations    :: ! Annotations
+  -- -- ^ the annotations of the method
 
 -- | An inner class
 data InnerClass = InnerClass
@@ -212,12 +237,12 @@ instance HasClassName Class where
 
 -- | A Field has a 'FieldId'
 instance HasFieldId Field where
-  fieldId = fieldDesc
+  fieldId = undefined --  NameAndType (f ^. fieldName) (f ^. fieldType)
   {-# INLINE fieldId #-}
 
 -- | A Methhi has a 'MethodId'
 instance HasMethodId Method where
-  methodId = methodDesc
+  methodId = undefined -- 
   {-# INLINE methodId #-}
 
 
