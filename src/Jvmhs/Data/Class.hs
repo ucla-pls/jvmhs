@@ -119,7 +119,6 @@ import qualified Language.JVM.Attribute.InnerClasses
 import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
-import           Jvmhs.Data.Named
 import           Jvmhs.Data.Signature
 import           Jvmhs.Data.Type
 
