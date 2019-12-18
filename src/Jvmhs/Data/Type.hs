@@ -6,7 +6,6 @@
 {-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -125,7 +124,7 @@ instance HasClassName ClassName where
   {-# INLINE className #-}
 
 instance Hashable ClassName where
-  hashWithSalt i a = i `hashWithSalt` (view _Wrapped a)
+  hashWithSalt i a = i `hashWithSalt` view _Wrapped a
 
 fullyQualifiedName :: Iso' ClassName Text.Text
 fullyQualifiedName = _Wrapped

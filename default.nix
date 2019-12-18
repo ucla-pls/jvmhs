@@ -24,7 +24,7 @@ mkDerivation {
     transformers unordered-containers vector zip-archive
   ];
   testToolDepends = [ hspec-discover ];
-  preConfigure = "hpack";
+  prePatch = "hpack";
   homepage = "https://github.com/ucla-pls/jvmhs#readme";
   description = "A library for reading Java class-files";
   license = stdenv.lib.licenses.bsd3;

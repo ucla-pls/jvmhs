@@ -68,3 +68,4 @@ tests:
       - generic-random
       - hspec-discover
       - hspec-expectations-pretty-diff
+      - generic-random

@@ -1,77 +1,78 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Jvmhs.TypeCheckSpec where
-
-import           Data.Foldable
-
+-- 
+-- import           Data.Foldable
+-- 
 import           SpecHelper
-
-import           Jvmhs
-import           Jvmhs.TypeCheck
-
+-- 
+-- import           Jvmhs
+-- import           Jvmhs.TypeCheck
+-- 
 spec :: Spec
-spec = do
-  withJREHierarchy . describe "typecheck" $ do
-      withJREClassMethods [] "java/lang/String"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "java/lang/Object"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "java/util/ArrayList"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "java/util/HashMap"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "java/lang/Enum"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "java/util/function/BiConsumer"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "java/util/function/BiConsumer"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "com/apple/laf/ScreenMenuItemCheckbox"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "java/beans/VetoableChangeSupport"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "sun/rmi/transport/DGCImpl_Skel"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "javax/management/remote/rmi/_RMIConnection_Stub"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "sun/print/RasterPrintJob"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "com/sun/beans/TypeResolver"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "sun/print/PSPrinterJob$PrinterSpooler"
-        "can typecheck" doesTypeCheck
-
-      withJREClassMethods [] "org/omg/CORBA/CharSeqHelper"
-        "can typecheck" doesTypeCheck
-
-    where
-    doesTypeCheck :: AbsMethodId -> Method -> Hierarchy -> IO ()
-    doesTypeCheck mn mth hry =
-      forM_ (mth^.methodCode) $ \code -> do
-        case typeCheck hry mn (mth^.methodAccessFlags.contains MStatic) code of
-          (Just (i, err), res) -> do
-            forM_ [max (i-10) 0..i] $ \j ->
-              debugInfo j code res
-            expectationFailure $ "found type error: " ++ show i ++ " "++ show err
-          (Nothing, _) ->
-            return ()
-    -- doesTypeCheck' :: AbsMethodId -> Method -> Hierarchy -> IO ()
-    -- doesTypeCheck' mn mth hry =
-    --   forM_ (mth^.methodCode) $ \code -> do
-    --     r <- typeCheckDebug hry mn (mth^.methodAccessFlags.contains MStatic)  code
-    --     r `shouldSatisfy` isRight
+spec = return ()
+-- spec = do
+--   withJREHierarchy . describe "typecheck" $ do
+--       withJREClassMethods [] "java/lang/String"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "java/lang/Object"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "java/util/ArrayList"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "java/util/HashMap"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "java/lang/Enum"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "java/util/function/BiConsumer"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "java/util/function/BiConsumer"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "com/apple/laf/ScreenMenuItemCheckbox"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "java/beans/VetoableChangeSupport"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "sun/rmi/transport/DGCImpl_Skel"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "javax/management/remote/rmi/_RMIConnection_Stub"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "sun/print/RasterPrintJob"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "com/sun/beans/TypeResolver"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "sun/print/PSPrinterJob$PrinterSpooler"
+--         "can typecheck" doesTypeCheck
+-- 
+--       withJREClassMethods [] "org/omg/CORBA/CharSeqHelper"
+--         "can typecheck" doesTypeCheck
+-- 
+--     where
+--     doesTypeCheck :: AbsMethodId -> Method -> Hierarchy -> IO ()
+--     doesTypeCheck mn mth hry =
+--       forM_ (mth^.methodCode) $ \code -> do
+--         case typeCheck hry mn (mth^.methodAccessFlags.contains MStatic) code of
+--           (Just (i, err), res) -> do
+--             forM_ [max (i-10) 0..i] $ \j ->
+--               debugInfo j code res
+--             expectationFailure $ "found type error: " ++ show i ++ " "++ show err
+--           (Nothing, _) ->
+--             return ()
+--     -- doesTypeCheck' :: AbsMethodId -> Method -> Hierarchy -> IO ()
+--     -- doesTypeCheck' mn mth hry =
+--     --   forM_ (mth^.methodCode) $ \code -> do
+--     --     r <- typeCheckDebug hry mn (mth^.methodAccessFlags.contains MStatic)  code
+--     --     r `shouldSatisfy` isRight
 
 
 

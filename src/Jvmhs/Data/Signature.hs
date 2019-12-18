@@ -20,16 +20,9 @@ module Jvmhs.Data.Signature
   , throwsSignatureName
   , _ThrowsClass
   , _ThrowsTypeVariable
-  , AnnotatedClassType(..)
   , module Language.JVM.Attribute.Signature
   )
 where
-
--- base
-import           GHC.Generics                   ( Generic )
-
--- deepseq
-import           Control.DeepSeq                ( NFData )
 
 -- aeson
 import           Data.Aeson
@@ -49,13 +42,6 @@ import           Language.JVM.Attribute.Signature
 
 makePrisms ''ThrowsSignature
 
--- | A ClassType with annotations
-data AnnotatedClassType =
-  AnnotatedClassType
-    { _classTypeName :: ()
-    , _classTypeAnnotation :: ()
-    }
-  deriving (Eq, Show, Generic, NFData)
 
 -- | A classType getter from a ClassType
 classTypeName :: Getting f ClassType ClassName
@@ -84,5 +70,3 @@ instance ToJSON (ThrowsSignature) where
 
 instance ToJSON (TypeSignature) where
   toJSON = String . LazyText.toStrict . toLazyText . typeSignatureT
-
-instance ToJSON AnnotatedClassType where

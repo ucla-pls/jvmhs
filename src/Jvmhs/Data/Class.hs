@@ -26,39 +26,39 @@ To quickly access information about the class-file use the
 
 -}
 module Jvmhs.Data.Class
-  ( -- * Data structures
-    -- ** Class
+  ( -- * Class
     Class(..)
-  , classTypeName
-  , classAbsFieldIds
-  , classAbsMethodIds
 
-  -- *** Lenses
+  -- ** Lenses
   , className
   , classTypeParameters
   , classSuper
   , classInterfaces
   , classFields
   , classMethods
+  , classAccessFlags
   , classBootstrapMethods
   , classEnclosingMethod
   , classInnerClasses
   , classAnnotations
+  , classVersion
 
-  -- *** Helpers
+  -- ** Helpers
   , isInterface
-  , dependencies
   , classField
   , classMethod
+  , classAbsFieldIds
+  , classAbsMethodIds
 
-  -- ** Field
+  -- * Field
   , Field(..)
   , fieldName
   , fieldType
   , fieldAccessFlags
   , fieldValue
+  , fieldAnnotations
 
-  -- ** Method
+  -- * Method
   , Method(..)
   , methodName
   , methodParameters
@@ -68,50 +68,32 @@ module Jvmhs.Data.Class
   , methodCode
   , methodExceptions
 
-  -- ** InnerClass
+  -- * InnerClass
   , InnerClass(..)
   , innerClass
   , innerOuterClass
   , innerClassName
   , innerAccessFlags
 
-  -- * Converters
-  -- , fromClassFile
-  -- , toClassFile
-  -- , isoBinary
-
-  -- , mapAsList
-  -- , mapAsFieldList
-  -- , mapAsMethodList
-
-  -- ** Wraped Types
+  -- * Re-exports
   , CAccessFlag(..)
-  , MAccessFlag(..)
   , FAccessFlag(..)
+  , MAccessFlag(..)
   , ICAccessFlag(..)
-  , BootstrapMethod(..)
-  , Code(..)
+  , JValue(..)
   )
 where
 
 -- base
-import           Control.Monad
-import           Data.Either
 import           Data.Foldable                 as F
-import           Data.Maybe
 import           Data.Word
 import           GHC.Generics                   ( Generic )
-import           Unsafe.Coerce
 
 -- deep-seq
 import           Control.DeepSeq
 
 -- lens
 import           Control.Lens            hiding ( (.=) )
-
--- aeson
-import           Data.Aeson
-import           Data.Aeson.TH
 
 -- text
 import qualified Data.Text                     as Text
@@ -121,30 +103,16 @@ import qualified Data.Set                      as Set
 
 -- jvm-binary
 import qualified Language.JVM                  as B
-import qualified Language.JVM.Attribute.Annotations
-                                               as B
-import qualified Language.JVM.Attribute.BootstrapMethods
-                                               as B
-import qualified Language.JVM.Attribute.ConstantValue
-                                               as B
-import qualified Language.JVM.Attribute.EnclosingMethod
-                                               as B
-import qualified Language.JVM.Attribute.Exceptions
-                                               as B
-import qualified Language.JVM.Attribute.InnerClasses
-                                               as B
-
 
 -- jvmhs
 import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
-import           Jvmhs.Data.Signature
 import           Jvmhs.Data.Type
 
 -- | This is the class
 data Class = Class
-  { _classDesc             :: ClassName
+  { _className'            :: ClassName
   -- ^ the description of the class
   , _classAccessFlags      :: Set.Set CAccessFlag
   -- ^ access flags of the class
@@ -174,42 +142,33 @@ data Class = Class
 data Field = Field
   { _fieldName        :: ! Text.Text
   -- ^ the name of the field
-  , _fieldType        :: ! AnnotatedClassType
+  , _fieldType        :: ! Type
   -- ^ the type of the field
   , _fieldAccessFlags :: ! (Set.Set FAccessFlag)
   -- ^ the set of access flags
   , _fieldValue       :: ! (Maybe JValue)
   -- ^ an optional value
-  -- , _fieldSignature   :: ! (Maybe FieldSignature)
-  -- -- ^ the signature of the field
-  -- , _fieldAnnotations :: ! Annotations
-  -- -- ^ the annotations of the field
+  , _fieldAnnotations :: Annotations
+  -- ^ the annotations of the feild
   } deriving (Eq, Show, Generic, NFData)
 
 -- | This is the method
 data Method = Method
   { _methodName           :: ! Text.Text
   -- ^ the name of the method
-  , _methodParameters     :: ! [ AnnotatedClassType ]
+  , _methodParameters     :: ! [ Type ]
   -- ^ the method parameters
-  , _methodReturnType     :: ! (Maybe AnnotatedClassType)
+  , _methodReturnType     :: ! (Maybe Type)
   -- ^ the method return type
-  , _methodTypeParameters :: ! [TypeParameter]
+  , _methodTypeParameters :: ! [ TypeParameter ]
   -- ^ a method can have specific type parameters
   , _methodAccessFlags    :: ! (Set.Set MAccessFlag)
   -- ^ the set of access flags
   , _methodCode           :: ! (Maybe Code)
   -- ^ optionally the method can contain code
-  , _methodExceptions     :: ! [ThrowsSignature]
+  , _methodExceptions     :: ! [ ThrowsSignature]
   -- ^ the method can have one or more exceptions
   } deriving (Eq, Show, Generic, NFData)
-
--- , _methodArguments      :: ! [TypeSignature]
-  -- -- ^ the arguments of method
-  -- , _methodReturn         :: ! (Maybe TypeSignature)
-  -- -- ^ the return type of the method
-  -- , _methodAnnotations    :: ! Annotations
-  -- -- ^ the annotations of the method
 
 -- | An inner class
 data InnerClass = InnerClass
@@ -218,8 +177,7 @@ data InnerClass = InnerClass
   , _innerOuterClass  :: Maybe ClassName
   -- ^ The name of the other class.
   , _innerClassName   :: Maybe Text.Text
-  -- ^ The name of the inner class, as to be prependend to the
-  -- outer class.
+  -- ^ The name of the inner class, as to be prependend to the outer class.
   , _innerAccessFlags :: Set.Set ICAccessFlag
   -- ^ The access flags of the inner class.
   } deriving (Eq, Show, Generic, NFData)
@@ -232,7 +190,7 @@ makeLenses ''Method
 
 -- | A Class has a ClassName
 instance HasClassName Class where
-  className = classDesc
+  className = className'
   {-# INLINE className #-}
 
 -- | A Field has a 'FieldId'
@@ -244,7 +202,6 @@ instance HasFieldId Field where
 instance HasMethodId Method where
   methodId = undefined -- 
   {-# INLINE methodId #-}
-
 
 -- | Fold over the absolute method ids of the class
 classAbsMethodIds :: Fold Class AbsMethodId
@@ -264,346 +221,15 @@ classField fid = classFields . to (find (\a -> a ^. fieldId == fid))
 classMethod :: MethodId -> Getter Class (Maybe Method)
 classMethod mid = classMethods . to (find (\a -> a ^. methodId == mid))
 
--- | The dependencies of a class
-dependencies :: Class -> [ClassName]
-dependencies =
-  toListOf $ (classSuper . _Just <> classInterfaces . folded) . classTypeName
-
 -- | Check if a class is an interface
 isInterface :: Class -> Bool
 isInterface cls = B.CInterface `Set.member` (cls ^. classAccessFlags)
 
--- instance FromJVMBinary (B.Field B.High) Field where
---   _Binary =
---     iso toBField fromBField
---     where
---       fromBField = do
---         _name <- B.fName
---         _desc <- B.fDescriptor
---
---         _fieldAccessFlags <-
---           B.fAccessFlags
---
---         _fieldValue <-
---           Just . B.constantValue <=< B.fConstantValue
---
---         _fieldSignature <-
---           fmap (\(Signature a) ->
---                    fromRight (error $ "could not read " ++ show a)
---                    $ fieldSignatureFromText a
---                )
---           . B.fSignature
---
---         _fieldAnnotations <-
---           (readAnnotations <$> B.faVisibleAnnotations <*> B.faInvisibleAnnotations)
---           . B.fAttributes
---
---         pure (mkField (_name <:> _desc) (FieldContent {..}))
---
---       toBField =
---         B.Field
---           <$> B.BitSet . view fieldAccessFlags
---           <*> view fieldName
---           <*> view fieldDescriptor
---           <*> ( do
---                  faConstantValues <-
---                    maybeToList . fmap B.ConstantValue
---                    . view fieldValue
---
---                  faSignatures <-
---                    maybeToList . fmap (Signature . fieldSignatureToText)
---                    . view fieldSignature
---
---                  faVisibleAnnotations <-
---                    compress (B.RuntimeVisibleAnnotations . B.SizedList)
---                    . view (fieldAnnotations . visibleAnnotations)
---
---                  faInvisibleAnnotations <-
---                    compress (B.RuntimeInvisibleAnnotations . B.SizedList)
---                    . view (fieldAnnotations . invisibleAnnotations)
---
---                  faInvisibleTypeAnnotations <- pure []
---                  faVisibleTypeAnnotations <- pure []
---                  faOthers <- pure []
---
---                  pure (B.FieldAttributes {..} :: B.FieldAttributes B.High)
---              )
---
--- instance FromJVMBinary (B.Method B.High) Method where
---   _Binary = iso toBMethod fromBMethod
---     where
---       fromBMethod :: B.Method B.High -> Method
---       fromBMethod = do
---         _name <- B.mName
---         _desc <- B.mDescriptor
---
---         _methodAccessFlags <-
---           B.mAccessFlags
---
---         _methodCode <-
---           fmap fromBinaryCode . B.mCode
---
---         _defaultMethodExceptions <-
---           B.mExceptions
---
---         _methodSignature <-
---           fmap (\(Signature a) ->
---                   fromRight (error $ "could not read " ++ show a)
---                   $ methodSignatureFromText a
---                )
---           . B.mSignature
---
---         _methodAnnotations <-
---           (readAnnotations <$> B.maVisibleAnnotations <*> B.maInvisibleAnnotations)
---           . B.mAttributes
---
---         pure $ do
---           let
---             -- TODO: A method signature encoded by the Signature attribute may not
---             -- correspond exactly to the method descriptor in the method_info
---             -- structure (§4.3.3). In particular, there is no assurance that the
---             -- number of formal parameter types in the method signature is the same
---             -- as the number of parameter descriptors in the method descriptor. The
---             -- numbers are the same for most methods, but certain constructors in
---             -- the Java programming language have an implicitly declared parameter
---             -- which a compiler represents with a parameter descriptor but may omit
---             -- from the method signature. See the note in §4.7.18 for a similar
---             -- situation involving parameter annotations.
---
---
---
---             _methodExceptions =
---               zipWith (\a -> \case Just b -> b; Nothing -> throwsSignatureFromName a)
---               _defaultMethodExceptions
---               (map Just (maybe [] msThrows _methodSignature) ++ repeat Nothing)
---
---             _methodTypeParameters =
---               maybe [] msTypeParameters _methodSignature
---
---             _methodArguments =
---               maybe (map typeSignatureFromType . methodDescriptorArguments $ _desc)
---               msArguments _methodSignature
---
---             _methodReturn =
---               maybe (fmap typeSignatureFromType
---                      . asMaybeJType . methodDescriptorReturnType
---                      $ _desc)
---               msResults _methodSignature
---
---           mkMethod
---             (_name <:> _desc)
---             (MethodContent {..})
---
---
---       methodSignature :: Method -> Maybe MethodSignature
---       methodSignature = do
---         msTypeParameters <- view methodTypeParameters
---         msArguments <- view methodArguments
---         msResults <- view methodReturn
---         msThrows <- view methodExceptions
---         pure $ do
---           let x = MethodSignature {..}
---           if isSimpleMethodSignature x
---             then Nothing
---             else Just x
---
---       toBMethod :: Method -> B.Method B.High
---       toBMethod =
---         B.Method
---           <$> unsafeCoerce . view methodAccessFlags
---           <*> view methodName
---           <*> view methodDescriptor
---           <*> ( do
---                   maCode <-
---                     maybeToList . fmap toBinaryCode . view methodCode
---
---                   maVisibleAnnotations <-
---                     compress (B.RuntimeVisibleAnnotations . B.SizedList)
---                     . view (methodAnnotations . visibleAnnotations)
---
---                   maInvisibleAnnotations <-
---                     compress (B.RuntimeInvisibleAnnotations . B.SizedList)
---                     . view (methodAnnotations . invisibleAnnotations)
---
---                   maExceptions <-
---                     compress (B.Exceptions . B.SizedList)
---                     . toListOf (methodExceptions.folded.throwsSignatureName)
---
---                   maSignatures <-
---                     maybeToList . fmap (Signature . methodSignatureToText)
---                     . methodSignature
---
---                   maAnnotationDefault <- pure []
---
---                   maVisibleParameterAnnotations <- pure []
---                   maInvisibleParamterAnnotations <- pure []
---                   maVisibleTypeAnnotations <- pure []
---                   maInvisibleTypeAnnotations <- pure []
---                   maOthers <- pure []
---
---                   pure $ B.MethodAttributes {..}
---              )
---
--- instance FromJVMBinary (B.InnerClass B.High) InnerClass where
---   _Binary = iso toBInnerClass fromBInnerClass
---     where
---       fromBInnerClass =
---         InnerClass
---           <$> B.icClassName
---           <*> B.icOuterClassName
---           <*> B.icInnerName
---           <*> B.toSet . B.icInnerAccessFlags
---
---       toBInnerClass :: InnerClass -> B.InnerClass B.High
---       toBInnerClass =
---         B.InnerClass
---           <$> view innerClass
---           <*> preview (innerOuterClass . _Just)
---           <*> _innerClassName
---           <*> B.BitSet . _innerAccessFlags
 
-{-
- -fromClassFile :: B.ClassFile B.High -> Class
- -fromClassFile = do
- -  _className <- B.cThisClass
- -
- -  classSignature <-
- -    fmap (\(Signature a) ->
- -            fromRight (error $ "could not read " ++ show a) $ classSignatureFromText a
- -         ) . B.cSignature
- -
- -  let _classTypeParameters = concatMap csTypeParameters classSignature
- -
- -  _classSuper <- \cls ->
- -    case fmap csSuperclassSignature classSignature of
- -      _ | B.cThisClass cls == "java/lang/Object" ->
- -          Nothing
- -      Just sp
- -        -> Just sp
- -      Nothing
- -        ->
- -          Just . classTypeFromName $ B.cSuperClass cls
- -
- -  _classAccessFlags <-
- -    B.cAccessFlags
- -
- -  _classInterfaces <- \cls ->
- -    maybe [ classTypeFromName i | i <- toListOf (folding B.cInterfaces) cls ]
- -      csInterfaceSignatures classSignature
- -
- -  _classFields <-
- -    toListOf (folded.from _Binary) . B.cFields
- -
- -  _classMethods <-
- -    toListOf (folded.from _Binary) . B.cMethods
- -
- -  _classBootstrapMethods <-
- -    map fromBinaryBootstrapMethod . B.cBootstrapMethods
- -
- -  _classEnclosingMethod <-
- -    fmap (\e ->
- -            ( B.enclosingClassName e
- -            , B.enclosingMethodName e
- -            )
- -         ) . B.cEnclosingMethod
- -
- -  _classInnerClasses <-
- -    toListOf (folded.from _Binary) . B.cInnerClasses
- -
- -  _classAnnotations <-
- -    (readAnnotations <$> B.caVisibleAnnotations <*> B.caInvisibleAnnotations)
- -    . B.cAttributes
- -
- -  _classVersion  <-
- -    Just <$> ((,) <$> B.cMajorVersion <*> B.cMinorVersion)
- -
- -  pure $ Class (Named _className (ClassContent {..}))
- -}
-
-readAnnotations
-  :: [B.RuntimeVisibleAnnotations B.High]
-  -> [B.RuntimeInvisibleAnnotations B.High]
-  -> Annotations
-readAnnotations vis invis = Annotations
-  (concatMap (toList . B.asListOfRuntimeVisibleAnnotations) vis)
-  (concatMap (toList . B.asListOfRuntimeInvisibleAnnotations) invis)
-
-{-
- -toClassFile :: Class -> B.ClassFile B.High
- -toClassFile =
- -
- -  B.ClassFile 0xCAFEBABE
- -    <$> maybe (0 :: Word16) snd . view classVersion
- -    <*> maybe (52 :: Word16) fst . view classVersion
- -    <*> pure ()
- -    <*> B.BitSet . view classAccessFlags
- -
- -    <*> view className
- -    <*> maybe "java/lang/Object" (view classTypeName)
- -      . view classSuper
- -
- -    <*> B.SizedList . toListOf ( classInterfaces.folded.classTypeName)
- -    <*> B.SizedList . toListOf ( classFields.folded._Binary )
- -    <*> B.SizedList . toListOf ( classMethods.folded._Binary )
- -    <*> ( do
- -           caBootstrapMethods <-
- -             compress (B.BootstrapMethods . B.SizedList)
- -             . map toBinaryBootstrapMethod
- -             . view classBootstrapMethods
- -
- -           caSignature <-
- -             maybeToList
- -             . fmap (Signature . classSignatureToText)
- -             . (\cls ->
- -                 case cls^.classSuper of
- -                   Just x ->
- -                     Just $ ClassSignature (cls^.classTypeParameters) x (cls^.classInterfaces)
- -                   Nothing ->
- -                     Nothing
- -               )
- -
- -           caEnclosingMethod <-
- -             maybeToList
- -             . fmap (uncurry B.EnclosingMethod)
- -             . view classEnclosingMethod
- -
- -           caInnerClasses <-
- -             compress B.InnerClasses
- -             . map (view _Binary)
- -             . view classInnerClasses
- -
- -           caVisibleAnnotations <-
- -             compress (B.RuntimeVisibleAnnotations . B.SizedList)
- -             . view (classAnnotations . visibleAnnotations)
- -
- -           caInvisibleAnnotations <-
- -             compress (B.RuntimeInvisibleAnnotations . B.SizedList)
- -             . view (classAnnotations . invisibleAnnotations)
- -
- -           caVisibleTypeAnnotations <- pure []
- -           caInvisibleTypeAnnotations <- pure []
- -           caOthers <- pure []
- -
- -           pure $ B.ClassAttributes {..}
- -       )
- -}
-
-compress :: ([a] -> b) -> [a] -> [b]
-compress f = \case
-  [] -> []
-  as -> [f as]
-
-{-
- --- | An Isomorphism between classfiles and checked classes.
- -isoBinary :: Iso' (B.ClassFile B.High) Class
- -isoBinary =
- -  iso fromClassFile toClassFile
- -}
-
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''InnerClass)
+-- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
+-- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
+-- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
+-- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''InnerClass)
 
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
@@ -692,19 +318,3 @@ $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Inne
 --       <*> (tano  g . view methodAnnotations $ s)
 --     )
 -- {-# INLINE traverseMethod #-}
-
--- -- | Not a true iso morphism.
--- mapAsList :: Ord a => Iso' (Map.Map a b) [(a,b)]
--- mapAsList = iso Map.toList Map.fromList
-
--- mapAsFieldList :: Lens' (HashMap.HashMap FieldId FieldContent) [Field]
--- mapAsFieldList = namedMapAsList . coerced
-
--- mapAsMethodList :: Lens' (HashMap.HashMap MethodId MethodContent) [Method]
--- mapAsMethodList = namedMapAsList . coerced
-
--- classMethodList :: Lens' Class [Method]
--- classMethodList = classMethods . mapAsMethodList
-
--- classFieldList :: Lens' Class [Field]
--- classFieldList = classFields . mapAsFieldList

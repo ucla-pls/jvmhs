@@ -87,6 +87,7 @@ import qualified Language.JVM                  as B
 -- jvmhs
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Type
+import           Jvmhs.Format.ClassFile
 
 
 -- Reader options
