@@ -119,7 +119,7 @@ import qualified Data.ByteString.Lazy          as BL
 -- jvmhs
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
-import           Jvmhs.Data.Type
+import           Jvmhs.Data.Identifier
 
 -- | A Monad ClassPool is a modifiable pool of classes. It defines actions
 -- over the class pool. The monad class pool it keeps track of

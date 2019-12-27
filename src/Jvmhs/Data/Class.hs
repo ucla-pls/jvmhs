@@ -109,6 +109,7 @@ import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
+import           Jvmhs.Data.Identifier
 
 -- | This is the class
 data Class = Class

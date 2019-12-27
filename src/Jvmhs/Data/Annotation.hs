@@ -25,7 +25,6 @@ esentially extensions of the signatures defined in
 module Jvmhs.Data.Annotation where
 
 -- base
-import           Data.Char                      ( chr )
 import           GHC.Generics                   ( Generic )
 
 -- deep-seq
@@ -37,8 +36,8 @@ import qualified Data.Text                     as Text
 -- lens
 import           Control.Lens            hiding ( (.=) )
 
--- aeson
-import           Data.Aeson
+-- -- aeson
+-- import           Data.Aeson
 
 -- unordered-containers
 import qualified Data.HashMap.Strict           as HashMap
@@ -47,10 +46,6 @@ import qualified Data.HashMap.Strict           as HashMap
 import qualified Language.JVM                  as B
 import qualified Language.JVM.Attribute.Annotations
                                                as B
-import qualified Language.JVM.Attribute.Signature
-                                               as B
-
-import           Jvmhs.Data.Type
 
 -- | Annotations can either be runtime visisible or invisible.
 data Annotations = Annotations
@@ -62,6 +57,17 @@ emptyAnnotations :: Annotations
 emptyAnnotations = Annotations { _visibleAnnotations   = HashMap.empty
                                , _invisibleAnnotations = HashMap.empty
                                }
+
+data TypeAnnotation = TypeAnnotation
+  { _visibleTypeAnnotation   :: ! Annotation
+  , _invisibleTypeAnnotation :: ! Annotation
+  } deriving (Show, Eq, Generic, NFData)
+
+emptyTypeAnnotation :: TypeAnnotation
+emptyTypeAnnotation = TypeAnnotation HashMap.empty HashMap.empty
+
+class HasTypeAnnotation a where
+  typeAnnotation :: Lens' a TypeAnnotation
 
 -- | An annotation map is a map of annotation types to annotation objects.
 type AnnotationMap = HashMap.HashMap Text.Text Annotation
@@ -86,77 +92,25 @@ data AnnotationValue
   | AArray !([ AnnotationValue ])
   deriving (Show, Eq, Generic, NFData)
 
--- | This is an annotated type paramater, modeled after `B.TypeParameter`.
-data TypeParameter = TypeParameter
-  { _typeIdentifier :: ! Text.Text
-  , _typeClassBound     :: ! (Maybe ReferenceType)
-  , _typeInterfaceBound :: ! [ReferenceType]
-  } deriving (Show, Eq, Generic, NFData)
+-- instance ToJSON Annotations where
+--   toJSON Annotations {..} = object
+--     ["visible" .= _visibleAnnotations, "invisible" .= _invisibleAnnotations]
 
--- | A reference type can also be Annotated
-data ReferenceType
-  = RefClassType !ClassType
-  | RefTypeVariable !TypeVariable
-  | RefArrayType !Type
-  deriving (Show, Eq, Generic, NFData)
+-- instance ToJSON AnnotationValue where
+--   toJSON = \case
+--     AByte       a                 -> object ["byte" .= a]
+--     AChar       a                 -> object ["char" .= chr (fromIntegral a)]
+--     ADouble     a                 -> object ["double" .= a]
+--     AFloat      a                 -> object ["float" .= a]
+--     AInt        a                 -> object ["int" .= a]
+--     ALong       a                 -> object ["long" .= a]
+--     AShort      a                 -> object ["short" .= a]
+--     ABoolean    a                 -> object ["boolean" .= (a /= 0)]
+--     AString     a                 -> object ["string" .= a]
+--     AEnum       (B.EnumValue a b) -> object ["enum" .= b, "enum_class" .= a]
+--     AClass      a                 -> object ["class_info" .= a]
+--     AAnnotation (name, a) -> object ["annotation" .= name, "values" .= a]
+--     AArray      a                 -> object ["array" .= a]
 
--- | A throw signature can also be annotated
-data ThrowsSignature
-  = ThrowsClass ! ClassType
-  | ThrowsTypeVariable ! TypeVariable
-  deriving (Show, Eq, Generic, NFData)
-
--- | An 'ClassType' is interesting because it can represent inner classes
--- in different ways.
-data ClassType = ClassType
-  { _ClassTypeName :: ! Text.Text
-  , _ClassTypeBase :: ! (Maybe ClassType)
-  , _ClassTypeArguments :: [ TypeArgument ]
-  } deriving (Show, Eq, Generic, NFData)
-
-data TypeArgument
-  = AnyType
-  | TypeArgument !TypeArgumentDescription
-  deriving (Show, Eq, Generic, NFData)
-
-type Wildcard = B.Wildcard
-
-data TypeArgumentDescription = TypeArgumentDescription
-  { _typeArgWildcard :: ! (Maybe B.Wildcard)
-  , _typeArgType :: ! ReferenceType
-  } deriving (Show, Eq, Generic, NFData)
-
-newtype TypeVariable = TypeVariable
-  { _typeVariable :: Text.Text
-  } deriving (Show, Eq, Generic, NFData)
-
-data Type
-  = ReferenceType !ReferenceType
-  | BaseType !JBaseType
-  deriving (Show, Eq, Generic, NFData)
-
-
-instance ToJSON Annotations where
-  toJSON Annotations {..} = object
-    ["visible" .= _visibleAnnotations, "invisible" .= _invisibleAnnotations]
-
-instance ToJSON AnnotationValue where
-  toJSON = \case
-    AByte       a                 -> object ["byte" .= a]
-    AChar       a                 -> object ["char" .= chr (fromIntegral a)]
-    ADouble     a                 -> object ["double" .= a]
-    AFloat      a                 -> object ["float" .= a]
-    AInt        a                 -> object ["int" .= a]
-    ALong       a                 -> object ["long" .= a]
-    AShort      a                 -> object ["short" .= a]
-    ABoolean    a                 -> object ["boolean" .= (a /= 0)]
-    AString     a                 -> object ["string" .= a]
-    AEnum       (B.EnumValue a b) -> object ["enum" .= b, "enum_class" .= a]
-    AClass      a                 -> object ["class_info" .= a]
-    AAnnotation (name, a) -> object ["annotation" .= name, "values" .= a]
-    AArray      a                 -> object ["array" .= a]
-
+makeLenses ''Annotations
 makePrisms ''AnnotationValue
-makePrisms ''ThrowsSignature
-makePrisms ''ReferenceType
-makePrisms ''Type
