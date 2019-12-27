@@ -24,6 +24,7 @@ module Jvmhs.Data.Type
     JType(..)
   , JBaseType(..)
   , JRefType(..)
+  , ClassName(..)
 
   -- * Bigger types
   , Type(..)
@@ -31,10 +32,14 @@ module Jvmhs.Data.Type
 
   -- ** ClassType
   , ClassType(..)
+  , classTypeName
   , classTypeArguments
   , classTypeAnnotation
+  , classTypeInner
   , extendClassType
   , classTypeFromName
+  , innerClassTypeFromName
+  , classNameFromType
 
   -- ** Others
   , TypeParameter(..)
@@ -102,10 +107,10 @@ data ThrowsSignature
 -- | An 'ClassType' is interesting because it can represent inner classes
 -- in different ways.
 data ClassType = ClassType
-  { _ClassTypeName :: ! Text.Text
-  , _ClassTypeBase :: ! (Maybe ClassType)
-  , _ClassTypeArguments :: [ TypeArgument ]
-  , _ClassTypeAnnotation :: TypeAnnotation
+  { _classTypeName :: ! Text.Text
+  , _classTypeInner :: ! (Maybe ClassType)
+  , _classTypeArguments :: [ TypeArgument ]
+  , _classTypeAnnotation :: TypeAnnotation
   } deriving (Show, Eq, Generic, NFData)
 
 data TypeArgument
@@ -137,24 +142,25 @@ makePrisms ''Type
 classNameFromType :: ClassType -> ClassName
 classNameFromType ct =
   fromRight (error "Unexpected behaviour, please report a bug")
-    $ B.textCls (Text.intercalate "$" . reverse $ nameOf ct)
-  where nameOf t = t ^. classTypeName : maybe [] nameOf (t ^. classTypeBase)
+    $ B.textCls (Text.intercalate "$" $ nameOf ct)
+  where nameOf t = t ^. classTypeName : maybe [] nameOf (t ^. classTypeInner)
 
--- | Extend a ClassType with an inner class. This function automatically 
--- creates inner classes for the string:
-extendClassType :: Text.Text -> ClassType -> ClassType
-extendClassType n ct = uncurry
-  go
-  (fromJust . uncons . reverse . Text.split (== '$') $ n)
- where
-  go a = \case
-    []        -> ClassType a (Just ct) [] emptyTypeAnnotation
-    (a' : as) -> ClassType a (Just $ go a' as) [] emptyTypeAnnotation
+-- | Extend a ClassType with an inner classType.
+extendClassType :: ClassType -> ClassType -> ClassType
+extendClassType ct =
+  classTypeInner
+    %~ (\case
+         Just x  -> Just $ extendClassType ct x
+         Nothing -> Just $ ct
+       )
 
 -- | Creates a ClassType without any annotations and typesignatures
 classTypeFromName :: ClassName -> ClassType
-classTypeFromName ct =
-  fromJust . go . reverse . Text.split (== '$') $ classNameAsText ct
+classTypeFromName = innerClassTypeFromName . classNameAsText
+
+-- | Creates a ClassType without any annotations and typesignatures
+innerClassTypeFromName :: Text.Text -> ClassType
+innerClassTypeFromName = fromJust . go . Text.split (== '$')
  where
   go []       = Nothing
   go (a : as) = Just $ ClassType a (go as) [] emptyTypeAnnotation

@@ -10,14 +10,14 @@ module Jvmhs.Format.ClassFileSpec where
 
 import           SpecHelper
 
+import           Text.Nicify
+
 import           Test.QuickCheck
 
 import           Control.Monad
 
 import qualified Data.Set                      as Set
 
--- generic-random
-import           Generic.Random
 
 -- unordered-containers
 import qualified Data.HashMap.Strict           as HashMap
@@ -28,9 +28,10 @@ import qualified Language.JVM.Attribute.Annotations
 
 import           Jvmhs.Format.ClassFile
 import           Jvmhs.Data.Class
-import           Jvmhs.Data.Type
 import           Jvmhs.Data.Identifier
 import           Jvmhs.Data.Annotation
+
+import           Jvmhs.Data.TypeSpec
 
 spec :: Spec
 spec = do
@@ -95,30 +96,20 @@ spec_field = describe "fieldFormat" $ do
     _fieldAnnotations <- pure emptyAnnotations
     pure Field { .. }
 
-
 test_formatter :: (Eq a, Eq b, Show b, Show a) => Gen a -> Formatter a b -> Spec
 test_formatter gen PartIso { there, back } =
   prop "should be an adjunction" . forAll gen $ \a ->
-    (there >=> back >=> there) a `shouldBe` there a
+    let b  = there a
+        a' = b >>= back
+    in  counterexample
+          (  nicify (show a)
+          ++ "\n--- there --> \n"
+          ++ nicify (show b)
+          ++ "\n <-- back  --- \n"
+          ++ nicify (show a')
+          )
+          ((there =<< a') `shouldBe` there a)
 
-genTypeVariable :: Gen TypeVariable
-genTypeVariable = TypeVariable <$> elements ["A", "B", "T"]
-
-instance Arbitrary TypeVariable where
-  arbitrary = genTypeVariable
-
-instance Arbitrary ClassName where
-  arbitrary =
-    elements ["JustClass", "more/ClassName", "with/inner/Class$className"]
-
-instance Arbitrary B.JRefType where
-  arbitrary = genericArbitraryU
-
-instance Arbitrary B.JBaseType where
-  arbitrary = genericArbitraryU
-
-instance Arbitrary B.JType where
-  arbitrary = genericArbitraryU
 
 instance Arbitrary B.ReturnDescriptor where
   arbitrary = genericArbitraryU
@@ -156,45 +147,3 @@ genAnnotationValue = scale (`div` 2) $ oneof
   , AArray <$> listOf genAnnotationValue
   ]
   where genEnumValue = B.EnumValue <$> arbitrary <*> pure "enum-const-name"
-
-genBaseType :: Gen B.JBaseType
-genBaseType = genericArbitraryU
-
-genReferenceType :: Gen ReferenceType
-genReferenceType = oneof
-  [ RefClassType <$> genClassType
-  , RefTypeVariable <$> genTypeVariable
-  , RefArrayType <$> genType
-  ]
-
-genClassType :: Gen ClassType
-genClassType = sized \case
-  0 ->
-    ClassType
-      <$> elements ["A$In", "a/B"]
-      <*> pure Nothing
-      <*> listOf genTypeArgument
-      <*> pure emptyTypeAnnotation
-  n ->
-    resize (n `div` 2)
-      $   ClassType
-      <$> pure "Ot"
-      <*> (Just <$> genClassType)
-      <*> listOf genTypeArgument
-      <*> pure emptyTypeAnnotation
-
-genTypeArgument :: Gen TypeArgument
-genTypeArgument =
-  oneof [pure AnyType, TypeArgument <$> genTypeArgumentDescription]
-
-genTypeArgumentDescription :: Gen TypeArgumentDescription
-genTypeArgumentDescription =
-  TypeArgumentDescription
-    <$> (oneof [Just <$> genWildcard, pure Nothing])
-    <*> genReferenceType
-
-genWildcard :: Gen Wildcard
-genWildcard = genericArbitraryU
-
-genType :: Gen Type
-genType = oneof [ReferenceType <$> genReferenceType, BaseType <$> genBaseType]

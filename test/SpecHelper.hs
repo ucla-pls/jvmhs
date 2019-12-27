@@ -6,6 +6,7 @@ module SpecHelper
   ( module Test.Hspec.Expectations.Pretty
   , module Test.Hspec.QuickCheck
   , module Control.Lens
+  , module Generic.Random
   , liftIO
   , it
   , describe
@@ -43,6 +44,9 @@ import           Control.Monad.IO.Class
 
 import           System.Directory
 import           System.IO.Error
+
+-- generic-random
+import           Generic.Random
 
 import           Data.Maybe
 

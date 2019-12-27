@@ -3,7 +3,6 @@
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE ApplicativeDo   #-}
-{-# LANGUAGE NamedFieldPuns  #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GADTs #-}
 {-|
@@ -50,7 +49,6 @@ import qualified Language.JVM.Attribute.Annotations
                                                as B
 import qualified Language.JVM.Attribute.Signature
                                                as B
-
 
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Annotation
@@ -108,9 +106,15 @@ infixr 3 ***
   PartIso (\(a, b) -> (,) <$> f1 a <*> f2 b) (\(c, d) -> (,) <$> t1 c <*> t2 d)
 {-# INLINE (***) #-}
 
+inSecond :: Semigroup e => PartIso e b d -> PartIso e (c, b) (c, d)
+inSecond f = id *** f
+
+inFirst :: Semigroup e => PartIso e a c -> PartIso e (a, b) (c, b)
+inFirst f = f *** id
+
 -- | Change the direction of the partial isomorphism
 flipDirection :: PartIso e a b -> PartIso e b a
-flipDirection (PartIso t b) = (PartIso b t)
+flipDirection (PartIso t b) = PartIso b t
 
 -- | Create a partial isomorphism from an isomorphism
 fromIso :: (a -> b) -> (b -> a) -> PartIso e a b
@@ -233,57 +237,39 @@ typeVariableFromSignature = coerceFormat
 -- into one class.
 classTypeFromSignature :: Formatter B.ClassType ClassType
 classTypeFromSignature = PartIso
-  (\case
-    B.ClassType n ta -> do
-      ta' <- mapM (there typeArgumentFromSignature) ta
-      return $ classTypeFromName n & classTypeArguments .~ ta'
-    B.InnerClassType n ct ta -> do
-      ct' <- there classTypeFromSignature ct
-      ta' <- mapM (there typeArgumentFromSignature) ta
-      pure $ (extendClassType n ct' & classTypeArguments .~ ta')
+  (\(B.ClassType n ict ta) -> do
+    ta'  <- mapM (there typeArgumentFromSignature) ta
+    ict' <- mapM thereInnerClass ict
+    let n' = classTypeFromName n & (classTypeArguments .~ ta')
+    return $ case ict' of
+      Just i  -> extendClassType i n'
+      Nothing -> n'
   )
-  (\a -> go a >>= \case
-    Right x       -> pure x
-    Left  (n, mx) -> create [] n mx
+  (go >=> \(n, t, ta) -> do
+    nm <- validateEither (B.textCls n)
+    pure $ B.ClassType nm t ta
   )
  where
-  create ta' n = \case
-    Nothing -> do
-      nm <- validateEither (B.textCls n)
-      pure $ B.ClassType nm ta'
-    Just x -> do
-      pure $ B.InnerClassType n x ta'
-
   go
     :: ClassType
     -> Validation
          [FormatError]
-         (Either (Text.Text, Maybe B.ClassType) B.ClassType)
-  go = \case
-    ClassType n (Just a) [] _ -> go a <&> \case
-      Left  (n', y) -> Left (n' <> "$" <> n, y)
-      Right x       -> Left (n, Just x)
-    ClassType n (Just a) ta _ -> do
-      ta' <- mapM (back typeArgumentFromSignature) ta
-      go a >>= \case
-        Left  (n', mx) -> Right <$> create ta' (n' <> "$" <> n) mx
-        Right x        -> pure . Right $ B.InnerClassType n x ta'
-    ClassType n Nothing [] _ -> pure $ Left (n, Nothing)
-    ClassType n Nothing ta _ -> do
-      ta' <- mapM (back typeArgumentFromSignature) ta
-      nm  <- validateEither (B.textCls n)
-      pure . Right $ B.ClassType nm ta'
+         (Text.Text, Maybe B.InnerClassType, [Maybe B.TypeArgument])
+  go (ClassType n t ta _) = do
+    ta' <- mapM (back typeArgumentFromSignature) ta
+    traverse go t >>= \case
+      Nothing             -> pure (n, Nothing, ta')
+      Just (n'', t'', []) -> pure (n <> "$" <> n'', t'', ta')
+      Just (n'', t'', ta'') ->
+        pure (n, Just $ B.InnerClassType n'' t'' ta'', ta')
 
-
--- go ("$" <> n <> n') a
---     ClassType n (Just a) ta -> do
---       ta' <- mapM (back typeArgumentFromSignature) ta
---       a'  <- go "" a
---       pure $ B.InnerClassType n a' ta'
---     ClassType n Nothing ta -> do
---       ta' <- mapM (back typeArgumentFromSignature) ta
---       nm  <- validateEither (B.textCls (n <> n'))
---       pure $ B.ClassType nm ta'
+  thereInnerClass (B.InnerClassType n ict ta) = do
+    ta'  <- mapM (there typeArgumentFromSignature) ta
+    ict' <- mapM thereInnerClass ict
+    let n' = innerClassTypeFromName n & (classTypeArguments .~ ta')
+    return $ case ict' of
+      Just i  -> extendClassType i n'
+      Nothing -> n'
 
 typeArgumentFromSignature :: Formatter (Maybe B.TypeArgument) TypeArgument
 typeArgumentFromSignature = PartIso
@@ -402,19 +388,19 @@ mkHashMap = fromIso HashMap.fromList HashMap.toList
 
 annotationMapFormat :: Formatter [B.Annotation B.High] AnnotationMap
 annotationMapFormat =
-  mkHashMap . isomap ((id *** annotationFormat) . flipDirection mkBAnnotation)
+  mkHashMap . isomap (inSecond annotationFormat . flipDirection mkBAnnotation)
 
 mkBAnnotation
   :: Formatter (Text.Text, [B.ValuePair B.High]) (B.Annotation B.High)
 mkBAnnotation =
   fromIso (uncurry B.Annotation)
           ((,) <$> B.annotationType <*> B.annotationValuePairs)
-    . (id *** coerceFormat)
+    . (inSecond coerceFormat)
 
 annotationFormat :: Formatter [B.ValuePair B.High] Annotation
 annotationFormat =
   mkHashMap
-    . isomap ((id *** annotationValueFormat) . flipDirection mkBValuePair)
+    . isomap (inSecond annotationValueFormat . flipDirection mkBValuePair)
     . coerceFormat
  where
   mkBValuePair
@@ -439,7 +425,7 @@ annotationValueFormat = PartIso { there = valueThere, back = valueBack } where
       (t, cc) <- back mkBAnnotation a
       c       <- there annotationFormat cc
       pure $ AAnnotation (t, c)
-    B.EArrayType (B.SizedList as) -> do
+    B.EArrayType (B.SizedList as) ->
       AArray <$> there (isomap annotationValueFormat) as
 
   valueBack = \case
