@@ -14,17 +14,7 @@ import           Text.Nicify
 
 import           Test.QuickCheck
 
-import           Control.Monad
-
 import qualified Data.Set                      as Set
-
-
--- unordered-containers
-import qualified Data.HashMap.Strict           as HashMap
-
-import qualified Language.JVM                  as B
-import qualified Language.JVM.Attribute.Annotations
-                                               as B
 
 import           Jvmhs.Format.ClassFile
 import           Jvmhs.Data.Class
@@ -111,39 +101,5 @@ test_formatter gen PartIso { there, back } =
           ((there =<< a') `shouldBe` there a)
 
 
-instance Arbitrary B.ReturnDescriptor where
-  arbitrary = genericArbitraryU
-
-instance Arbitrary FieldDescriptor where
-  arbitrary = genericArbitraryU
-
 instance Arbitrary MethodDescriptor where
   arbitrary = genericArbitraryU
-
-genAnnotations :: Gen Annotations
-genAnnotations = Annotations <$> genAnnotationMap <*> genAnnotationMap
- where
-  genAnnotationMap = HashMap.fromList
-    <$> listOf (liftM2 (,) (elements ["a", "b", "c"]) genAnnotation)
-
-genAnnotation :: Gen Annotation
-genAnnotation = HashMap.fromList
-  <$> listOf (liftM2 (,) (elements ["a1", "b1", "c1"]) genAnnotationValue)
-
-genAnnotationValue :: Gen AnnotationValue
-genAnnotationValue = scale (`div` 2) $ oneof
-  [ AByte <$> arbitrary
-  , AChar <$> arbitrary
-  , ADouble <$> arbitrary
-  , AFloat <$> arbitrary
-  , AInt <$> arbitrary
-  , ALong <$> arbitrary
-  , AShort <$> arbitrary
-  , ABoolean <$> arbitrary
-  , AString <$> elements ["a-string", "a-longer-string"]
-  , AEnum <$> genEnumValue
-  , AClass <$> arbitrary
-  , AAnnotation <$> liftM2 (,) (elements ["nested"]) genAnnotation
-  , AArray <$> listOf genAnnotationValue
-  ]
-  where genEnumValue = B.EnumValue <$> arbitrary <*> pure "enum-const-name"

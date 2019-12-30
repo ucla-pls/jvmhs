@@ -22,7 +22,31 @@ esentially extensions of the signatures defined in
 
 -}
 
-module Jvmhs.Data.Annotation where
+module Jvmhs.Data.Annotation
+  ( Annotation
+  , emptyAnnotations
+  , TypeAnnotation(..)
+  , emptyTypeAnnotation
+  , Annotations(..)
+  , invisibleAnnotations
+  , visibleAnnotations
+  , AnnotationMap
+
+  -- * Annotatio nValues
+  , AnnotationValue(..)
+
+  -- * Annotated
+  , Annotated(..)
+  , annotatedContent
+  , annotatedAnnotation
+
+  -- ** Creation
+  , withNoAnnotation
+
+  -- * Re-exports
+  , B.EnumValue(..)
+  )
+where
 
 -- base
 import           GHC.Generics                   ( Generic )
@@ -66,8 +90,15 @@ data TypeAnnotation = TypeAnnotation
 emptyTypeAnnotation :: TypeAnnotation
 emptyTypeAnnotation = TypeAnnotation HashMap.empty HashMap.empty
 
-class HasTypeAnnotation a where
-  typeAnnotation :: Lens' a TypeAnnotation
+-- | A type can be annotated.
+data Annotated a = Annotated
+  { _annotatedContent :: !a
+  , _annotatedAnnotation :: TypeAnnotation
+  } deriving (Show, Eq, Generic, NFData)
+
+withNoAnnotation :: a -> Annotated a
+withNoAnnotation a = Annotated a emptyTypeAnnotation
+
 
 -- | An annotation map is a map of annotation types to annotation objects.
 type AnnotationMap = HashMap.HashMap Text.Text Annotation
@@ -114,3 +145,4 @@ data AnnotationValue
 
 makeLenses ''Annotations
 makePrisms ''AnnotationValue
+makeLenses ''Annotated

@@ -1,24 +1,33 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 module Jvmhs.Data.TypeSpec where
 
 import           SpecHelper
+import           Control.Monad
 
 import           Test.QuickCheck
 
+import qualified Data.HashMap.Strict           as HashMap
+
+import qualified Language.JVM                  as B
+
 import           Jvmhs.Data.Type
 import           Jvmhs.Data.Annotation
+
+import           Jvmhs.Data.AnnotationSpec      ( )
+
 
 spec :: Spec
 spec = do
   describe "ClassType" $ do
     let ct = ClassType
           "package/Name"
-          (Just (ClassType "Inner" Nothing [] emptyTypeAnnotation))
+          (Just (withNoAnnotation $ ClassType "Inner" Nothing []))
           []
-          emptyTypeAnnotation
     it "an inner class should be inner" $ do
       classNameFromType ct `shouldBe` "package/Name$Inner"
 
@@ -38,7 +47,7 @@ genReferenceType :: Gen ReferenceType
 genReferenceType = oneof
   [ RefClassType <$> genClassType
   , RefTypeVariable <$> genTypeVariable
-  , RefArrayType <$> genType
+  , RefArrayType <$> genArrayType
   ]
 
 genClassType :: Gen ClassType
@@ -47,19 +56,21 @@ genClassType =
     $   ClassType
     <$> elements ["A", "pkg/A", "a/B"]
     <*> genInnerClassType
-    <*> listOf genTypeArgument
-    <*> pure emptyTypeAnnotation
+    <*> listOf (genAnnotated genTypeArgument)
  where
   genInnerClassType = sized \case
     0 -> pure Nothing
     n ->
       resize (n `div` 2)
         .   fmap Just
+        .   genAnnotated
         $   ClassType
         <$> elements ["In1", "In2"]
         <*> genInnerClassType
-        <*> listOf genTypeArgument
-        <*> pure emptyTypeAnnotation
+        <*> listOf (genAnnotated genTypeArgument)
+
+genAnnotated :: Gen a -> Gen (Annotated a)
+genAnnotated f = Annotated <$> f <*> genTypeAnnotation
 
 genTypeArgument :: Gen TypeArgument
 genTypeArgument =
@@ -76,6 +87,9 @@ genWildcard = genericArbitraryU
 
 genType :: Gen Type
 genType = oneof [ReferenceType <$> genReferenceType, BaseType <$> genBaseType]
+
+genArrayType :: Gen ArrayType
+genArrayType = ArrayType <$> genAnnotated genType
 
 genTypeVariable :: Gen TypeVariable
 genTypeVariable = TypeVariable <$> elements ["A", "B", "T"]
@@ -95,3 +109,54 @@ instance Arbitrary JBaseType where
 
 instance Arbitrary JType where
   arbitrary = genericArbitraryU
+
+instance Arbitrary B.FieldDescriptor where
+  arbitrary = elements ["I", "Ljava/lang/String;"]
+
+instance Arbitrary B.ReturnDescriptor where
+  arbitrary = genericArbitraryU
+
+genTypeAnnotation :: Gen TypeAnnotation
+genTypeAnnotation = TypeAnnotation <$> genAnnotation <*> genAnnotation
+
+genAnnotation :: Gen Annotation
+genAnnotation =
+  (   HashMap.fromList
+  <$> listOf ((,) <$> elements ["A", "B", "C"] <*> genAnnotationValue)
+  )
+
+
+genAnnotations :: Gen Annotations
+genAnnotations = Annotations <$> genAnnotationMap <*> genAnnotationMap
+ where
+  genAnnotationMap = HashMap.fromList
+    <$> listOf (liftM2 (,) (elements ["a", "b", "c"]) genAnnotation)
+
+genAnnotationValue :: Gen AnnotationValue
+genAnnotationValue = scale (`div` 2) $ oneof
+  [ AByte <$> arbitrary
+  , AChar <$> arbitrary
+  , ADouble <$> arbitrary
+  , AFloat <$> arbitrary
+  , AInt <$> arbitrary
+  , ALong <$> arbitrary
+  , AShort <$> arbitrary
+  , ABoolean <$> arbitrary
+  , AString <$> elements ["some", "wierd", "strings"]
+  , AEnum <$> arbitrary
+  , AClass <$> genericArbitraryU
+  , AAnnotation <$> ((,) <$> elements ["a", "b", "c"] <*> arbitrary)
+  , AArray <$> arbitrary
+  ]
+
+instance Arbitrary TypeAnnotation where
+  arbitrary = genTypeAnnotation
+
+instance Arbitrary Annotation where
+  arbitrary = genAnnotation
+
+instance Arbitrary AnnotationValue where
+  arbitrary = genAnnotationValue
+
+instance Arbitrary (EnumValue B.High) where
+  arbitrary = EnumValue <$> arbitrary <*> elements ["one", "two", "three"]

@@ -17,6 +17,14 @@ Maintainer : kalhauge@cs.ucla.edu
 This module describes the types of Jvmhs. The types here contain both the
 signatures and anntotations of the jvm-binary package.
 
+
+
+Notes: An annotation can be repeated multiple places. For example is an annotation 
+on a field both an annotation of its type and the field itself: 
+@
+  public @A int field; -> A is on field and on type int.
+@
+
 -}
 module Jvmhs.Data.Type
   (
@@ -34,12 +42,14 @@ module Jvmhs.Data.Type
   , ClassType(..)
   , classTypeName
   , classTypeArguments
-  , classTypeAnnotation
   , classTypeInner
   , extendClassType
   , classTypeFromName
   , innerClassTypeFromName
   , classNameFromType
+
+  -- ** ArrayType
+  , ArrayType(..)
 
   -- ** Others
   , TypeParameter(..)
@@ -48,6 +58,11 @@ module Jvmhs.Data.Type
   , TypeArgument(..)
   , TypeArgumentDescription(..)
   , B.Wildcard(..)
+
+  -- * Annotations
+  -- This module uses annotations from the annotations module, we have 
+  -- re-exported Annotated here for convinence.
+  , Annotated(..)
 
   -- * Helpers
   , fromJType
@@ -72,9 +87,6 @@ import qualified Data.Text                     as Text
 -- lens
 import           Control.Lens            hiding ( (.=) )
 
--- -- aeson
--- import           Data.Aeson
-
 -- jvm-binary
 import qualified Language.JVM                  as B
 import           Language.JVM.Type
@@ -95,23 +107,31 @@ data TypeParameter = TypeParameter
 data ReferenceType
   = RefClassType !ClassType
   | RefTypeVariable !TypeVariable
-  | RefArrayType !Type
+  | RefArrayType !ArrayType
   deriving (Show, Eq, Generic, NFData)
 
 -- | A throw signature can also be annotated
 data ThrowsSignature
-  = ThrowsClass ! ClassType
-  | ThrowsTypeVariable ! TypeVariable
+  = ThrowsClass !ClassType
+  | ThrowsTypeVariable !TypeVariable
   deriving (Show, Eq, Generic, NFData)
 
 -- | An 'ClassType' is interesting because it can represent inner classes
 -- in different ways.
 data ClassType = ClassType
   { _classTypeName :: ! Text.Text
-  , _classTypeInner :: ! (Maybe ClassType)
-  , _classTypeArguments :: [ TypeArgument ]
-  , _classTypeAnnotation :: TypeAnnotation
+  , _classTypeInner :: ! (Maybe (Annotated ClassType))
+  , _classTypeArguments :: [ Annotated TypeArgument ]
   } deriving (Show, Eq, Generic, NFData)
+
+newtype ArrayType = ArrayType
+  { _arrayType :: Annotated Type
+  } deriving (Show, Eq, Generic, NFData)
+
+data Type
+  = ReferenceType !ReferenceType
+  | BaseType !JBaseType
+  deriving (Show, Eq, Generic, NFData)
 
 data TypeArgument
   = AnyType
@@ -124,13 +144,8 @@ data TypeArgumentDescription = TypeArgumentDescription
   } deriving (Show, Eq, Generic, NFData)
 
 newtype TypeVariable = TypeVariable
-  { _typeVariable :: Text.Text
+  { _typeVarName :: Text.Text
   } deriving (Show, Eq, Generic, NFData)
-
-data Type
-  = ReferenceType !ReferenceType
-  | BaseType !JBaseType
-  deriving (Show, Eq, Generic, NFData)
 
 makeLenses ''ClassType
 makePrisms ''ThrowsSignature
@@ -143,15 +158,19 @@ classNameFromType :: ClassType -> ClassName
 classNameFromType ct =
   fromRight (error "Unexpected behaviour, please report a bug")
     $ B.textCls (Text.intercalate "$" $ nameOf ct)
-  where nameOf t = t ^. classTypeName : maybe [] nameOf (t ^. classTypeInner)
+ where
+  nameOf t = t ^. classTypeName : maybe
+    []
+    nameOf
+    (t ^? classTypeInner . _Just . annotatedContent)
 
 -- | Extend a ClassType with an inner classType.
 extendClassType :: ClassType -> ClassType -> ClassType
 extendClassType ct =
   classTypeInner
-    %~ (\case
-         Just x  -> Just $ extendClassType ct x
-         Nothing -> Just $ ct
+    %~ (Just . \case
+         Just (Annotated x a) -> Annotated (extendClassType ct x) a
+         Nothing              -> withNoAnnotation ct
        )
 
 -- | Creates a ClassType without any annotations and typesignatures
@@ -163,7 +182,7 @@ innerClassTypeFromName :: Text.Text -> ClassType
 innerClassTypeFromName = fromJust . go . Text.split (== '$')
  where
   go []       = Nothing
-  go (a : as) = Just $ ClassType a (go as) [] emptyTypeAnnotation
+  go (a : as) = Just $ ClassType a (withNoAnnotation <$> go as) []
 
 -- | Convert a Type to either A TypeVariable or a simple type.
 toJType :: Type -> Either TypeVariable B.JType
@@ -178,22 +197,21 @@ fromJType = \case
   JTRef  rt -> ReferenceType (fromJRefType rt)
   JTBase bt -> BaseType bt
 
-
--- | Create a 'ReferenceType' from a 'JRefType', without any annoations 
+-- | Create a 'ReferenceType' from a 'JRefType', without any annotations 
 -- or generics.
 fromJRefType :: B.JRefType -> ReferenceType
 fromJRefType = \case
   JTClass cn  -> RefClassType $ classTypeFromName cn
-  JTArray atp -> RefArrayType $ fromJType atp
+  JTArray atp -> RefArrayType $ ArrayType (withNoAnnotation (fromJType atp))
 
 -- | Convert a ReferenceType to either a 'TypeVariable' or a simple
 -- 'B.JRefType'.
 toJRefType :: ReferenceType -> Either TypeVariable B.JRefType
 toJRefType = \case
-  RefClassType    ct  -> Right $ JTClass (classNameFromType ct)
-  RefArrayType    atp -> JTArray <$> toJType atp
-  RefTypeVariable tv  -> Left tv
+  RefClassType ct -> Right $ JTClass (classNameFromType ct)
+  RefArrayType (ArrayType (Annotated atp _)) -> JTArray <$> toJType atp
+  RefTypeVariable tv -> Left tv
 
--- addTypeAnnotation :: [B.TypePathItem] -> Annotation -> Type -> Type
+-- addTypeAnnotation :: [B.TypePathItem] -> TypeAnnotation -> Type -> Type
 -- addTypeAnnotation tpi ann tp = case tpi of
---   [] -> tp & annotation .~ ann
+--   [] -> tp & typeAnnotation .~ ann

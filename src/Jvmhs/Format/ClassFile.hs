@@ -141,32 +141,6 @@ isomap (PartIso f t) = PartIso (traverse f) (traverse t)
 type FormatError = String
 type Formatter = PartIso [FormatError]
 
--- mkField
---   :: PartIso
---        e
---        (Text.Text, Type, Set.Set FAccessFlag, Maybe JValue, Annotations)
---        Field
--- mkField = mk5
---   (\(a, b, c, d, e) -> Field a b c d e)
---   (   (,,,,)
---   <$> (view fieldName)
---   <*> (view fieldType)
---   <*> (view fieldAccessFlags)
---   <*> (view fieldValue)
---   <*> (view fieldAnnotations)
---   )
-
---  { _fieldName        :: ! Text.Text
---  -- ^ the name of the field
---  , _fieldType        :: ! AnnotatedClassType
---  -- ^ the type of the field
---  , _fieldAccessFlags :: ! (Set.Set FAccessFlag)
---  -- ^ the set of access flags
---  , _fieldValue       :: ! (Maybe JValue)
---  -- ^ an optional value
---  , _fieldAnnotations :: Annotations
---  -- ^ the annotations of the feild
-
 -- | Convert a `B.Field` to a `Field` 
 fieldFormat :: Formatter (B.Field B.High) Field
 fieldFormat = PartIso { there = fieldThere, back = fieldBack } where
@@ -208,13 +182,18 @@ referenceTypeFromSignature = PartIso
     B.RefClassType ct -> RefClassType <$> there classTypeFromSignature ct
     B.RefTypeVariable tv ->
       RefTypeVariable <$> there typeVariableFromSignature tv
-    B.RefArrayType atp -> RefArrayType <$> there typeFromSignature atp
+    B.RefArrayType atp ->
+      RefArrayType
+        .   ArrayType
+        .   withNoAnnotation
+        <$> there typeFromSignature atp
   )
   (\case
     RefClassType ct -> B.RefClassType <$> back classTypeFromSignature ct
     RefTypeVariable tv ->
       B.RefTypeVariable <$> back typeVariableFromSignature tv
-    RefArrayType atp -> B.RefArrayType <$> back typeFromSignature atp
+    RefArrayType (ArrayType (Annotated atp _)) ->
+      B.RefArrayType <$> back typeFromSignature atp
   )
 
 typeFromSignature :: Formatter B.TypeSignature Type
@@ -240,7 +219,8 @@ classTypeFromSignature = PartIso
   (\(B.ClassType n ict ta) -> do
     ta'  <- mapM (there typeArgumentFromSignature) ta
     ict' <- mapM thereInnerClass ict
-    let n' = classTypeFromName n & (classTypeArguments .~ ta')
+    let n' =
+          classTypeFromName n & (classTypeArguments .~ map withNoAnnotation ta')
     return $ case ict' of
       Just i  -> extendClassType i n'
       Nothing -> n'
@@ -255,9 +235,9 @@ classTypeFromSignature = PartIso
     -> Validation
          [FormatError]
          (Text.Text, Maybe B.InnerClassType, [Maybe B.TypeArgument])
-  go (ClassType n t ta _) = do
-    ta' <- mapM (back typeArgumentFromSignature) ta
-    traverse go t >>= \case
+  go (ClassType n t ta) = do
+    ta' <- mapM (back typeArgumentFromSignature . view annotatedContent) ta
+    traverse (go . view annotatedContent) t >>= \case
       Nothing             -> pure (n, Nothing, ta')
       Just (n'', t'', []) -> pure (n <> "$" <> n'', t'', ta')
       Just (n'', t'', ta'') ->
@@ -266,7 +246,9 @@ classTypeFromSignature = PartIso
   thereInnerClass (B.InnerClassType n ict ta) = do
     ta'  <- mapM (there typeArgumentFromSignature) ta
     ict' <- mapM thereInnerClass ict
-    let n' = innerClassTypeFromName n & (classTypeArguments .~ ta')
+    let n' =
+          innerClassTypeFromName n
+            & (classTypeArguments .~ map withNoAnnotation ta')
     return $ case ict' of
       Just i  -> extendClassType i n'
       Nothing -> n'
