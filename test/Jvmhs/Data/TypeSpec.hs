@@ -7,7 +7,6 @@
 module Jvmhs.Data.TypeSpec where
 
 import           SpecHelper
-import           Control.Monad
 
 import           Test.QuickCheck
 
@@ -70,20 +69,15 @@ genClassType =
         <*> listOf (genAnnotated genTypeArgument)
 
 genAnnotated :: Gen a -> Gen (Annotated a)
-genAnnotated f = Annotated <$> f <*> genTypeAnnotation
+genAnnotated f = Annotated <$> f <*> genAnnotations
 
 genTypeArgument :: Gen TypeArgument
-genTypeArgument =
-  oneof [pure AnyType, TypeArgument <$> genTypeArgumentDescription]
-
-genTypeArgumentDescription :: Gen TypeArgumentDescription
-genTypeArgumentDescription =
-  TypeArgumentDescription
-    <$> (oneof [Just <$> genWildcard, pure Nothing])
-    <*> genReferenceType
-
-genWildcard :: Gen Wildcard
-genWildcard = genericArbitraryU
+genTypeArgument = oneof
+  [ pure AnyTypeArg
+  , TypeArg <$> genReferenceType
+  , ExtendedTypeArg <$> genAnnotated genReferenceType
+  , ImplementedTypeArg <$> genAnnotated genReferenceType
+  ]
 
 genType :: Gen Type
 genType = oneof [ReferenceType <$> genReferenceType, BaseType <$> genBaseType]
@@ -116,21 +110,19 @@ instance Arbitrary B.FieldDescriptor where
 instance Arbitrary B.ReturnDescriptor where
   arbitrary = genericArbitraryU
 
-genTypeAnnotation :: Gen TypeAnnotation
-genTypeAnnotation = TypeAnnotation <$> genAnnotation <*> genAnnotation
-
 genAnnotation :: Gen Annotation
 genAnnotation =
-  (   HashMap.fromList
-  <$> listOf ((,) <$> elements ["A", "B", "C"] <*> genAnnotationValue)
-  )
+  Annotation
+    <$> elements ["an/annotations/Ano"]
+    <*> arbitrary
+    <*> genAnnotationMap
 
+genAnnotationMap :: Gen AnnotationMap
+genAnnotationMap = HashMap.fromList
+  <$> listOf ((,) <$> elements ["value", "item", "x"] <*> genAnnotationValue)
 
 genAnnotations :: Gen Annotations
-genAnnotations = Annotations <$> genAnnotationMap <*> genAnnotationMap
- where
-  genAnnotationMap = HashMap.fromList
-    <$> listOf (liftM2 (,) (elements ["a", "b", "c"]) genAnnotation)
+genAnnotations = listOf genAnnotation
 
 genAnnotationValue :: Gen AnnotationValue
 genAnnotationValue = scale (`div` 2) $ oneof
@@ -145,12 +137,9 @@ genAnnotationValue = scale (`div` 2) $ oneof
   , AString <$> elements ["some", "wierd", "strings"]
   , AEnum <$> arbitrary
   , AClass <$> genericArbitraryU
-  , AAnnotation <$> ((,) <$> elements ["a", "b", "c"] <*> arbitrary)
+  , AAnnotation <$> ((,) <$> elements ["a", "b", "c"] <*> genAnnotationMap)
   , AArray <$> arbitrary
   ]
-
-instance Arbitrary TypeAnnotation where
-  arbitrary = genTypeAnnotation
 
 instance Arbitrary Annotation where
   arbitrary = genAnnotation

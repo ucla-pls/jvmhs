@@ -7,7 +7,15 @@ public class Annotations {
     int b();
   };
   
-  public static @Target({ElementType.FIELD, ElementType.TYPE, ElementType.TYPE_USE}) @interface TestType {
+  public static @Target({ElementType.FIELD, ElementType.TYPE, ElementType.TYPE_USE}) @interface TestTypes {
+    TestType [] value ();
+  }
+  
+  public static @Repeatable(TestTypes.class) @Target({ElementType.FIELD, ElementType.TYPE, ElementType.TYPE_USE}) @interface TestType {
+    int value();
+  };
+  
+  public static @Target({ElementType.FIELD, ElementType.TYPE, ElementType.TYPE_USE}) @interface B {
     int value();
   };
 
@@ -16,10 +24,12 @@ public class Annotations {
   }
 
   Annotated<@TestType(0) int @TestType(1) []> x;
+  
+  Annotated<? extends Object> z;
 
   @TestType(3) int y;
 
-  @TestType(4) int m (@TestType(6) boolean b) throws @TestType(7) Exception{
+  @TestType(4) int m (@B(5) @TestType(3) @TestType(6) boolean b) throws @TestType(7) Exception{
     return 0;
   }
 }

@@ -15,33 +15,27 @@ Copyright   : (c) Christian Gram Kalhauge, 2019
 License     : BSD3
 Maintainer  : kalhauge@cs.ucla.edu
 
-This module defines the three annotated types `AnnotatedClassType` and
-`AnnotatedReferenceType`  and `AnnotatedThrowsSignature`. These modules are
-esentially extensions of the signatures defined in
-`Language.JVM.Attribute.Signature` to contain annotations.
-
 -}
 
 module Jvmhs.Data.Annotation
-  ( Annotation
-  , emptyAnnotations
-  , TypeAnnotation(..)
-  , emptyTypeAnnotation
-  , Annotations(..)
-  , invisibleAnnotations
-  , visibleAnnotations
+  ( Annotation(..)
+  , annotationType
+  , annotationIsRuntimeVisible
+  , annotationValues
   , AnnotationMap
+  , Annotations
 
-  -- * Annotatio nValues
+  -- * Annotation Values
   , AnnotationValue(..)
 
   -- * Annotated
   , Annotated(..)
   , annotatedContent
-  , annotatedAnnotation
+  , annotatedAnnotations
 
   -- ** Creation
   , withNoAnnotation
+  , getAnnotation
 
   -- * Re-exports
   , B.EnumValue(..)
@@ -54,57 +48,43 @@ import           GHC.Generics                   ( Generic )
 -- deep-seq
 import           Control.DeepSeq
 
--- text
-import qualified Data.Text                     as Text
-
 -- lens
 import           Control.Lens            hiding ( (.=) )
 
--- -- aeson
--- import           Data.Aeson
+import qualified Data.Text                     as Text
 
 -- unordered-containers
 import qualified Data.HashMap.Strict           as HashMap
+
+import           Jvmhs.Data.Identifier
 
 -- jvm-binary
 import qualified Language.JVM                  as B
 import qualified Language.JVM.Attribute.Annotations
                                                as B
 
--- | Annotations can either be runtime visisible or invisible.
-data Annotations = Annotations
-  { _visibleAnnotations   :: ! AnnotationMap
-  , _invisibleAnnotations :: ! AnnotationMap
+-- | An annotation is a map of names to values.
+data Annotation = Annotation
+  { _annotationType             :: !ClassName
+  -- ^ any field descriptor type is allowed here, but in practice only
+  -- classes are used.
+  , _annotationIsRuntimeVisible :: !Bool
+  , _annotationValues           :: !AnnotationMap
   } deriving (Show, Eq, Generic, NFData)
 
-emptyAnnotations :: Annotations
-emptyAnnotations = Annotations { _visibleAnnotations   = HashMap.empty
-                               , _invisibleAnnotations = HashMap.empty
-                               }
+  -- | An annotation map is a map of annotation types to annotation objects.
+type AnnotationMap = HashMap.HashMap Text.Text AnnotationValue
 
-data TypeAnnotation = TypeAnnotation
-  { _visibleTypeAnnotation   :: ! Annotation
-  , _invisibleTypeAnnotation :: ! Annotation
-  } deriving (Show, Eq, Generic, NFData)
-
-emptyTypeAnnotation :: TypeAnnotation
-emptyTypeAnnotation = TypeAnnotation HashMap.empty HashMap.empty
+-- | We collect annotations in a list.
+type Annotations = [Annotation]
 
 -- | A type can be annotated.
 data Annotated a = Annotated
   { _annotatedContent :: !a
-  , _annotatedAnnotation :: TypeAnnotation
+  , _annotatedAnnotations :: [Annotation]
+  -- ^ It is assumed that the list does not contain dublicates.
   } deriving (Show, Eq, Generic, NFData)
 
-withNoAnnotation :: a -> Annotated a
-withNoAnnotation a = Annotated a emptyTypeAnnotation
-
-
--- | An annotation map is a map of annotation types to annotation objects.
-type AnnotationMap = HashMap.HashMap Text.Text Annotation
-
--- | A annotation is a map of names to values.
-type Annotation = HashMap.HashMap Text.Text AnnotationValue
 
 -- | An annoation contains values which can be set using multiple types.
 data AnnotationValue
@@ -119,8 +99,10 @@ data AnnotationValue
   | AString !B.VString
   | AEnum !(B.EnumValue B.High)
   | AClass !B.ReturnDescriptor
-  | AAnnotation !(Text.Text, Annotation)
-  | AArray !([ AnnotationValue ])
+  | AAnnotation !(ClassName, AnnotationMap)
+  -- ^ Almost a complete annotation without the information about
+  -- visibility this information is inheirited from
+  | AArray ![ AnnotationValue ]
   deriving (Show, Eq, Generic, NFData)
 
 -- instance ToJSON Annotations where
@@ -143,6 +125,15 @@ data AnnotationValue
 --     AAnnotation (name, a) -> object ["annotation" .= name, "values" .= a]
 --     AArray      a                 -> object ["array" .= a]
 
-makeLenses ''Annotations
+makeLenses ''Annotation
 makePrisms ''AnnotationValue
 makeLenses ''Annotated
+
+-- | Create an annotated value with no annotations
+withNoAnnotation :: a -> Annotated a
+withNoAnnotation a = Annotated a []
+
+-- | Get an annotation with ClassName
+getAnnotation :: ClassName -> Annotated a -> Maybe Annotation
+getAnnotation cn =
+  findOf (annotatedAnnotations . folded) (view $ annotationType . to (== cn))

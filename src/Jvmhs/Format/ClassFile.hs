@@ -1,7 +1,10 @@
 {-# LANGUAGE DeriveFunctor   #-}
+{-# LANGUAGE TupleSections   #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE LambdaCase      #-}
+{-# LANGUAGE ScopedTypeVariables      #-}
+{-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE ApplicativeDo   #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GADTs #-}
@@ -24,6 +27,7 @@ import           Control.Monad
 import           Data.Coerce
 import           Data.Maybe
 import           Data.Either
+import qualified Data.List                     as List
 import           Data.Traversable
 import           Prelude                 hiding ( (.)
                                                 , id
@@ -53,7 +57,7 @@ import qualified Language.JVM.Attribute.Signature
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.Type
--- import           Jvmhs.Data.Identifier
+import           Jvmhs.Data.Identifier
 
 -- | Validation is an Either which can collect it's faliures. This
 -- is usefull when presenting this information to the user later.
@@ -108,9 +112,35 @@ infixr 3 ***
 
 inSecond :: Semigroup e => PartIso e b d -> PartIso e (c, b) (c, d)
 inSecond f = id *** f
+{-# INLINE inSecond #-}
 
 inFirst :: Semigroup e => PartIso e a c -> PartIso e (a, b) (c, b)
 inFirst f = f *** id
+{-# INLINE inFirst #-}
+
+introItem :: Eq x => x -> PartIso [String] () x
+introItem x = PartIso
+  (\() -> Success x)
+  (\x' -> if x' == x then Success () else Failure ["Const item is not returned"]
+  )
+{-# INLINE introItem #-}
+
+introFirst :: Semigroup e => PartIso e a ((), a)
+introFirst = fromIso (\a -> ((), a)) (\((), a) -> a)
+{-# INLINE introFirst #-}
+
+introSecond :: Semigroup e => PartIso e a (a, ())
+introSecond = fromIso (\a -> (a, ())) (\(a, ()) -> a)
+{-# INLINE introSecond #-}
+
+constFirst :: Eq x => x -> PartIso [String] a (x, a)
+constFirst x = inFirst (introItem x) . introFirst
+{-# INLINE constFirst #-}
+
+constSecond :: Eq x => x -> PartIso [String] a (a, x)
+constSecond x = inSecond (introItem x) . introSecond
+{-# INLINE constSecond #-}
+
 
 -- | Change the direction of the partial isomorphism
 flipDirection :: PartIso e a b -> PartIso e b a
@@ -119,6 +149,24 @@ flipDirection (PartIso t b) = PartIso b t
 -- | Create a partial isomorphism from an isomorphism
 fromIso :: (a -> b) -> (b -> a) -> PartIso e a b
 fromIso f t = PartIso (Success . f) (Success . t)
+
+-- | Create a partial isomorphism from an isomorphism
+fromPrism :: Prism' a b -> PartIso e (Maybe a) (Maybe b)
+fromPrism _P = fromIso
+  (\case
+    Nothing -> Nothing
+    Just a  -> preview _P a
+  )
+  (\case
+    Nothing -> Nothing
+    Just a  -> Just (review _P a)
+  )
+
+-- | Create a partial isomorphism from an isomorphism
+fromPrism' :: (a -> Validation e b) -> Prism' a b -> PartIso e a b
+fromPrism' err _P =
+  PartIso (\a -> maybe (err a) Success . preview _P $ a) (Success . review _P)
+
 
 -- | Anything that can be coerced is an isomorphism.
 coerceFormat :: (Coercible a b, Coercible b a) => PartIso e a b
@@ -140,6 +188,12 @@ isomap (PartIso f t) = PartIso (traverse f) (traverse t)
 
 type FormatError = String
 type Formatter = PartIso [FormatError]
+
+methodFormat :: Formatter (B.Method B.High) Method
+methodFormat = PartIso methodThere methodBack where
+  methodThere = undefined
+
+  methodBack  = undefined
 
 -- | Convert a `B.Field` to a `Field` 
 fieldFormat :: Formatter (B.Field B.High) Field
@@ -168,125 +222,29 @@ fieldFormat = PartIso { there = fieldThere, back = fieldBack } where
 withDefaultF :: Formatter (a, Maybe a) a
 withDefaultF = fromIso (\(a, ma) -> fromMaybe a ma) (\a -> (a, Just a))
 
-typeFromJTypeFormat :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
-typeFromJTypeFormat fn = fromIso fromJType (either (B.JTRef . fn) id . toJType)
-
-referenceTypeFromJRefTypeFormat
-  :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
-referenceTypeFromJRefTypeFormat fn =
-  fromIso fromJType (either (B.JTRef . fn) id . toJType)
-
-referenceTypeFromSignature :: Formatter B.ReferenceType ReferenceType
-referenceTypeFromSignature = PartIso
-  (\case
-    B.RefClassType ct -> RefClassType <$> there classTypeFromSignature ct
-    B.RefTypeVariable tv ->
-      RefTypeVariable <$> there typeVariableFromSignature tv
-    B.RefArrayType atp ->
-      RefArrayType
-        .   ArrayType
-        .   withNoAnnotation
-        <$> there typeFromSignature atp
-  )
-  (\case
-    RefClassType ct -> B.RefClassType <$> back classTypeFromSignature ct
-    RefTypeVariable tv ->
-      B.RefTypeVariable <$> back typeVariableFromSignature tv
-    RefArrayType (ArrayType (Annotated atp _)) ->
-      B.RefArrayType <$> back typeFromSignature atp
-  )
-
-typeFromSignature :: Formatter B.TypeSignature Type
-typeFromSignature = PartIso
-  (\case
-    B.ReferenceType r -> ReferenceType <$> there referenceTypeFromSignature r
-    B.BaseType      b -> pure $ BaseType b
-  )
-  (\case
-    ReferenceType r -> B.ReferenceType <$> back referenceTypeFromSignature r
-    BaseType      b -> pure $ B.BaseType b
-  )
-
-typeVariableFromSignature :: Formatter B.TypeVariable TypeVariable
-typeVariableFromSignature = coerceFormat
-
--- | Create a classType from a signature. The semantics of this construct
--- changes meaning. The ClassType defined in this library have slots for
--- all innerclasses. Where the original compresses the last innerclasses
--- into one class.
-classTypeFromSignature :: Formatter B.ClassType ClassType
-classTypeFromSignature = PartIso
-  (\(B.ClassType n ict ta) -> do
-    ta'  <- mapM (there typeArgumentFromSignature) ta
-    ict' <- mapM thereInnerClass ict
-    let n' =
-          classTypeFromName n & (classTypeArguments .~ map withNoAnnotation ta')
-    return $ case ict' of
-      Just i  -> extendClassType i n'
-      Nothing -> n'
-  )
-  (go >=> \(n, t, ta) -> do
-    nm <- validateEither (B.textCls n)
-    pure $ B.ClassType nm t ta
+fieldTypeFormat
+  :: Formatter
+       ([(TypePath, Annotation)], (B.FieldDescriptor, [B.Signature B.High]))
+       (Annotated Type)
+fieldTypeFormat = annotateType . inSecond
+  ( withDefaultF
+  . (   (typeFromJTypeFormat (const "Ljava/lang/Object;") . coerceFormat)
+    *** fieldTypeFromSignature
+    )
   )
  where
-  go
-    :: ClassType
-    -> Validation
-         [FormatError]
-         (Text.Text, Maybe B.InnerClassType, [Maybe B.TypeArgument])
-  go (ClassType n t ta) = do
-    ta' <- mapM (back typeArgumentFromSignature . view annotatedContent) ta
-    traverse (go . view annotatedContent) t >>= \case
-      Nothing             -> pure (n, Nothing, ta')
-      Just (n'', t'', []) -> pure (n <> "$" <> n'', t'', ta')
-      Just (n'', t'', ta'') ->
-        pure (n, Just $ B.InnerClassType n'' t'' ta'', ta')
+  fieldTypeFromSignature :: Formatter [B.Signature B.High] (Maybe Type)
+  fieldTypeFromSignature =
+    (flipDirection $ fromPrism _ReferenceType)
+      . isomap (referenceTypeFromSignature . signatureFormat)
+      . singletonList
 
-  thereInnerClass (B.InnerClassType n ict ta) = do
-    ta'  <- mapM (there typeArgumentFromSignature) ta
-    ict' <- mapM thereInnerClass ict
-    let n' =
-          innerClassTypeFromName n
-            & (classTypeArguments .~ map withNoAnnotation ta')
-    return $ case ict' of
-      Just i  -> extendClassType i n'
-      Nothing -> n'
+  annotateType :: Formatter ([(TypePath, Annotation)], Type) (Annotated Type)
+  annotateType = PartIso anThere anBack   where
+    anThere (t, p) = validateEither $ setTypeAnnotations t p
+    anBack a = Success (getTypeAnnotations a, view annotatedContent a)
 
-typeArgumentFromSignature :: Formatter (Maybe B.TypeArgument) TypeArgument
-typeArgumentFromSignature = PartIso
-  (\case
-    Just (B.TypeArgument mw rt) -> do
-      rt' <- there referenceTypeFromSignature rt
-      pure $ TypeArgument (TypeArgumentDescription mw rt')
-    Nothing -> pure AnyType
-  )
-  (\case
-    AnyType -> pure $ Nothing
-    TypeArgument (TypeArgumentDescription mw rt) -> do
-      rt' <- back referenceTypeFromSignature rt
-      pure $ Just (B.TypeArgument mw rt')
-  )
 
-fieldTypeFormat :: Formatter (B.FieldDescriptor, [B.Signature B.High]) Type
-fieldTypeFormat =
-  withDefaultF
-    . (   (typeFromJTypeFormat (const "Ljava/lang/Object;") . coerceFormat)
-      *** ( fromIso
-              (\case
-                Just a  -> Just (ReferenceType a)
-                Nothing -> Nothing
-              )
-              (\case
-                Just (ReferenceType a) -> Just a
-                Just (BaseType      _) -> Nothing
-                Nothing                -> Nothing
-              )
-          . isomap (referenceTypeFromSignature . signatureFormat)
-          . singletonList
-          )
-      )
- where
   signatureFormat :: Formatter (B.Signature B.High) B.ReferenceType
   signatureFormat =
     coerceFormat . textSerialize @B.FieldSignature . coerceFormat
@@ -294,31 +252,34 @@ fieldTypeFormat =
 fieldAttributesFormat
   :: Formatter
        (B.FieldDescriptor, B.FieldAttributes B.High)
-       ((Maybe JValue, Annotations), Type)
-fieldAttributesFormat = (id *** fieldTypeFormat)
-  . PartIso { there = attrThere, back = attrBack }
- where
-
+       ((Maybe JValue, Annotations), Annotated Type)
+fieldAttributesFormat = inSecond fieldTypeFormat . PartIso attrThere attrBack where
   attrThere (fdesc, fattr) = do
     mjv <- there constantValueFormat (B.faConstantValues fattr)
     ann <- there
-      annotationsFormat
+      runtimeAnnotationsFormat
       (B.faVisibleAnnotations fattr, B.faInvisibleAnnotations fattr)
 
-    pure ((mjv, ann), (fdesc, B.faSignatures fattr))
+    tpann <- there
+      (typeAnnotationsFormat @B.FieldTypeAnnotation)
+      (B.faVisibleTypeAnnotations fattr, B.faInvisibleTypeAnnotations fattr)
 
-  attrBack ((mjv, ann), (fdesc, faSignatures)) = do
+    pure ((mjv, ann), (map (view _2) tpann, (fdesc, B.faSignatures fattr)))
+
+  attrBack ((mjv, ann), (tpann, (fdesc, faSignatures))) = do
     faConstantValues <- back constantValueFormat mjv
 
-    (faVisibleAnnotations, faInvisibleAnnotations) <- back annotationsFormat ann
+    (faVisibleAnnotations, faInvisibleAnnotations) <- back
+      runtimeAnnotationsFormat
+      ann
 
-    let faVisibleTypeAnnotations   = []
-        faInvisibleTypeAnnotations = []
-        faOthers                   = []
+    (faVisibleTypeAnnotations, faInvisibleTypeAnnotations) <- back
+      (typeAnnotationsFormat @B.FieldTypeAnnotation)
+      (map (B.FieldTypeAnnotation, ) tpann)
+
+    let faOthers = []
 
     pure (fdesc, B.FieldAttributes { .. })
-
-
 
 textSerialize :: B.TextSerializable a => Formatter Text.Text a
 textSerialize = PartIso (validateEither . B.deserialize) (pure . B.serialize)
@@ -345,49 +306,134 @@ singletonList = fromIso listToMaybe maybeToList
 
 
 -- | a converation between annotations 
-annotationsFormat
+runtimeAnnotationsFormat
   :: Formatter
        ( [B.RuntimeVisibleAnnotations B.High]
        , [B.RuntimeInvisibleAnnotations B.High]
        )
        Annotations
-annotationsFormat =
-  mkAnnotations
+runtimeAnnotationsFormat =
+  flipDirection (partitionList (view annotationIsRuntimeVisible))
     . (runtimeVisibleAnnotationsFormat *** runtimeInvisibleAnnotationsFormat)
  where
   runtimeVisibleAnnotationsFormat
-    :: Formatter [B.RuntimeVisibleAnnotations B.High] AnnotationMap
+    :: Formatter [B.RuntimeVisibleAnnotations B.High] Annotations
   runtimeVisibleAnnotationsFormat =
-    annotationMapFormat . compressList coerceFormat
+    annotationsFormat True . compressList coerceFormat
 
   runtimeInvisibleAnnotationsFormat
-    :: Formatter [B.RuntimeInvisibleAnnotations B.High] AnnotationMap
+    :: Formatter [B.RuntimeInvisibleAnnotations B.High] Annotations
   runtimeInvisibleAnnotationsFormat =
-    annotationMapFormat . compressList coerceFormat
+    annotationsFormat False . compressList coerceFormat
+
+
+typeAnnotationsFormat
+  :: forall a
+   . Formatter
+    ( [B.RuntimeVisibleTypeAnnotations a B.High]
+    , [B.RuntimeInvisibleTypeAnnotations a B.High]
+    )
+    [(a B.High, (TypePath, Annotation))]
+typeAnnotationsFormat =
+  flipDirection (partitionList (view (_2 . _2 . annotationIsRuntimeVisible)))
+    . (runtimeVisibleAnnotationsFormat *** runtimeInvisibleAnnotationsFormat)
+ where
+  runtimeVisibleAnnotationsFormat
+    :: Formatter
+         [B.RuntimeVisibleTypeAnnotations a B.High]
+         [(a B.High, (TypePath, Annotation))]
+
+  runtimeVisibleAnnotationsFormat =
+    isomap (typeAnnotationFormat True) . compressList coerceFormat
+
+  runtimeInvisibleAnnotationsFormat
+    :: Formatter
+         [B.RuntimeInvisibleTypeAnnotations a B.High]
+         [(a B.High, (TypePath, Annotation))]
+
+  runtimeInvisibleAnnotationsFormat =
+    isomap (typeAnnotationFormat False) . compressList coerceFormat
+
+
+  typeAnnotationFormat
+    :: Bool
+    -> Formatter
+         (B.TypeAnnotation a B.High)
+         (a B.High, (TypePath, Annotation))
+  typeAnnotationFormat visible =
+    inSecond (inSecond (mkAnnotation . annotationMapFormat))
+      . flipDirection mkBTypeAnnotation
+
+   where
+    mkAnnotation :: Formatter (ClassName, AnnotationMap) Annotation
+    mkAnnotation = fromIso (\(a, c) -> Annotation a visible c)
+                           (\(Annotation a _ c) -> (a, c))
+
+    mkBTypeAnnotation
+      :: Formatter
+           (a B.High, (TypePath, (FieldDescriptor, [B.ValuePair B.High])))
+           (B.TypeAnnotation a B.High)
+    mkBTypeAnnotation = fromIso
+      (\(a, (tp, (fd, vm))) -> B.TypeAnnotation a tp fd (B.SizedList vm))
+      (\(B.TypeAnnotation a tp fd vm) -> (a, (tp, (fd, (B.unSizedList vm)))))
+
+
+partitionList :: (a -> Bool) -> PartIso e [a] ([a], [a])
+partitionList p = fromIso (List.partition p) (uncurry (++))
 
 mkHashMap :: (Eq a, Hashable a) => Formatter [(a, b)] (HashMap.HashMap a b)
 mkHashMap = fromIso HashMap.fromList HashMap.toList
 
-annotationMapFormat :: Formatter [B.Annotation B.High] AnnotationMap
+annotationMapFormat
+  :: Formatter
+       (FieldDescriptor, [B.ValuePair B.High])
+       (ClassName, AnnotationMap)
 annotationMapFormat =
-  mkHashMap . isomap (inSecond annotationFormat . flipDirection mkBAnnotation)
+  (   (expectClass . coerceFormat)
+  *** (mkHashMap . isomap
+        (inSecond annotationValueFormat . flipDirection mkBValuePair)
+      )
+  )
+ where
+  mkBValuePair
+    :: Formatter (Text.Text, B.ElementValue B.High) (B.ValuePair B.High)
+  mkBValuePair = fromIso (uncurry B.ValuePair) ((,) <$> B.name <*> B.value)
+
+  expectClass :: Formatter JType ClassName
+  expectClass = fromPrism'
+    (\a -> Failure
+      [ "Expected all annotation types to be classes but got "
+        ++ show a
+        ++ ", please report a bug."
+      ]
+    )
+    (_JTRef . _JTClass)
+
+annotationsFormat :: Bool -> Formatter [B.Annotation B.High] Annotations
+annotationsFormat visible =
+  isomap (mkAnnotation . annotationMapFormat . flipDirection mkBAnnotation)
+    . coerceFormat
+
+ where
+  mkAnnotation :: Formatter (ClassName, AnnotationMap) Annotation
+  mkAnnotation =
+    fromIso (\(a, c) -> Annotation a visible c) (\(Annotation a _ c) -> (a, c))
+
+
+
+--   -- | Create annotations
+-- mkAnnotations :: PartIso e (AnnotationMap, AnnotationMap) Annotations
+-- mkAnnotations = fromIso
+--   (uncurry Annotations)
+--   ((,) <$> view visibleAnnotations <*> view invisibleAnnotations)
 
 mkBAnnotation
-  :: Formatter (Text.Text, [B.ValuePair B.High]) (B.Annotation B.High)
+  :: Formatter (FieldDescriptor, [B.ValuePair B.High]) (B.Annotation B.High)
 mkBAnnotation =
   fromIso (uncurry B.Annotation)
           ((,) <$> B.annotationType <*> B.annotationValuePairs)
     . (inSecond coerceFormat)
 
-annotationFormat :: Formatter [B.ValuePair B.High] Annotation
-annotationFormat =
-  mkHashMap
-    . isomap (inSecond annotationValueFormat . flipDirection mkBValuePair)
-    . coerceFormat
- where
-  mkBValuePair
-    :: Formatter (Text.Text, B.ElementValue B.High) (B.ValuePair B.High)
-  mkBValuePair = fromIso (uncurry B.ValuePair) ((,) <$> B.name <*> B.value)
 
 annotationValueFormat :: Formatter (B.ElementValue B.High) AnnotationValue
 annotationValueFormat = PartIso { there = valueThere, back = valueBack } where
@@ -404,9 +450,8 @@ annotationValueFormat = PartIso { there = valueThere, back = valueBack } where
     B.EEnum           i -> pure $ AEnum i
     B.EClass          c -> pure $ AClass c
     B.EAnnotationType a -> do
-      (t, cc) <- back mkBAnnotation a
-      c       <- there annotationFormat cc
-      pure $ AAnnotation (t, c)
+      (n, c) <- there (annotationMapFormat . (flipDirection mkBAnnotation)) a
+      pure $ AAnnotation (n, c)
     B.EArrayType (B.SizedList as) ->
       AArray <$> there (isomap annotationValueFormat) as
 
@@ -422,19 +467,13 @@ annotationValueFormat = PartIso { there = valueThere, back = valueBack } where
     AString     i      -> pure $ B.EString i
     AEnum       i      -> pure $ B.EEnum i
     AClass      c      -> pure $ B.EClass c
-    AAnnotation (t, c) -> do
-      ann <- back annotationFormat c
-      B.EAnnotationType <$> there mkBAnnotation (t, ann)
+    AAnnotation (t, c) -> B.EAnnotationType
+      <$> back (annotationMapFormat . (flipDirection mkBAnnotation)) (t, c)
     AArray a -> do
       ev <- back (isomap annotationValueFormat) a
       pure . B.EArrayType $ B.SizedList ev
 
 
--- | Create an annotations 
-mkAnnotations :: PartIso e (AnnotationMap, AnnotationMap) Annotations
-mkAnnotations = fromIso
-  (uncurry Annotations)
-  ((,) <$> view visibleAnnotations <*> view invisibleAnnotations)
 
 -- | A SizedList is just a list
 sizedList32Format :: Formatter (B.SizedList16 a) [a]
@@ -761,6 +800,122 @@ fromClassFile = undefined
 --        )
 --
 --
+
+-- * Signatures
+
+typeFromJTypeFormat :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
+typeFromJTypeFormat fn = fromIso fromJType (either (B.JTRef . fn) id . toJType)
+
+referenceTypeFromJRefTypeFormat
+  :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
+referenceTypeFromJRefTypeFormat fn =
+  fromIso fromJType (either (B.JTRef . fn) id . toJType)
+
+referenceTypeFromSignature :: Formatter B.ReferenceType ReferenceType
+referenceTypeFromSignature = PartIso
+  (\case
+    B.RefClassType ct -> RefClassType <$> there classTypeFromSignature ct
+    B.RefTypeVariable tv ->
+      RefTypeVariable <$> there typeVariableFromSignature tv
+    B.RefArrayType atp ->
+      RefArrayType
+        .   ArrayType
+        .   withNoAnnotation
+        <$> there typeFromSignature atp
+  )
+  (\case
+    RefClassType ct -> B.RefClassType <$> back classTypeFromSignature ct
+    RefTypeVariable tv ->
+      B.RefTypeVariable <$> back typeVariableFromSignature tv
+    RefArrayType (ArrayType (Annotated atp _)) ->
+      B.RefArrayType <$> back typeFromSignature atp
+  )
+
+typeFromSignature :: Formatter B.TypeSignature Type
+typeFromSignature = PartIso
+  (\case
+    B.ReferenceType r -> ReferenceType <$> there referenceTypeFromSignature r
+    B.BaseType      b -> pure $ BaseType b
+  )
+  (\case
+    ReferenceType r -> B.ReferenceType <$> back referenceTypeFromSignature r
+    BaseType      b -> pure $ B.BaseType b
+  )
+
+typeVariableFromSignature :: Formatter B.TypeVariable TypeVariable
+typeVariableFromSignature = coerceFormat
+
+-- | Create a classType from a signature. The semantics of this construct
+-- changes meaning. The ClassType defined in this library have slots for
+-- all innerclasses. Where the original compresses the last innerclasses
+-- into one class.
+classTypeFromSignature :: Formatter B.ClassType ClassType
+classTypeFromSignature = PartIso
+  (\(B.ClassType n ict ta) -> do
+    ta'  <- mapM (there typeArgumentFromSignature) ta
+    ict' <- mapM thereInnerClass ict
+    let n' =
+          classTypeFromName n & (classTypeArguments .~ map withNoAnnotation ta')
+    return $ case ict' of
+      Just i  -> extendClassType i n'
+      Nothing -> n'
+  )
+  (go >=> \(n, t, ta) -> do
+    nm <- validateEither (B.textCls n)
+    pure $ B.ClassType nm t ta
+  )
+ where
+  go
+    :: ClassType
+    -> Validation
+         [FormatError]
+         (Text.Text, Maybe B.InnerClassType, [Maybe B.TypeArgument])
+  go (ClassType n t ta) = do
+    ta' <- mapM (back typeArgumentFromSignature . view annotatedContent) ta
+    traverse (go . view annotatedContent) t >>= \case
+      Nothing             -> pure (n, Nothing, ta')
+      Just (n'', t'', []) -> pure (n <> "$" <> n'', t'', ta')
+      Just (n'', t'', ta'') ->
+        pure (n, Just $ B.InnerClassType n'' t'' ta'', ta')
+
+  thereInnerClass (B.InnerClassType n ict ta) = do
+    ta'  <- mapM (there typeArgumentFromSignature) ta
+    ict' <- mapM thereInnerClass ict
+    let n' =
+          innerClassTypeFromName n
+            & (classTypeArguments .~ map withNoAnnotation ta')
+    return $ case ict' of
+      Just i  -> extendClassType i n'
+      Nothing -> n'
+
+typeArgumentFromSignature :: Formatter (Maybe B.TypeArgument) TypeArgument
+typeArgumentFromSignature = PartIso
+  (\case
+    Just (B.TypeArgument mw rt) -> do
+      rt' <- there referenceTypeFromSignature rt
+      pure $ case mw of
+        Nothing          -> TypeArg rt'
+        Just B.WildPlus  -> ExtendedTypeArg (withNoAnnotation rt')
+        Just B.WildMinus -> ImplementedTypeArg (withNoAnnotation rt')
+    Nothing -> pure AnyTypeArg
+  )
+  (\case
+    AnyTypeArg -> pure $ Nothing
+    TypeArg rt -> do
+      Just . B.TypeArgument Nothing <$> back referenceTypeFromSignature rt
+    ExtendedTypeArg rt -> do
+      Just . B.TypeArgument (Just B.WildPlus) <$> back
+        referenceTypeFromSignature
+        (view annotatedContent rt)
+
+    ImplementedTypeArg rt -> do
+      Just . B.TypeArgument (Just B.WildMinus) <$> back
+        referenceTypeFromSignature
+        (view annotatedContent rt)
+  )
+
+
+-- * Helpers
 
 compress :: ([a] -> b) -> [a] -> [b]
 compress f = \case

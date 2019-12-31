@@ -19,7 +19,6 @@ import qualified Data.Set                      as Set
 import           Jvmhs.Format.ClassFile
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Identifier
-import           Jvmhs.Data.Annotation
 
 import           Jvmhs.Data.TypeSpec
 
@@ -54,7 +53,7 @@ spec_annotationValueFormat = describe "annotationValueFormat" $ do
 
 spec_annotationsFormat :: Spec
 spec_annotationsFormat = describe "annotationsFormat" $ do
-  test_formatter genAnnotations (flipDirection annotationsFormat)
+  test_formatter genAnnotations (flipDirection $ annotationsFormat True)
 
 spec_fieldAttributes :: Spec
 spec_fieldAttributes = describe "fieldAttributeFormat" $ do
@@ -64,13 +63,13 @@ spec_fieldAttributes = describe "fieldAttributeFormat" $ do
   genFieldAttributes = do
     value       <- pure (Just $ VInteger 0)
     annotations <- genAnnotations
-    tpe         <- genType
+    tpe         <- genAnnotated genType
 
     pure ((value, annotations), tpe)
 
 spec_fieldType :: Spec
 spec_fieldType = describe "fieldTypeFormat" $ do
-  test_formatter genType (flipDirection fieldTypeFormat)
+  test_formatter (genAnnotated genType) (flipDirection fieldTypeFormat)
 
 spec_field :: Spec
 spec_field = describe "fieldFormat" $ do
@@ -80,10 +79,10 @@ spec_field = describe "fieldFormat" $ do
 
   genField = do
     _fieldName        <- pure "field"
-    _fieldType        <- genType
+    _fieldType        <- genAnnotated genType
     _fieldAccessFlags <- pure (Set.empty)
     _fieldValue       <- pure Nothing
-    _fieldAnnotations <- pure emptyAnnotations
+    _fieldAnnotations <- pure []
     pure Field { .. }
 
 test_formatter :: (Eq a, Eq b, Show b, Show a) => Gen a -> Formatter a b -> Spec
@@ -99,7 +98,6 @@ test_formatter gen PartIso { there, back } =
           ++ nicify (show a')
           )
           ((there =<< a') `shouldBe` there a)
-
 
 instance Arbitrary MethodDescriptor where
   arbitrary = genericArbitraryU

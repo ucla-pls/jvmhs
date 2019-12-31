@@ -143,7 +143,7 @@ data Class = Class
 data Field = Field
   { _fieldName        :: ! Text.Text
   -- ^ the name of the field
-  , _fieldType        :: ! Type
+  , _fieldType        :: ! (Annotated Type)
   -- ^ the type of the field
   , _fieldAccessFlags :: ! (Set.Set FAccessFlag)
   -- ^ the set of access flags
