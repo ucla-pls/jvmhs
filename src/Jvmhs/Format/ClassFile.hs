@@ -239,15 +239,23 @@ fieldTypeFormat = annotateType . inSecond
       . isomap (referenceTypeFromSignature . signatureFormat)
       . singletonList
 
-  annotateType :: Formatter ([(TypePath, Annotation)], Type) (Annotated Type)
-  annotateType = PartIso anThere anBack   where
-    anThere (t, p) = validateEither $ setTypeAnnotations t p
-    anBack a = Success (getTypeAnnotations a, view annotatedContent a)
-
-
   signatureFormat :: Formatter (B.Signature B.High) B.ReferenceType
   signatureFormat =
     coerceFormat . textSerialize @B.FieldSignature . coerceFormat
+
+  annotateType :: Formatter ([(TypePath, Annotation)], Type) (Annotated Type)
+  annotateType = PartIso anThere anBack   where
+
+    anThere
+      :: ([(TypePath, Annotation)], Type)
+      -> Validation [FormatError] (Annotated Type)
+    anThere (p, t) = validateEither $ setTypeAnnotations p (withNoAnnotation t)
+
+    anBack
+      :: Annotated Type
+      -> Validation [FormatError] ([(TypePath, Annotation)], Type)
+    anBack a = Success (getTypeAnnotations a, view annotatedContent a)
+
 
 fieldAttributesFormat
   :: Formatter
@@ -361,7 +369,7 @@ typeAnnotationsFormat =
          (B.TypeAnnotation a B.High)
          (a B.High, (TypePath, Annotation))
   typeAnnotationFormat visible =
-    inSecond (inSecond (mkAnnotation . annotationMapFormat))
+    inSecond (coerceFormat *** mkAnnotation . annotationMapFormat)
       . flipDirection mkBTypeAnnotation
 
    where
@@ -371,7 +379,7 @@ typeAnnotationsFormat =
 
     mkBTypeAnnotation
       :: Formatter
-           (a B.High, (TypePath, (FieldDescriptor, [B.ValuePair B.High])))
+           (a B.High, (B.TypePath, (FieldDescriptor, [B.ValuePair B.High])))
            (B.TypeAnnotation a B.High)
     mkBTypeAnnotation = fromIso
       (\(a, (tp, (fd, vm))) -> B.TypeAnnotation a tp fd (B.SizedList vm))

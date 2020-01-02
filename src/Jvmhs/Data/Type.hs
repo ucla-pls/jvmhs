@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE EmptyCase             #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -17,7 +19,6 @@ Maintainer : kalhauge@cs.ucla.edu
 
 This module describes the types of Jvmhs. The types here contain both the
 signatures and anntotations of the jvm-binary package.
-
 
 
 Notes: An annotation can be repeated multiple places. For example is an annotation 
@@ -72,8 +73,9 @@ module Jvmhs.Data.Type
   -- This module uses annotations from the annotations module, we have 
   -- re-exported Annotated here for convinence.
   , Annotated(..)
-  , B.TypePath
+  , TypePath
   , B.TypePathItem(..)
+  , B.TypePathKind(..)
   , setTypeAnnotations
   , getTypeAnnotations
 
@@ -89,13 +91,16 @@ where
 -- base
 import           Data.Either
 import           Data.Maybe
-import           Data.List.NonEmpty             ( NonEmpty(..)
-                                                , nonEmpty
-                                                )
+import           Data.Foldable
 import           GHC.Generics                   ( Generic )
 
 -- deep-seq
 import           Control.DeepSeq
+
+-- containers
+import           Data.Sequence                  ( (><) )
+import qualified Data.Sequence                 as Seq
+import qualified Data.Map.Strict               as Map
 
 -- text
 import qualified Data.Text                     as Text
@@ -233,105 +238,101 @@ toJRefType = \case
   RefArrayType (ArrayType (Annotated atp _)) -> JTArray <$> toJType atp
   RefTypeVariable tv -> Left tv
 
+-- updateOrFail
+--   :: Traversal' s a
+--   -> (a -> Either String a)
+--   -> String
+--   -> s
+--   -> (Either String s)
+-- updateOrFail ln fn err s = case s ^? ln of
+--   Nothing -> Left err
+--   Just a  -> fn a <&> \b -> set ln b s
+
+-- | Redefining '@B.TypePath'
+type TypePath = [B.TypePathItem]
+
+-- | Many of the types have annotations, this have 
+class HasTypeAnnotations a where
+  -- | A path points to a list of annotations or have an error
+  typeAnnotations
+    :: IndexedTraversal' TypePath a [Annotation]
+
+
+-- | Get a list of all annotations in the type
+getTypeAnnotations :: HasTypeAnnotations a => a -> [(TypePath, Annotation)]
+getTypeAnnotations = itoListOf (typeAnnotations <. traverse)
+
+-- | Given a list of annotations set them in the type.
 setTypeAnnotations
-  :: [(B.TypePath, Annotation)] -> Type -> Either String (Annotated Type)
-setTypeAnnotations path t = foldr
-  (\(tp, a) t' -> addAnnotations addTypeAnnotations (B.unSizedList tp) a =<< t')
-  (Right $ withNoAnnotation t)
-  path
-
-badPath :: B.TypePathItem -> String -> Either String a
-badPath item str = Left $ "Could not follow " ++ show item ++ " in " ++ str
-
-
-lensAct :: Monad m => Lens s s a a -> (a -> m a) -> s -> m s
-lensAct ln fn s = fn (s ^. ln) <&> \b -> set ln b s
-
-updateOrFail
-  :: Traversal' s a
-  -> (a -> Either String a)
-  -> String
-  -> s
-  -> (Either String s)
-updateOrFail ln fn err s = case s ^? ln of
-  Nothing -> Left err
-  Just a  -> fn a <&> \b -> set ln b s
+  :: HasTypeAnnotations a => [(TypePath, Annotation)] -> a -> Either String a
+setTypeAnnotations items a =
+  let m =
+          Map.map toList
+            . Map.fromListWith (><)
+            . map (over _2 Seq.singleton)
+            $ items
+  in  case
+          Map.toList $ m Map.\\ Map.fromList
+            (map (view (_1 . to (, ()))) $ itoListOf typeAnnotations a)
+        of
+          [] ->
+            Right
+              $   a
+              &   typeAnnotations
+              .@~ (\k -> reverse $ Map.findWithDefault [] k m)
+          as -> Left $ "The type does not have the paths " ++ show as
 
 
-addAnnotations
-  :: (NonEmpty B.TypePathItem -> Annotation -> a -> Either String a)
-  -> [B.TypePathItem]
-  -> Annotation
-  -> Annotated a
-  -> Either String (Annotated a)
-addAnnotations fn path a t = case nonEmpty path of
-  Nothing    -> Right $ t & annotatedAnnotations %~ (a :)
-  Just npath -> lensAct annotatedContent (fn npath a) t
+instance HasTypeAnnotations a => HasTypeAnnotations (Annotated a) where
+  typeAnnotations afb (Annotated {..}) =
+    Annotated
+      <$> typeAnnotations afb _annotatedContent
+      <*> indexed afb ([] :: [B.TypePathItem]) _annotatedAnnotations
 
-addArrayTypeAnnotations
-  :: NonEmpty B.TypePathItem
-  -> Annotation
-  -> ArrayType
-  -> Either String ArrayType
-addArrayTypeAnnotations (i :| rest) a t = case i of
-  B.TypePathItem B.TPathInArray 0 ->
-    lensAct arrayType (addAnnotations addTypeAnnotations rest a) t
-  _ -> badPath i "ArrayType"
+instance HasTypeAnnotations ArrayType where
+  typeAnnotations =
+    reindexed (B.TypePathItem B.TPathInArray 0 :) (arrayType . typeAnnotations)
 
-addTypeAnnotations
-  :: NonEmpty B.TypePathItem -> Annotation -> Type -> Either String Type
-addTypeAnnotations path a = \case
-  ReferenceType rt -> ReferenceType <$> addReferenceTypeAnnotations path a rt
-  BaseType _ ->
-    Left
-      $  "Cannot annotate a base type deeper, but more path is left: "
-      ++ show path
+instance HasTypeAnnotations Type where
+  typeAnnotations afb = \case
+    ReferenceType f -> ReferenceType <$> typeAnnotations afb f
+    a               -> pure a
 
-addReferenceTypeAnnotations
-  :: NonEmpty B.TypePathItem
-  -> Annotation
-  -> ReferenceType
-  -> Either String ReferenceType
-addReferenceTypeAnnotations path a = \case
-  RefClassType ct  -> RefClassType <$> addClassTypeAnnotations path a ct
-  RefArrayType rat -> RefArrayType <$> addArrayTypeAnnotations path a rat
-  RefTypeVariable _ ->
-    Left
-      $  "Cannot annotate a type variable deeper, but more path is left: "
-      ++ show path
+instance HasTypeAnnotations ReferenceType where
+  typeAnnotations afb = \case
+    RefClassType f -> RefClassType <$> typeAnnotations afb f
+    RefArrayType f -> RefArrayType <$> typeAnnotations afb f
+    a              -> pure a
 
-addClassTypeAnnotations
-  :: NonEmpty B.TypePathItem
-  -> Annotation
-  -> ClassType
-  -> Either String ClassType
-addClassTypeAnnotations (tpi@(B.TypePathItem k i) :| rest) a t = case k of
-  B.TPathInNested -> updateOrFail
-    (classTypeInner . _Just)
-    (addAnnotations addClassTypeAnnotations rest a)
-    "Expected class to be in nested, but no nested type exist."
-    t
-  B.TPathTypeArgument -> updateOrFail
-    (classTypeArguments . ix (fromIntegral i))
-    (addAnnotations addTypeArgumentAnnotations rest a)
-    "Expected class to be in nested, but no nested type exist."
-    t
-  _ -> badPath tpi (show t)
+instance HasTypeAnnotations ClassType where
+  typeAnnotations afb (ClassType {..}) =
+    ClassType
+      <$> pure _classTypeName
+      <*> reindexed (B.TypePathItem B.TPathInNested 0 :)
+                    (_Just . typeAnnotations)
+                    afb
+                    _classTypeInner
+      <*> icompose
+            (\(i :: Int) j ->
+              B.TypePathItem B.TPathTypeArgument (fromIntegral i) : j
+            )
+            itraversed
+            typeAnnotations
+            afb
+            _classTypeArguments
 
-addTypeArgumentAnnotations
-  :: NonEmpty B.TypePathItem
-  -> Annotation
-  -> TypeArgument
-  -> Either String TypeArgument
-addTypeArgumentAnnotations (tpi@(B.TypePathItem B.TPathWildcard 0) :| rest) a t
-  = case t of
+instance HasTypeAnnotations TypeArgument where
+  typeAnnotations afb = \case
     ExtendedTypeArg t' ->
-      ExtendedTypeArg <$> addAnnotations addReferenceTypeAnnotations rest a t'
+      ExtendedTypeArg
+        <$> reindexed (B.TypePathItem B.TPathWildcard 0 :)
+                      typeAnnotations
+                      afb
+                      t'
     ImplementedTypeArg t' ->
-      ExtendedTypeArg <$> addAnnotations addReferenceTypeAnnotations rest a t'
-    _ -> badPath tpi (show t)
-addTypeArgumentAnnotations (tpi :| _) _ t = badPath tpi (show t)
-
-
-getTypeAnnotations :: Annotated Type -> [(B.TypePath, Annotation)]
-getTypeAnnotations _ = []
+      ImplementedTypeArg
+        <$> reindexed (B.TypePathItem B.TPathWildcard 0 :)
+                      typeAnnotations
+                      afb
+                      t'
+    a -> pure a

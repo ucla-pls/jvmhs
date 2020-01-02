@@ -72,7 +72,7 @@ genAnnotated :: Gen a -> Gen (Annotated a)
 genAnnotated f = Annotated <$> f <*> genAnnotations
 
 genTypeArgument :: Gen TypeArgument
-genTypeArgument = oneof
+genTypeArgument = scale (`div` 2) $ oneof
   [ pure AnyTypeArg
   , TypeArg <$> genReferenceType
   , ExtendedTypeArg <$> genAnnotated genReferenceType
@@ -112,7 +112,8 @@ instance Arbitrary B.ReturnDescriptor where
 
 genAnnotation :: Gen Annotation
 genAnnotation =
-  Annotation
+  scale (`div` 2)
+    $   Annotation
     <$> elements ["an/annotations/Ano"]
     <*> arbitrary
     <*> genAnnotationMap
