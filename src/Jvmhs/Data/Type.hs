@@ -63,9 +63,18 @@ module Jvmhs.Data.Type
   , ArrayType(..)
   , arrayType
 
+  -- ** ReturnType
+  , ReturnType(..)
+  , returnType
+
+  -- ** ThrowsType
+  , ThrowsType(..)
+  , _ThrowsClass
+  , _ThrowsTypeVariable
+  , classNameFromThrowsType
+
   -- ** Others
   , TypeParameter(..)
-  , ThrowsSignature(..)
   , TypeVariable(..)
   , TypeArgument(..)
 
@@ -131,8 +140,8 @@ data ReferenceType
   | RefArrayType !ArrayType
   deriving (Show, Eq, Generic, NFData)
 
--- | A throw signature can also be annotated
-data ThrowsSignature
+-- | A throw type can also be annotated
+data ThrowsType
   = ThrowsClass !ClassType
   | ThrowsTypeVariable !TypeVariable
   deriving (Show, Eq, Generic, NFData)
@@ -147,6 +156,11 @@ data ClassType = ClassType
 
 newtype ArrayType = ArrayType
   { _arrayType :: Annotated Type
+  } deriving (Show, Eq, Generic, NFData)
+
+-- | A Return type is a type or void.
+newtype ReturnType = ReturnType
+  { _returnType :: Maybe Type
   } deriving (Show, Eq, Generic, NFData)
 
 data Type
@@ -170,7 +184,8 @@ newtype TypeVariable = TypeVariable
 
 makeLenses ''ClassType
 makeLenses ''ArrayType
-makePrisms ''ThrowsSignature
+makeLenses ''ReturnType
+makePrisms ''ThrowsType
 makePrisms ''ReferenceType
 makePrisms ''Type
 
@@ -189,6 +204,11 @@ classNameFromType ct =
     []
     nameOf
     (t ^? classTypeInner . _Just . annotatedContent)
+
+classNameFromThrowsType :: ThrowsType -> Either TypeVariable ClassName
+classNameFromThrowsType = \case
+  ThrowsClass        cn -> Right $ classNameFromType cn
+  ThrowsTypeVariable tv -> Left tv
 
 -- | Extend a ClassType with an inner classType.
 extendClassType :: ClassType -> ClassType -> ClassType

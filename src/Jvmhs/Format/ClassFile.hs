@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor   #-}
+{-# LANGUAGE EmptyCase   #-}
 {-# LANGUAGE TupleSections   #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE TypeApplications   #-}
@@ -27,23 +28,16 @@ import           Control.Monad
 import           Data.Coerce
 import           Data.Maybe
 import           Data.Either
-import qualified Data.List                     as List
 import           Data.Traversable
 import           Prelude                 hiding ( (.)
                                                 , id
                                                 )
-
--- hashable 
-import           Data.Hashable
 
 -- lens
 import           Control.Lens
 
 -- text 
 import qualified Data.Text                     as Text
-
--- unordered-containers
-import qualified Data.HashMap.Strict           as HashMap
 
 -- jvm-binary
 import qualified Language.JVM                  as B
@@ -53,147 +47,242 @@ import qualified Language.JVM.Attribute.Annotations
                                                as B
 import qualified Language.JVM.Attribute.Signature
                                                as B
+import qualified Language.JVM.Attribute.Exceptions
+                                               as B
+import qualified Language.JVM.Attribute.Code   as B
 
 import           Jvmhs.Data.Class
+import           Jvmhs.Data.Code
 import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.Type
 import           Jvmhs.Data.Identifier
 
--- | Validation is an Either which can collect it's faliures. This
--- is usefull when presenting this information to the user later.
-data Validation e a
-  = Success !a
-  | Failure !e
-  deriving (Eq, Ord, Show, Functor)
-
--- | An either can be turned into a validation
-validateEither :: Either e a -> Validation [e] a
-validateEither = \case
-  Left  e -> Failure [e]
-  Right a -> Success a
-
-
-instance Semigroup e => Applicative (Validation e) where
-  pure = Success
-  fa <*> a = case fa of
-    Success fn -> fn <$> a
-    Failure e  -> case a of
-      Success _  -> Failure e
-      Failure e' -> Failure (e <> e')
-
-instance Semigroup e => Monad (Validation e) where
-  return = pure
-  ma >>= fma = case ma of
-    Success a -> fma a
-    Failure e -> Failure e
-
--- | A Partial Isomorphism, we use them here allow convertion between the
--- two formats, while still perserving bugs. Every partial isomorphism
--- should be a valid adjunction.
--- This means that
--- >> there p . back p . there p == there p
-data PartIso e a b = PartIso
-  { there :: a -> Validation e b
-  , back  :: b -> Validation e a
-  }
-
-instance Semigroup e => Category (PartIso e) where
-  id = PartIso Success Success
-  {-# INLINE id #-}
-  (.) (PartIso f1 t1) (PartIso f2 t2) = PartIso (f1 <=< f2) (t1 >=> t2)
-  {-# INLINE (.) #-}
-
-infixr 3 ***
-(***)
-  :: Semigroup e => PartIso e a c -> PartIso e b d -> PartIso e (a, b) (c, d)
-(***) (PartIso f1 t1) (PartIso f2 t2) =
-  PartIso (\(a, b) -> (,) <$> f1 a <*> f2 b) (\(c, d) -> (,) <$> t1 c <*> t2 d)
-{-# INLINE (***) #-}
-
-inSecond :: Semigroup e => PartIso e b d -> PartIso e (c, b) (c, d)
-inSecond f = id *** f
-{-# INLINE inSecond #-}
-
-inFirst :: Semigroup e => PartIso e a c -> PartIso e (a, b) (c, b)
-inFirst f = f *** id
-{-# INLINE inFirst #-}
-
-introItem :: Eq x => x -> PartIso [String] () x
-introItem x = PartIso
-  (\() -> Success x)
-  (\x' -> if x' == x then Success () else Failure ["Const item is not returned"]
-  )
-{-# INLINE introItem #-}
-
-introFirst :: Semigroup e => PartIso e a ((), a)
-introFirst = fromIso (\a -> ((), a)) (\((), a) -> a)
-{-# INLINE introFirst #-}
-
-introSecond :: Semigroup e => PartIso e a (a, ())
-introSecond = fromIso (\a -> (a, ())) (\(a, ()) -> a)
-{-# INLINE introSecond #-}
-
-constFirst :: Eq x => x -> PartIso [String] a (x, a)
-constFirst x = inFirst (introItem x) . introFirst
-{-# INLINE constFirst #-}
-
-constSecond :: Eq x => x -> PartIso [String] a (a, x)
-constSecond x = inSecond (introItem x) . introSecond
-{-# INLINE constSecond #-}
-
-
--- | Change the direction of the partial isomorphism
-flipDirection :: PartIso e a b -> PartIso e b a
-flipDirection (PartIso t b) = PartIso b t
-
--- | Create a partial isomorphism from an isomorphism
-fromIso :: (a -> b) -> (b -> a) -> PartIso e a b
-fromIso f t = PartIso (Success . f) (Success . t)
-
--- | Create a partial isomorphism from an isomorphism
-fromPrism :: Prism' a b -> PartIso e (Maybe a) (Maybe b)
-fromPrism _P = fromIso
-  (\case
-    Nothing -> Nothing
-    Just a  -> preview _P a
-  )
-  (\case
-    Nothing -> Nothing
-    Just a  -> Just (review _P a)
-  )
-
--- | Create a partial isomorphism from an isomorphism
-fromPrism' :: (a -> Validation e b) -> Prism' a b -> PartIso e a b
-fromPrism' err _P =
-  PartIso (\a -> maybe (err a) Success . preview _P $ a) (Success . review _P)
-
-
--- | Anything that can be coerced is an isomorphism.
-coerceFormat :: (Coercible a b, Coercible b a) => PartIso e a b
-coerceFormat = fromIso coerce coerce
-
--- | Anything that can be coerced is an isomorphism.
-isomap :: (Traversable t, Semigroup e) => PartIso e a b -> PartIso e (t a) (t b)
-isomap (PartIso f t) = PartIso (traverse f) (traverse t)
-
--- mk4 :: ((a, b, c, d) -> x) -> (x -> (a, b, c, d)) -> PartIso e (a, b, c, d) x
--- mk4 = undefined
--- 
--- mk5
---   :: ((a, b, c, d, e) -> x)
---   -> (x -> (a, b, c, d, e))
---   -> PartIso e (a, b, c, d, e) x
--- mk5 = undefined
+import           Jvmhs.Format.Internal
 
 
 type FormatError = String
 type Formatter = PartIso [FormatError]
 
+textSerialize :: B.TextSerializable a => Formatter Text.Text a
+textSerialize = PartIso (validateEither . B.deserialize) (pure . B.serialize)
+
+-- | Convert a ConstantValue into a JValue
+constantValueFormat :: Formatter [B.ConstantValue B.High] (Maybe JValue)
+constantValueFormat = coerceFormat . singletonList
+
 methodFormat :: Formatter (B.Method B.High) Method
 methodFormat = PartIso methodThere methodBack where
-  methodThere = undefined
+  methodThere m = do
+    let _methodName        = B.mName m
+    let _methodAccessFlags = B.mAccessFlags m
 
-  methodBack  = undefined
+    ((_methodTypeParameters, _methodParameters, _methodReturnType, _methodExceptions), _methodCode, _methodAnnotations) <-
+      there methodAttributesFormat (B.mDescriptor m, B.mAttributes m)
+
+    pure Method { .. }
+
+  methodBack m = do
+    let mName         = m ^. methodName
+    let mAccessFlags' = B.BitSet (m ^. methodAccessFlags)
+
+    (mDescriptor, mAttributes) <- back
+      methodAttributesFormat
+      ( ( m ^. methodTypeParameters
+        , m ^. methodParameters
+        , m ^. methodReturnType
+        , m ^. methodExceptions
+        )
+      , m ^. methodCode
+      , m ^. methodAnnotations
+      )
+    pure B.Method { .. }
+
+methodAttributesFormat
+  :: Formatter
+       (B.MethodDescriptor, B.MethodAttributes B.High)
+       ( ( [Annotated TypeParameter]
+         , [Annotated Type]
+         , Annotated ReturnType
+         , [Annotated ThrowsType]
+         )
+       , Maybe Code
+       , Annotations
+       )
+methodAttributesFormat =
+  triple
+      ( methodSignatureFormat
+      . triple
+          (   (inSecond $ compressList coerceFormat)
+          *** ( isomap (textSerialize @B.MethodSignature . coerceFormat)
+              . singletonList
+              )
+          )
+          parameterAnnotationsFormat
+          typeAnnotationsFormat
+      )
+      (isomap codeFormat . singletonList)
+      runtimeAnnotationsFormat
+    . PartIso anThere anBack where
+
+  anThere (desc, B.MethodAttributes {..}) = do
+    return
+      ( ( ((desc, maExceptions)         , maSignatures)
+        , (maVisibleParameterAnnotations, maInvisibleParameterAnnotations)
+        , (maVisibleTypeAnnotations     , maInvisibleTypeAnnotations)
+        )
+      , maCode
+      , (maVisibleAnnotations, maInvisibleAnnotations)
+      )
+
+  anBack ((((desc, maExceptions), maSignatures), (maVisibleParameterAnnotations, maInvisibleParameterAnnotations), (maVisibleTypeAnnotations, maInvisibleTypeAnnotations)), maCode, (maVisibleAnnotations, maInvisibleAnnotations))
+    = do
+      let maAnnotationDefault = []
+      let maOthers            = []
+      return (desc, B.MethodAttributes { .. })
+
+methodSignatureFormat
+  :: Formatter
+       ( ((B.MethodDescriptor, [ClassName]), Maybe B.MethodSignature)
+       , [Annotations]
+       , [(B.MethodTypeAnnotation B.High, (TypePath, Annotation))]
+       )
+       ( [Annotated TypeParameter]
+       , [Annotated Type]
+       , Annotated ReturnType
+       , [Annotated ThrowsType]
+       )
+methodSignatureFormat =
+  PartIso msThere msBack . fromLens _1 _1 moreSignatureFormat
+ where
+
+  msThere ((tp, prams, rt, thrws), _, _) = do
+    return
+      ( map withNoAnnotation tp
+      , map withNoAnnotation prams
+      , withNoAnnotation rt
+      , map withNoAnnotation thrws
+      )
+
+  msBack (tps, ts, rt, thrs) = do
+    return
+      ( ( map (view annotatedContent) tps
+        , map (view annotatedContent) ts
+        , view annotatedContent rt
+        , map (view annotatedContent) thrs
+        )
+      , []
+      , []
+      )
+
+  moreSignatureFormat
+    :: Formatter
+         ((B.MethodDescriptor, [ClassName]), Maybe B.MethodSignature)
+         ([TypeParameter], [Type], ReturnType, [ThrowsType])
+  moreSignatureFormat =
+    withDefaultF . (unwrapMethodDescriptor *** isomap unwrapMethodSignature)
+
+  unwrapMethodSignature
+    :: Formatter
+         B.MethodSignature
+         ([TypeParameter], [Type], ReturnType, [ThrowsType])
+  unwrapMethodSignature = PartIso mThere mBack   where
+    mThere B.MethodSignature {..} = do
+      tp    <- mapM (there typeParameterFormat) msTypeParameters
+      tps   <- mapM (there typeFormat) msArguments
+      rt    <- there returnTypeFormat msResults
+      thrws <- mapM (there throwsTypeFormat) msThrows
+
+      return (tp, tps, rt, thrws)
+
+    mBack (tp, tps, rt, thrws) = do
+      msTypeParameters <- mapM (back typeParameterFormat) tp
+      msArguments      <- mapM (back typeFormat) tps
+      msResults        <- back returnTypeFormat rt
+      msThrows         <- mapM (back throwsTypeFormat) thrws
+
+      pure B.MethodSignature { .. }
+
+
+  unwrapMethodDescriptor
+    :: Formatter
+         (B.MethodDescriptor, [ClassName])
+         ([TypeParameter], [Type], ReturnType, [ThrowsType])
+  unwrapMethodDescriptor = fromIso
+    (\(md, thrws) ->
+      ( []
+      , map fromJType (methodDescriptorArguments md)
+      , ReturnType
+        . fmap fromJType
+        . B.asMaybeJType
+        . methodDescriptorReturnType
+        $ md
+      , fmap (ThrowsClass . classTypeFromName) thrws
+      )
+    )
+    (\(_, prm, ReturnType rt, thrws) ->
+      ( B.MethodDescriptor
+        (map (fromRight "Ljava/lang/Object;" . toJType) prm)
+        ( B.ReturnDescriptor
+        . fmap (fromRight "Ljava/lang/Object;" . toJType)
+        $ rt
+        )
+      , fmap (fromRight "java/lang/Object" . classNameFromThrowsType) thrws
+      )
+    )
+
+
+codeFormat :: Formatter (B.Code B.High) Code
+codeFormat = PartIso
+  (\c -> do
+    let _codeMaxStack  = B.codeMaxStack c
+    let _codeMaxLocals = B.codeMaxLocals c
+    _codeExceptionTable <- mapM (there exceptionHandlerFormat)
+                                (coerce (B.codeExceptionTable c))
+    let _codeByteCode = B.unByteCode (B.codeByteCode c)
+    _codeStackMap <- there codeAttributesFormat (B.codeAttributes c)
+    pure Code { .. }
+  )
+  (\Code {..} -> do
+    codeExceptionTable' <- fmap coerce
+      $ mapM (back exceptionHandlerFormat) _codeExceptionTable
+    codeAttributes' <- back codeAttributesFormat Nothing
+    pure B.Code { codeMaxStack       = _codeMaxStack
+                , codeMaxLocals      = _codeMaxLocals
+                , codeByteCode       = B.ByteCode 0 _codeByteCode
+                , codeExceptionTable = codeExceptionTable'
+                , codeAttributes     = codeAttributes'
+                }
+  )
+
+codeAttributesFormat
+  :: Formatter (B.CodeAttributes B.High) (Maybe (B.StackMapTable B.High))
+codeAttributesFormat = PartIso
+  (\B.CodeAttributes {..} -> there singletonList caStackMapTable)
+  (\a -> do
+    caStackMapTable <- back singletonList a
+    let caLineNumberTable          = []
+    let caVisibleTypeAnnotations   = []
+    let caInvisibleTypeAnnotations = []
+    let caOthers                   = []
+    pure B.CodeAttributes { .. }
+  )
+
+exceptionHandlerFormat :: Formatter (B.ExceptionTable B.High) ExceptionHandler
+exceptionHandlerFormat = PartIso
+  (\B.ExceptionTable {..} ->
+    let _ehStart     = start
+        _ehEnd       = end
+        _ehHandler   = handler
+        _ehCatchType = catchType
+    in  pure ExceptionHandler { .. }
+  )
+  (\ExceptionHandler {..} ->
+    let start     = _ehStart
+        end       = _ehEnd
+        handler   = _ehHandler
+        catchType = _ehCatchType
+    in  pure B.ExceptionTable { .. }
+  )
 
 -- | Convert a `B.Field` to a `Field` 
 fieldFormat :: Formatter (B.Field B.High) Field
@@ -218,9 +307,6 @@ fieldFormat = PartIso { there = fieldThere, back = fieldBack } where
       ((f ^. fieldValue, f ^. fieldAnnotations), f ^. fieldType)
 
     pure B.Field { .. }
-
-withDefaultF :: Formatter (a, Maybe a) a
-withDefaultF = fromIso (\(a, ma) -> fromMaybe a ma) (\a -> (a, Just a))
 
 fieldTypeFormat
   :: Formatter
@@ -289,28 +375,6 @@ fieldAttributesFormat = inSecond fieldTypeFormat . PartIso attrThere attrBack wh
 
     pure (fdesc, B.FieldAttributes { .. })
 
-textSerialize :: B.TextSerializable a => Formatter Text.Text a
-textSerialize = PartIso (validateEither . B.deserialize) (pure . B.serialize)
-
-
--- | Convert a ConstantValue into a JValue
-constantValueFormat :: Formatter [B.ConstantValue B.High] (Maybe JValue)
-constantValueFormat = coerceFormat . singletonList
-
--- | Given an isomorphism from a to list of b's, then create 
--- a compression that create a 
-compressList :: Semigroup e => PartIso e a [b] -> PartIso e [a] [b]
-compressList (PartIso f t) = PartIso
-  (fmap concat . mapM f)
-  (\case
-    [] -> pure []
-    bs -> (: []) <$> t bs
-  )
-
--- | If a list contains no more than one element then we can convert it 
--- into a maybe. This is not checked.
-singletonList :: Semigroup e => PartIso e [a] (Maybe a)
-singletonList = fromIso listToMaybe maybeToList
 
 
 -- | a converation between annotations 
@@ -334,6 +398,28 @@ runtimeAnnotationsFormat =
   runtimeInvisibleAnnotationsFormat =
     annotationsFormat False . compressList coerceFormat
 
+parameterAnnotationsFormat
+  :: Formatter
+       ( [B.RuntimeVisibleParameterAnnotations B.High]
+       , [B.RuntimeInvisibleParameterAnnotations B.High]
+       )
+       [Annotations]
+parameterAnnotationsFormat =
+  isomap (flipDirection (partitionList (view annotationIsRuntimeVisible)))
+    . zipList
+    . (   runtimeVisibleParameterAnnotationsFormat
+      *** runtimeInvisibleParameterAnnotationsFormat
+      )
+ where
+  runtimeVisibleParameterAnnotationsFormat
+    :: Formatter [B.RuntimeVisibleParameterAnnotations B.High] [Annotations]
+  runtimeVisibleParameterAnnotationsFormat =
+    isomap (annotationsFormat True) . compressList coerceFormat
+
+  runtimeInvisibleParameterAnnotationsFormat
+    :: Formatter [B.RuntimeInvisibleParameterAnnotations B.High] [Annotations]
+  runtimeInvisibleParameterAnnotationsFormat =
+    isomap (annotationsFormat False) . compressList coerceFormat
 
 typeAnnotationsFormat
   :: forall a
@@ -384,13 +470,6 @@ typeAnnotationsFormat =
     mkBTypeAnnotation = fromIso
       (\(a, (tp, (fd, vm))) -> B.TypeAnnotation a tp fd (B.SizedList vm))
       (\(B.TypeAnnotation a tp fd vm) -> (a, (tp, (fd, (B.unSizedList vm)))))
-
-
-partitionList :: (a -> Bool) -> PartIso e [a] ([a], [a])
-partitionList p = fromIso (List.partition p) (uncurry (++))
-
-mkHashMap :: (Eq a, Hashable a) => Formatter [(a, b)] (HashMap.HashMap a b)
-mkHashMap = fromIso HashMap.fromList HashMap.toList
 
 annotationMapFormat
   :: Formatter
@@ -496,6 +575,169 @@ toClassFile = undefined
 
 fromClassFile :: B.ClassFile B.High -> Class
 fromClassFile = undefined
+
+
+-- * Signatures
+
+typeParameterFormat :: Formatter B.TypeParameter TypeParameter
+typeParameterFormat = PartIso
+  (\B.TypeParameter {..} -> do
+    _typeInterfaceBound <- mapM (there referenceTypeFromSignature)
+                                tpInterfaceBound
+    _typeClassBound <- mapM (there referenceTypeFromSignature) tpClassBound
+    let _typeIdentifier = tpIdentifier
+    pure TypeParameter { .. }
+  )
+  (\TypeParameter {..} -> do
+    tpInterfaceBound <- mapM (back referenceTypeFromSignature)
+                             _typeInterfaceBound
+    tpClassBound <- mapM (back referenceTypeFromSignature) _typeClassBound
+    let tpIdentifier = _typeIdentifier
+    pure B.TypeParameter { .. }
+  )
+
+returnTypeFormat :: Formatter (Maybe B.TypeSignature) ReturnType
+returnTypeFormat = PartIso (fmap ReturnType . mapM (there typeFormat))
+                           (mapM (back typeFormat) . view returnType)
+
+throwsTypeFormat :: Formatter (B.ThrowsSignature) ThrowsType
+throwsTypeFormat = PartIso
+  (\case
+    B.ThrowsClass cn -> ThrowsClass <$> there classTypeFromSignature cn
+    B.ThrowsTypeVariable tv ->
+      ThrowsTypeVariable <$> there typeVariableFromSignature tv
+  )
+  (\case
+    ThrowsClass cn -> B.ThrowsClass <$> back classTypeFromSignature cn
+    ThrowsTypeVariable tv ->
+      B.ThrowsTypeVariable <$> back typeVariableFromSignature tv
+  )
+
+  -- mkBMethodAttributes = fromIso
+  --   (\((maSignatures, maExceptions, parm, type_), maCode, anno) ->
+  --     let (maInvisibleParameterAnnotations, maVisibleParameterAnnotations) =
+  --             parm
+  --         (maInvisibleTypeAnnotations, maVisibleTypeAnnotations) = type_
+  --         (maInvisibleAnnotations    , maVisibleAnnotations    ) = anno
+  --     in  B.MethodAttributes { .. }
+  --   )
+  --   (\B.MethodAttributes {..} ->
+  --     ( ( maSignatures
+  --       , maExceptions
+  --       , (maInvisibleParameterAnnotations, maVisibleParameterAnnotations)
+  --       , (maInvisibleTypeAnnotations     , maVisibleTypeAnnotations)
+  --       )
+  --     , maCode
+  --     , (maInvisibleAnnotations, maVisibleAnnotations)
+  --     )
+  --   )
+
+typeFromJTypeFormat :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
+typeFromJTypeFormat fn = fromIso fromJType (either (B.JTRef . fn) id . toJType)
+
+typeFromJRefTypeFormat :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
+typeFromJRefTypeFormat fn =
+  fromIso fromJType (either (B.JTRef . fn) id . toJType)
+
+referenceTypeFromSignature :: Formatter B.ReferenceType ReferenceType
+referenceTypeFromSignature = PartIso
+  (\case
+    B.RefClassType ct -> RefClassType <$> there classTypeFromSignature ct
+    B.RefTypeVariable tv ->
+      RefTypeVariable <$> there typeVariableFromSignature tv
+    B.RefArrayType atp ->
+      RefArrayType . ArrayType . withNoAnnotation <$> there typeFormat atp
+  )
+  (\case
+    RefClassType ct -> B.RefClassType <$> back classTypeFromSignature ct
+    RefTypeVariable tv ->
+      B.RefTypeVariable <$> back typeVariableFromSignature tv
+    RefArrayType (ArrayType (Annotated atp _)) ->
+      B.RefArrayType <$> back typeFormat atp
+  )
+
+typeFormat :: Formatter B.TypeSignature Type
+typeFormat = PartIso
+  (\case
+    B.ReferenceType r -> ReferenceType <$> there referenceTypeFromSignature r
+    B.BaseType      b -> pure $ BaseType b
+  )
+  (\case
+    ReferenceType r -> B.ReferenceType <$> back referenceTypeFromSignature r
+    BaseType      b -> pure $ B.BaseType b
+  )
+
+typeVariableFromSignature :: Formatter B.TypeVariable TypeVariable
+typeVariableFromSignature = coerceFormat
+
+-- | Create a classType from a signature. The semantics of this construct
+-- changes meaning. The ClassType defined in this library have slots for
+-- all innerclasses. Where the original compresses the last innerclasses
+-- into one class.
+classTypeFromSignature :: Formatter B.ClassType ClassType
+classTypeFromSignature = PartIso
+  (\(B.ClassType n ict ta) -> do
+    ta'  <- mapM (there typeArgumentFromSignature) ta
+    ict' <- mapM thereInnerClass ict
+    let n' =
+          classTypeFromName n & (classTypeArguments .~ map withNoAnnotation ta')
+    return $ case ict' of
+      Just i  -> extendClassType i n'
+      Nothing -> n'
+  )
+  (go >=> \(n, t, ta) -> do
+    nm <- validateEither (B.textCls n)
+    pure $ B.ClassType nm t ta
+  )
+ where
+  go
+    :: ClassType
+    -> Validation
+         [FormatError]
+         (Text.Text, Maybe B.InnerClassType, [Maybe B.TypeArgument])
+  go (ClassType n t ta) = do
+    ta' <- mapM (back typeArgumentFromSignature . view annotatedContent) ta
+    traverse (go . view annotatedContent) t >>= \case
+      Nothing             -> pure (n, Nothing, ta')
+      Just (n'', t'', []) -> pure (n <> "$" <> n'', t'', ta')
+      Just (n'', t'', ta'') ->
+        pure (n, Just $ B.InnerClassType n'' t'' ta'', ta')
+
+  thereInnerClass (B.InnerClassType n ict ta) = do
+    ta'  <- mapM (there typeArgumentFromSignature) ta
+    ict' <- mapM thereInnerClass ict
+    let n' =
+          innerClassTypeFromName n
+            & (classTypeArguments .~ map withNoAnnotation ta')
+    return $ case ict' of
+      Just i  -> extendClassType i n'
+      Nothing -> n'
+
+typeArgumentFromSignature :: Formatter (Maybe B.TypeArgument) TypeArgument
+typeArgumentFromSignature = PartIso
+  (\case
+    Just (B.TypeArgument mw rt) -> do
+      rt' <- there referenceTypeFromSignature rt
+      pure $ case mw of
+        Nothing          -> TypeArg rt'
+        Just B.WildPlus  -> ExtendedTypeArg (withNoAnnotation rt')
+        Just B.WildMinus -> ImplementedTypeArg (withNoAnnotation rt')
+    Nothing -> pure AnyTypeArg
+  )
+  (\case
+    AnyTypeArg -> pure $ Nothing
+    TypeArg rt -> do
+      Just . B.TypeArgument Nothing <$> back referenceTypeFromSignature rt
+    ExtendedTypeArg rt -> do
+      Just . B.TypeArgument (Just B.WildPlus) <$> back
+        referenceTypeFromSignature
+        (view annotatedContent rt)
+
+    ImplementedTypeArg rt -> do
+      Just . B.TypeArgument (Just B.WildMinus) <$> back
+        referenceTypeFromSignature
+        (view annotatedContent rt)
+  )
 
 
 
@@ -808,124 +1050,3 @@ fromClassFile = undefined
 --        )
 --
 --
-
--- * Signatures
-
-typeFromJTypeFormat :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
-typeFromJTypeFormat fn = fromIso fromJType (either (B.JTRef . fn) id . toJType)
-
-referenceTypeFromJRefTypeFormat
-  :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
-referenceTypeFromJRefTypeFormat fn =
-  fromIso fromJType (either (B.JTRef . fn) id . toJType)
-
-referenceTypeFromSignature :: Formatter B.ReferenceType ReferenceType
-referenceTypeFromSignature = PartIso
-  (\case
-    B.RefClassType ct -> RefClassType <$> there classTypeFromSignature ct
-    B.RefTypeVariable tv ->
-      RefTypeVariable <$> there typeVariableFromSignature tv
-    B.RefArrayType atp ->
-      RefArrayType
-        .   ArrayType
-        .   withNoAnnotation
-        <$> there typeFromSignature atp
-  )
-  (\case
-    RefClassType ct -> B.RefClassType <$> back classTypeFromSignature ct
-    RefTypeVariable tv ->
-      B.RefTypeVariable <$> back typeVariableFromSignature tv
-    RefArrayType (ArrayType (Annotated atp _)) ->
-      B.RefArrayType <$> back typeFromSignature atp
-  )
-
-typeFromSignature :: Formatter B.TypeSignature Type
-typeFromSignature = PartIso
-  (\case
-    B.ReferenceType r -> ReferenceType <$> there referenceTypeFromSignature r
-    B.BaseType      b -> pure $ BaseType b
-  )
-  (\case
-    ReferenceType r -> B.ReferenceType <$> back referenceTypeFromSignature r
-    BaseType      b -> pure $ B.BaseType b
-  )
-
-typeVariableFromSignature :: Formatter B.TypeVariable TypeVariable
-typeVariableFromSignature = coerceFormat
-
--- | Create a classType from a signature. The semantics of this construct
--- changes meaning. The ClassType defined in this library have slots for
--- all innerclasses. Where the original compresses the last innerclasses
--- into one class.
-classTypeFromSignature :: Formatter B.ClassType ClassType
-classTypeFromSignature = PartIso
-  (\(B.ClassType n ict ta) -> do
-    ta'  <- mapM (there typeArgumentFromSignature) ta
-    ict' <- mapM thereInnerClass ict
-    let n' =
-          classTypeFromName n & (classTypeArguments .~ map withNoAnnotation ta')
-    return $ case ict' of
-      Just i  -> extendClassType i n'
-      Nothing -> n'
-  )
-  (go >=> \(n, t, ta) -> do
-    nm <- validateEither (B.textCls n)
-    pure $ B.ClassType nm t ta
-  )
- where
-  go
-    :: ClassType
-    -> Validation
-         [FormatError]
-         (Text.Text, Maybe B.InnerClassType, [Maybe B.TypeArgument])
-  go (ClassType n t ta) = do
-    ta' <- mapM (back typeArgumentFromSignature . view annotatedContent) ta
-    traverse (go . view annotatedContent) t >>= \case
-      Nothing             -> pure (n, Nothing, ta')
-      Just (n'', t'', []) -> pure (n <> "$" <> n'', t'', ta')
-      Just (n'', t'', ta'') ->
-        pure (n, Just $ B.InnerClassType n'' t'' ta'', ta')
-
-  thereInnerClass (B.InnerClassType n ict ta) = do
-    ta'  <- mapM (there typeArgumentFromSignature) ta
-    ict' <- mapM thereInnerClass ict
-    let n' =
-          innerClassTypeFromName n
-            & (classTypeArguments .~ map withNoAnnotation ta')
-    return $ case ict' of
-      Just i  -> extendClassType i n'
-      Nothing -> n'
-
-typeArgumentFromSignature :: Formatter (Maybe B.TypeArgument) TypeArgument
-typeArgumentFromSignature = PartIso
-  (\case
-    Just (B.TypeArgument mw rt) -> do
-      rt' <- there referenceTypeFromSignature rt
-      pure $ case mw of
-        Nothing          -> TypeArg rt'
-        Just B.WildPlus  -> ExtendedTypeArg (withNoAnnotation rt')
-        Just B.WildMinus -> ImplementedTypeArg (withNoAnnotation rt')
-    Nothing -> pure AnyTypeArg
-  )
-  (\case
-    AnyTypeArg -> pure $ Nothing
-    TypeArg rt -> do
-      Just . B.TypeArgument Nothing <$> back referenceTypeFromSignature rt
-    ExtendedTypeArg rt -> do
-      Just . B.TypeArgument (Just B.WildPlus) <$> back
-        referenceTypeFromSignature
-        (view annotatedContent rt)
-
-    ImplementedTypeArg rt -> do
-      Just . B.TypeArgument (Just B.WildMinus) <$> back
-        referenceTypeFromSignature
-        (view annotatedContent rt)
-  )
-
-
--- * Helpers
-
-compress :: ([a] -> b) -> [a] -> [b]
-compress f = \case
-  [] -> []
-  as -> [f as]

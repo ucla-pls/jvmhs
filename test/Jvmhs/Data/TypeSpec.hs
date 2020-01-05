@@ -49,6 +49,13 @@ genReferenceType = oneof
   , RefArrayType <$> genArrayType
   ]
 
+genReturnType :: Gen ReturnType
+genReturnType = ReturnType <$> liftArbitrary genType
+
+genThrowsType :: Gen ThrowsType
+genThrowsType = scale (`div` 2) $ oneof
+  [ThrowsClass <$> genClassType, ThrowsTypeVariable <$> genTypeVariable]
+
 genClassType :: Gen ClassType
 genClassType =
   scale (`div` 2)
@@ -69,7 +76,7 @@ genClassType =
         <*> listOf (genAnnotated genTypeArgument)
 
 genAnnotated :: Gen a -> Gen (Annotated a)
-genAnnotated f = Annotated <$> f <*> genAnnotations
+genAnnotated f = scale (`div` 2) $ Annotated <$> f <*> genAnnotations
 
 genTypeArgument :: Gen TypeArgument
 genTypeArgument = scale (`div` 2) $ oneof
@@ -78,6 +85,14 @@ genTypeArgument = scale (`div` 2) $ oneof
   , ExtendedTypeArg <$> genAnnotated genReferenceType
   , ImplementedTypeArg <$> genAnnotated genReferenceType
   ]
+
+genTypeParameter :: Gen TypeParameter
+genTypeParameter =
+  scale (`div` 2)
+    $   TypeParameter
+    <$> elements ["A", "B", "T"]
+    <*> liftArbitrary genReferenceType
+    <*> listOf genReferenceType
 
 genType :: Gen Type
 genType = oneof [ReferenceType <$> genReferenceType, BaseType <$> genBaseType]

@@ -67,6 +67,10 @@ module Jvmhs.Data.Class
   , methodAccessFlags
   , methodCode
   , methodExceptions
+  , methodAnnotations
+
+  -- ** Accessors
+  , methodDescriptor
 
   -- * InnerClass
   , InnerClass(..)
@@ -87,6 +91,8 @@ where
 -- base
 import           Data.Foldable                 as F
 import           Data.Word
+-- import           Data.Maybe
+import           Data.Either
 import           GHC.Generics                   ( Generic )
 
 -- deep-seq
@@ -157,18 +163,21 @@ data Field = Field
 data Method = Method
   { _methodName           :: ! Text.Text
   -- ^ the name of the method
-  , _methodParameters     :: ! [ Type ]
-  -- ^ the method parameters
-  , _methodReturnType     :: ! (Maybe Type)
-  -- ^ the method return type
-  , _methodTypeParameters :: ! [ TypeParameter ]
+  , _methodTypeParameters :: ! [ Annotated TypeParameter ]
   -- ^ a method can have specific type parameters
+  , _methodParameters     :: ! [ Annotated Type ]
+  -- ^ the method parameters
+  , _methodReturnType     :: ! (Annotated ReturnType)
+  -- ^ the method return type
   , _methodAccessFlags    :: ! (Set.Set MAccessFlag)
   -- ^ the set of access flags
   , _methodCode           :: ! (Maybe Code)
   -- ^ optionally the method can contain code
-  , _methodExceptions     :: ! [ ThrowsSignature]
+  , _methodExceptions     :: ! [ Annotated ThrowsType ]
   -- ^ the method can have one or more exceptions
+  , _methodAnnotations     :: ! Annotations
+  -- ^ the method can have annotations, these might be duplicated in the
+  -- annotation for the return type.
   } deriving (Eq, Show, Generic, NFData)
 
 -- | An inner class
@@ -199,7 +208,7 @@ instance HasFieldId Field where
   fieldId = undefined --  NameAndType (f ^. fieldName) (f ^. fieldType)
   {-# INLINE fieldId #-}
 
--- | A Methhi has a 'MethodId'
+-- | A Method has a 'MethodId'
 instance HasMethodId Method where
   methodId = undefined -- 
   {-# INLINE methodId #-}
@@ -225,6 +234,18 @@ classMethod mid = classMethods . to (find (\a -> a ^. methodId == mid))
 -- | Check if a class is an interface
 isInterface :: Class -> Bool
 isInterface cls = B.CInterface `Set.member` (cls ^. classAccessFlags)
+
+
+methodDescriptor :: Getter Method MethodDescriptor
+methodDescriptor = to
+  (\m -> MethodDescriptor
+    (m ^.. methodParameters . folded . annotatedContent . to
+      (fromRight "java/lang/Object" . toJType)
+    )
+    (m ^. methodReturnType . annotatedContent . returnType . to
+      (ReturnDescriptor . fmap (fromRight "java/lang/Object" . toJType))
+    )
+  )
 
 
 -- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
