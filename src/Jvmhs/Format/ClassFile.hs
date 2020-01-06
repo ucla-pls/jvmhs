@@ -50,12 +50,19 @@ import qualified Language.JVM.Attribute.Signature
 import qualified Language.JVM.Attribute.Exceptions
                                                as B
 import qualified Language.JVM.Attribute.Code   as B
+import qualified Language.JVM.Attribute.InnerClasses
+                                               as B
+import qualified Language.JVM.Attribute.EnclosingMethod
+                                               as B
+import qualified Language.JVM.Attribute.BootstrapMethods
+                                               as B
 
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.Type
 import           Jvmhs.Data.Identifier
+import           Jvmhs.Data.BootstrapMethod
 
 import           Jvmhs.Format.Internal
 
@@ -69,6 +76,191 @@ textSerialize = PartIso (validateEither . B.deserialize) (pure . B.serialize)
 -- | Convert a ConstantValue into a JValue
 constantValueFormat :: Formatter [B.ConstantValue B.High] (Maybe JValue)
 constantValueFormat = coerceFormat . singletonList
+
+
+classFormat :: Formatter (B.ClassFile B.High) Class
+classFormat = PartIso
+  (\B.ClassFile {..} -> do
+    let _classAccessFlags = coerce cAccessFlags'
+    let _className'       = cThisClass
+    let _classVersion     = Just (cMajorVersion, cMinorVersion)
+
+    _classFields  <- there (coerceFormat . isomap fieldFormat) cFields'
+    _classMethods <- there (coerceFormat . isomap methodFormat) cMethods'
+
+    ((_classSuper', _classInterfaces, _classTypeParameters), (_classBootstrapMethods, _classEnclosingMethod, _classInnerClasses), _classAnnotations) <-
+      there classAttributeFormat ((cSuperClass, cInterfaces), cAttributes)
+
+    let _classSuper = if _className' == "java/lang/Object"
+          then Nothing
+          else Just _classSuper'
+
+    pure Class { .. }
+  )
+  (\Class {..} -> do
+    let cMagicNumber                   = 0xCAFEBABE
+    let cConstantPool                  = ()
+    let cAccessFlags'                  = B.BitSet _classAccessFlags
+    let cThisClass                     = _className'
+    let (cMajorVersion, cMinorVersion) = fromMaybe (52, 0) _classVersion
+
+    cFields'  <- back (coerceFormat . isomap fieldFormat) _classFields
+    cMethods' <- back (coerceFormat . isomap methodFormat) _classMethods
+
+    ((cSuperClass, cInterfaces), cAttributes) <- back
+      classAttributeFormat
+      ( ( fromMaybe (withNoAnnotation (classTypeFromName "java/lang/Object"))
+                    _classSuper
+        , _classInterfaces
+        , _classTypeParameters
+        )
+      , (_classBootstrapMethods, _classEnclosingMethod, _classInnerClasses)
+      , _classAnnotations
+      )
+
+    pure B.ClassFile { .. }
+  )
+
+classAttributeFormat
+  :: Formatter
+       ((ClassName, B.SizedList16 ClassName), B.ClassAttributes B.High)
+       ( (Annotated ClassType, [Annotated ClassType], [Annotated TypeParameter])
+       , ([BootstrapMethod], Maybe (ClassName, Maybe MethodId), [InnerClass])
+       , Annotations
+       )
+classAttributeFormat =
+  triple classSignatureFormat classExtras runtimeAnnotationsFormat
+    . fromIso
+        (\((sc, itf), (s, bs, em, ic, tann, an)) ->
+          ((((sc, itf), s), tann), (bs, em, ic), an)
+        )
+        (\((((sc, itf), s), tann), (bs, em, ic), an) ->
+          ((sc, itf), (s, bs, em, ic, tann, an))
+        )
+    . inSecond unwrapClassAttributes
+ where
+  unwrapClassAttributes = fromIso
+    (\B.ClassAttributes {..} ->
+      ( caSignature
+      , caBootstrapMethods
+      , caEnclosingMethod
+      , caInnerClasses
+      , (caVisibleTypeAnnotations, caInvisibleTypeAnnotations)
+      , (caVisibleAnnotations    , caInvisibleAnnotations)
+      )
+    )
+    (\(caSignature, caBootstrapMethods, caEnclosingMethod, caInnerClasses, (caVisibleTypeAnnotations, caInvisibleTypeAnnotations), (caVisibleAnnotations, caInvisibleAnnotations)) ->
+      let caOthers = [] in B.ClassAttributes { .. }
+    )
+
+  classSignatureFormat
+    :: Formatter
+         ( ((ClassName, B.SizedList16 ClassName), [B.Signature B.High])
+         , ( [B.RuntimeVisibleTypeAnnotations B.ClassTypeAnnotation B.High]
+           , [B.RuntimeInvisibleTypeAnnotations B.ClassTypeAnnotation B.High]
+           )
+         )
+         (Annotated ClassType, [Annotated ClassType], [Annotated TypeParameter])
+  classSignatureFormat =
+    annotateClass
+      . (   withDefaultF
+        .   (   fromIso
+                (\(cn, lst) ->
+                  (classTypeFromName cn, map classTypeFromName $ coerce lst, [])
+                )
+                (\(ct, intf, _) ->
+                  ( classNameFromType ct
+                  , B.SizedList $ map classNameFromType intf
+                  )
+                )
+
+            *** ( isomap
+                    ( classSignatureFormat'
+                    . textSerialize @B.ClassSignature
+                    . coerceFormat
+                    )
+                . singletonList
+                )
+            )
+        *** typeAnnotationsFormat
+        )
+
+  classSignatureFormat'
+    :: Formatter B.ClassSignature (ClassType, [ClassType], [TypeParameter])
+  classSignatureFormat' =
+    triple classTypeFormat (isomap classTypeFormat) (isomap typeParameterFormat)
+      . mkBClassSignature
+
+  mkBClassSignature = fromIso
+    (\B.ClassSignature {..} ->
+      (csSuperclassSignature, csInterfaceSignatures, csTypeParameters)
+    )
+    (\(csSuperclassSignature, csInterfaceSignatures, csTypeParameters) ->
+      B.ClassSignature { .. }
+    )
+
+  classExtras
+    :: Formatter
+         ( [B.BootstrapMethods B.High]
+         , [B.EnclosingMethod B.High]
+         , [B.InnerClasses B.High]
+         )
+         ([BootstrapMethod], Maybe (ClassName, Maybe MethodId), [InnerClass])
+  classExtras = triple
+    (compressList bootstrapMethodsFormat)
+    ( isomap
+        (fromIso (\(B.EnclosingMethod cn mid) -> (cn, mid))
+                 (\(cn, mid) -> B.EnclosingMethod cn mid)
+        )
+    . singletonList
+    )
+    (compressList innerClassesFormat)
+
+  -- TODO: More work needed
+  annotateClass
+    :: Formatter
+         ( (ClassType, [ClassType], [TypeParameter])
+         , [(B.ClassTypeAnnotation B.High, (TypePath, Annotation))]
+         )
+         (Annotated ClassType, [Annotated ClassType], [Annotated TypeParameter])
+  annotateClass = fromIso
+    (\((ct, inn, tp), _) ->
+      (withNoAnnotation ct, map withNoAnnotation inn, map withNoAnnotation tp)
+    )
+    (\(ct, inn, tp) ->
+      ( ( view annotatedContent ct
+        , map (view annotatedContent) inn
+        , map (view annotatedContent) tp
+        )
+      , []
+      )
+    )
+
+bootstrapMethodsFormat
+  :: Formatter (B.BootstrapMethods B.High) [BootstrapMethod]
+bootstrapMethodsFormat = coerceFormat
+{-# INLINE bootstrapMethodsFormat #-}
+
+innerClassesFormat :: Formatter (B.InnerClasses B.High) [InnerClass]
+innerClassesFormat =
+  isomap
+      (fromIso
+        (\B.InnerClass {..} -> InnerClass
+          { _innerClass       = icClassName
+          , _innerOuterClass  = icOuterClassName
+          , _innerClassName   = icInnerName
+          , _innerAccessFlags = B.toSet icInnerAccessFlags
+          }
+        )
+        (\InnerClass {..} -> B.InnerClass
+          { icClassName        = _innerClass
+          , icOuterClassName   = _innerOuterClass
+          , icInnerName        = _innerClassName
+          , icInnerAccessFlags = B.BitSet _innerAccessFlags
+          }
+        )
+      )
+    . coerceFormat
 
 methodFormat :: Formatter (B.Method B.High) Method
 methodFormat = PartIso methodThere methodBack where
@@ -603,12 +795,12 @@ returnTypeFormat = PartIso (fmap ReturnType . mapM (there typeFormat))
 throwsTypeFormat :: Formatter (B.ThrowsSignature) ThrowsType
 throwsTypeFormat = PartIso
   (\case
-    B.ThrowsClass cn -> ThrowsClass <$> there classTypeFromSignature cn
+    B.ThrowsClass cn -> ThrowsClass <$> there classTypeFormat cn
     B.ThrowsTypeVariable tv ->
       ThrowsTypeVariable <$> there typeVariableFromSignature tv
   )
   (\case
-    ThrowsClass cn -> B.ThrowsClass <$> back classTypeFromSignature cn
+    ThrowsClass cn -> B.ThrowsClass <$> back classTypeFormat cn
     ThrowsTypeVariable tv ->
       B.ThrowsTypeVariable <$> back typeVariableFromSignature tv
   )
@@ -642,14 +834,14 @@ typeFromJRefTypeFormat fn =
 referenceTypeFromSignature :: Formatter B.ReferenceType ReferenceType
 referenceTypeFromSignature = PartIso
   (\case
-    B.RefClassType ct -> RefClassType <$> there classTypeFromSignature ct
+    B.RefClassType ct -> RefClassType <$> there classTypeFormat ct
     B.RefTypeVariable tv ->
       RefTypeVariable <$> there typeVariableFromSignature tv
     B.RefArrayType atp ->
       RefArrayType . ArrayType . withNoAnnotation <$> there typeFormat atp
   )
   (\case
-    RefClassType ct -> B.RefClassType <$> back classTypeFromSignature ct
+    RefClassType ct -> B.RefClassType <$> back classTypeFormat ct
     RefTypeVariable tv ->
       B.RefTypeVariable <$> back typeVariableFromSignature tv
     RefArrayType (ArrayType (Annotated atp _)) ->
@@ -674,8 +866,8 @@ typeVariableFromSignature = coerceFormat
 -- changes meaning. The ClassType defined in this library have slots for
 -- all innerclasses. Where the original compresses the last innerclasses
 -- into one class.
-classTypeFromSignature :: Formatter B.ClassType ClassType
-classTypeFromSignature = PartIso
+classTypeFormat :: Formatter B.ClassType ClassType
+classTypeFormat = PartIso
   (\(B.ClassType n ict ta) -> do
     ta'  <- mapM (there typeArgumentFromSignature) ta
     ict' <- mapM thereInnerClass ict

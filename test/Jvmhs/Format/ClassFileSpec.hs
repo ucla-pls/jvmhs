@@ -11,6 +11,7 @@ module Jvmhs.Format.ClassFileSpec where
 import           SpecHelper
 
 import           Text.Nicify
+import           Data.Coerce
 
 import           Test.QuickCheck
 
@@ -18,12 +19,17 @@ import qualified Data.Vector                   as V
 
 import qualified Data.Set                      as Set
 
+import qualified Language.JVM                  as B
+import qualified Language.JVM.Attribute.BootstrapMethods
+                                               as B
+
 import           Jvmhs.Format.ClassFile
 import           Jvmhs.Format.Internal
 
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Identifier
+import           Jvmhs.Data.BootstrapMethod
 
 import           Jvmhs.Data.TypeSpec
 
@@ -37,11 +43,13 @@ spec = do
   spec_fieldAttributes
   spec_field
 
+  spec_code
+
   spec_methodSignature
   spec_methodAttributes
   spec_method
 
-  spec_code
+  spec_class
 
 spec_signature :: Spec
 spec_signature = describe "fromSignature conversions" $ do
@@ -50,8 +58,8 @@ spec_signature = describe "fromSignature conversions" $ do
       genType
       (flipDirection $ typeFromJTypeFormat (const "Ljava/lang/Object;"))
 
-  describe "classTypeFromSignature" $ do
-    test_formatter genClassType (flipDirection classTypeFromSignature)
+  describe "classTypeFormat" $ do
+    test_formatter genClassType (flipDirection classTypeFormat)
 
   describe "referenceTypeFromSignature" $ do
     test_formatter genReferenceType (flipDirection referenceTypeFromSignature)
@@ -156,6 +164,40 @@ spec_method = describe "methodFormat" $ do
     _methodAnnotations    <- genAnnotations
     pure Method { .. }
 
+
+spec_class :: Spec
+spec_class = describe "classFormat" $ do
+  test_formatter genClass (flipDirection classFormat)
+
+ where
+  genClass = do
+    let _className'       = "some/ObjectType" :: ClassName
+    let _classAccessFlags = Set.empty
+    _classTypeParameters <- listOf (genAnnotated genTypeParameter)
+    _classSuper          <- liftArbitrary $ genAnnotated genClassType
+    _classInterfaces     <- liftArbitrary $ genAnnotated genClassType
+    let _classFields  = []
+    let _classMethods = []
+    _classVersion          <- liftArbitrary (pure (52, 0))
+    _classBootstrapMethods <- listOf genBootstrapMethod
+    _classEnclosingMethod  <- arbitrary
+    _classInnerClasses     <- listOf genInnerClass
+    _classAnnotations      <- pure []
+    pure Class { .. }
+
+  genInnerClass =
+    InnerClass
+      <$> arbitrary
+      <*> arbitrary
+      <*> liftArbitrary (elements ["InnerClass"])
+      <*> pure Set.empty
+
+genBootstrapMethod :: Gen BootstrapMethod
+genBootstrapMethod =
+  BootstrapMethod
+    <$> (B.BootstrapMethod <$> genMethodHandle <*> (coerce <$> listOf genJValue)
+        )
+
 test_formatter :: (Eq a, Eq b, Show b, Show a) => Gen a -> Formatter a b -> Spec
 test_formatter gen PartIso { there, back } =
   prop "should be an adjunction" . forAll gen $ \a ->
@@ -169,6 +211,3 @@ test_formatter gen PartIso { there, back } =
           ++ nicify (show a')
           )
           ((there =<< a') `shouldBe` there a)
-
-instance Arbitrary MethodDescriptor where
-  arbitrary = genericArbitraryU

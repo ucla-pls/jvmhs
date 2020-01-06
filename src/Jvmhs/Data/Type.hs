@@ -277,7 +277,6 @@ class HasTypeAnnotations a where
   typeAnnotations
     :: IndexedTraversal' TypePath a [Annotation]
 
-
 -- | Get a list of all annotations in the type
 getTypeAnnotations :: HasTypeAnnotations a => a -> [(TypePath, Annotation)]
 getTypeAnnotations = itoListOf (typeAnnotations <. traverse)

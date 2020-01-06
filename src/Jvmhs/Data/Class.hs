@@ -123,11 +123,11 @@ data Class = Class
   -- ^ the description of the class
   , _classAccessFlags      :: Set.Set CAccessFlag
   -- ^ access flags of the class
-  , _classTypeParameters   :: [ TypeParameter ]
+  , _classTypeParameters   :: [ Annotated TypeParameter ]
   -- ^ the type parameters of the class
-  , _classSuper            :: Maybe ClassType
+  , _classSuper            :: Maybe (Annotated ClassType)
   -- ^ the superclass of the class
-  , _classInterfaces       :: [ ClassType ]
+  , _classInterfaces       :: [ Annotated ClassType ]
   -- ^ a list of interfaces implemented by the class
   , _classFields           :: [ Field ]
   -- ^ a list of fields

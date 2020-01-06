@@ -111,7 +111,7 @@ instance Arbitrary ClassName where
     elements ["JustClass", "more/ClassName", "with/inner/Class$className"]
 
 instance Arbitrary JRefType where
-  arbitrary = genericArbitraryU
+  arbitrary = scale (`div` 2) genericArbitraryU
 
 instance Arbitrary JBaseType where
   arbitrary = genericArbitraryU
@@ -122,8 +122,61 @@ instance Arbitrary JType where
 instance Arbitrary B.FieldDescriptor where
   arbitrary = elements ["I", "Ljava/lang/String;"]
 
+instance Arbitrary B.MethodDescriptor where
+  arbitrary = elements ["(I)V", "()Ljava/lang/String;", "(II)I"]
+
+instance Arbitrary B.AbsFieldId where
+  arbitrary = B.AbsFieldId <$> genericArbitraryU
+
+instance Arbitrary B.AbsMethodId where
+  arbitrary = B.AbsMethodId <$> genericArbitraryU
+
+instance Arbitrary B.MethodHandleFieldKind where
+  arbitrary = genericArbitraryU
+
 instance Arbitrary B.ReturnDescriptor where
   arbitrary = genericArbitraryU
+
+instance Arbitrary B.FieldId where
+  arbitrary =
+    B.FieldId <$> (B.NameAndType <$> elements ["f1", "f2"] <*> arbitrary)
+
+instance Arbitrary B.MethodId where
+  arbitrary =
+    B.MethodId <$> (B.NameAndType <$> elements ["m1", "m2"] <*> arbitrary)
+
+instance Arbitrary (B.InRefType B.MethodId) where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary B.AbsVariableMethodId where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary B.AbsInterfaceMethodId where
+  arbitrary = genericArbitraryU
+
+
+genJValue :: Gen JValue
+genJValue = oneof
+  [ VInteger <$> arbitrary
+  , VLong <$> arbitrary
+  , VFloat <$> arbitrary
+  , VDouble <$> arbitrary
+  , VString <$> elements ["", "string", "with spaces"]
+  , VMethodType <$> arbitrary
+  , VMethodHandle <$> genMethodHandle
+  ]
+
+
+genMethodHandle :: Gen (B.MethodHandle B.High)
+genMethodHandle = scale (`div` 2) $ oneof
+  [ B.MHField <$> genericArbitraryU
+  , B.MHMethod <$> genericArbitraryU
+  , B.MHInterface <$> genericArbitraryU
+  ]
+
+instance Arbitrary (B.MethodHandle B.High) where
+  arbitrary = genMethodHandle
+
 
 genAnnotation :: Gen Annotation
 genAnnotation =

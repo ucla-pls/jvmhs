@@ -21,6 +21,27 @@ import qualified Data.HashMap.Strict           as HashMap
 
 import           Control.Lens
 
+
+-- | Glass is a partial isomorphism it might be partial in both direction.
+type Glass s t a b
+  = forall p f . (Profunctor p, Functor f) => p a (f b) -> p s (f t)
+
+type Glass' s a = Glass s s a a
+
+type AnGlass s t a b = Parts a b a (Identity b) -> Parts a b s (Identity t)
+
+data Parts a b s t =
+  Parts (s -> Validation [String] a) (b -> Validation [String] t)
+
+instance Profunctor (Parts a b) where
+  dimap f g (Parts sa bt) = Parts (sa . f) (fmap g . bt)
+  {-# INLINE dimap #-}
+  lmap f (Parts sa bt) = Parts (sa . f) bt
+  {-# INLINE lmap #-}
+  rmap f (Parts sa bt) = Parts sa (fmap f . bt)
+  {-# INLINE rmap #-}
+
+
 -- | Validation is an Either which can collect it's faliures. This
 -- is usefull when presenting this information to the user later.
 data Validation e a
