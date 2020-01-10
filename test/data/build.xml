@@ -5,9 +5,11 @@
         <mkdir dir="${classes}"/>
     </target>
     <target name="compile" depends="init" >
-        <javac srcdir="${src}" destdir="${classes}"/>
+      <javac srcdir="${src}" destdir="${classes}">
+        <compilerarg value="-parameters"/>
+      </javac>
     </target>
     <target name="clean" >
-        <delete dir="${build}"/>
+        <delete dir="${classes}"/>
     </target>
 </project>

@@ -1,14 +1,16 @@
-{-# LANGUAGE DeriveFunctor   #-}
-{-# LANGUAGE EmptyCase   #-}
-{-# LANGUAGE TupleSections   #-}
+{-# LANGUAGE ApplicativeDo       #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE EmptyCase           #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE TypeApplications   #-}
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE ScopedTypeVariables      #-}
-{-# LANGUAGE RankNTypes      #-}
-{-# LANGUAGE ApplicativeDo   #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE ViewPatterns        #-}
 {-|
 Module      : Jvmhs.Format.ClassFile
 Copyright   : (c) Christian Gram Kalhauge, 2019
@@ -16,8 +18,7 @@ License     : BSD3
 Maintainer  : kalhauge@cs.ucla.edu
 
 This module describes conversion from @jvm-binary@'s 'ClassFile' format to
-this Class format. Every variable in this module represents an partial
-iso-morphism from the ClassFile format and back.
+this Class format.
 
 -}
 module Jvmhs.Format.ClassFile where
@@ -25,44 +26,52 @@ module Jvmhs.Format.ClassFile where
 -- base
 import           Control.Category
 import           Control.Monad
+import           Data.Bifunctor
 import           Data.Coerce
-import           Data.Maybe
 import           Data.Either
+import           Data.Foldable
+import           Data.Maybe
 import           Data.Traversable
-import           Prelude                 hiding ( (.)
-                                                , id
+import           Prelude                 hiding ( id
+                                                , (.)
                                                 )
+
+-- containers
+import qualified Data.Map.Strict               as Map
 
 -- lens
 import           Control.Lens
 
--- text 
+-- text
 import qualified Data.Text                     as Text
+
 
 -- jvm-binary
 import qualified Language.JVM                  as B
-import qualified Language.JVM.Attribute.ConstantValue
-                                               as B
 import qualified Language.JVM.Attribute.Annotations
-                                               as B
-import qualified Language.JVM.Attribute.Signature
-                                               as B
-import qualified Language.JVM.Attribute.Exceptions
-                                               as B
-import qualified Language.JVM.Attribute.Code   as B
-import qualified Language.JVM.Attribute.InnerClasses
-                                               as B
-import qualified Language.JVM.Attribute.EnclosingMethod
                                                as B
 import qualified Language.JVM.Attribute.BootstrapMethods
                                                as B
+import qualified Language.JVM.Attribute.Code   as B
+import qualified Language.JVM.Attribute.ConstantValue
+                                               as B
+import qualified Language.JVM.Attribute.EnclosingMethod
+                                               as B
+import qualified Language.JVM.Attribute.Exceptions
+                                               as B
+import qualified Language.JVM.Attribute.InnerClasses
+                                               as B
+import qualified Language.JVM.Attribute.MethodParameters
+                                               as B
+import qualified Language.JVM.Attribute.Signature
+                                               as B
 
+import           Jvmhs.Data.Annotation
+import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
-import           Jvmhs.Data.Annotation
-import           Jvmhs.Data.Type
 import           Jvmhs.Data.Identifier
-import           Jvmhs.Data.BootstrapMethod
+import           Jvmhs.Data.Type
 
 import           Jvmhs.Format.Internal
 
@@ -164,6 +173,12 @@ classAttributeFormat =
   classSignatureFormat =
     annotateClass
       . (   withDefaultF
+            (not . andOf
+              (  (_1 . to classTypeIsSimple)
+              <> (_2 . folded . to classTypeIsSimple)
+              <> (_3 . folded . like False)
+              )
+            )
         .   (   fromIso
                 (\(cn, lst) ->
                   (classTypeFromName cn, map classTypeFromName $ coerce lst, [])
@@ -241,6 +256,12 @@ bootstrapMethodsFormat
 bootstrapMethodsFormat = coerceFormat
 {-# INLINE bootstrapMethodsFormat #-}
 
+methodParametersFormat
+  :: Formatter (B.MethodParameters B.High) [B.MethodParameter B.High]
+methodParametersFormat = coerceFormat
+{-# INLINE methodParametersFormat #-}
+
+
 innerClassesFormat :: Formatter (B.InnerClasses B.High) [InnerClass]
 innerClassesFormat =
   isomap
@@ -289,11 +310,29 @@ methodFormat = PartIso methodThere methodBack where
       )
     pure B.Method { .. }
 
+-- | Can convert a list of items into a list of maybe items. Fails if all
+-- elements are not either Just b or Nothing.
+allOrNothing :: Formatter ([a], Maybe [b]) [(a, Maybe b)]
+allOrNothing = PartIso
+  (\(as, bs) -> pure $ case bs of
+    Nothing  -> map (, Nothing) as
+    Just bs' -> zip as (map Just bs')
+  )
+  (\items -> do
+    let (as, catMaybes -> bs) = unzip items
+    if null bs
+      then Success (as, Nothing)
+      else if length bs == length as
+        then Success (as, Just bs)
+        else Failure ["Both Just's and Nothing's exists in list"]
+  )
+
+
 methodAttributesFormat
   :: Formatter
        (B.MethodDescriptor, B.MethodAttributes B.High)
        ( ( [Annotated TypeParameter]
-         , [Annotated Type]
+         , [Parameter]
          , Annotated ReturnType
          , [Annotated ThrowsType]
          )
@@ -301,77 +340,69 @@ methodAttributesFormat
        , Annotations
        )
 methodAttributesFormat =
-  triple
-      ( methodSignatureFormat
-      . triple
-          (   (inSecond $ compressList coerceFormat)
-          *** ( isomap (textSerialize @B.MethodSignature . coerceFormat)
-              . singletonList
-              )
-          )
-          parameterAnnotationsFormat
-          typeAnnotationsFormat
-      )
-      (isomap codeFormat . singletonList)
-      runtimeAnnotationsFormat
+  triple (annotateMethodTypesFormat . inSecond typeAnnotationsFormat)
+         (isomap codeFormat . singletonList)
+         runtimeAnnotationsFormat
     . PartIso anThere anBack where
 
   anThere (desc, B.MethodAttributes {..}) = do
+    (tps, parmst, rt, thrws) <- there handleSignature
+                                      ((desc, maExceptions), maSignatures)
+
+    params <- there
+      handleParameters
+      ( (parmst                       , maMethodParameters)
+      , (maVisibleParameterAnnotations, maInvisibleParameterAnnotations)
+      )
+
     return
-      ( ( ((desc, maExceptions)         , maSignatures)
-        , (maVisibleParameterAnnotations, maInvisibleParameterAnnotations)
-        , (maVisibleTypeAnnotations     , maInvisibleTypeAnnotations)
+      ( ( (tps, params, rt, thrws)
+        , (maVisibleTypeAnnotations, maInvisibleTypeAnnotations)
         )
       , maCode
       , (maVisibleAnnotations, maInvisibleAnnotations)
       )
 
-  anBack ((((desc, maExceptions), maSignatures), (maVisibleParameterAnnotations, maInvisibleParameterAnnotations), (maVisibleTypeAnnotations, maInvisibleTypeAnnotations)), maCode, (maVisibleAnnotations, maInvisibleAnnotations))
+  anBack (((tps, params, rt, thrws), (maVisibleTypeAnnotations, maInvisibleTypeAnnotations)), maCode, (maVisibleAnnotations, maInvisibleAnnotations))
     = do
+      ((parmst, maMethodParameters), (maVisibleParameterAnnotations, maInvisibleParameterAnnotations)) <-
+        back handleParameters params
+      ((desc, maExceptions), maSignatures) <- back handleSignature
+                                                   (tps, parmst, rt, thrws)
+
+
       let maAnnotationDefault = []
       let maOthers            = []
       return (desc, B.MethodAttributes { .. })
 
-methodSignatureFormat
-  :: Formatter
-       ( ((B.MethodDescriptor, [ClassName]), Maybe B.MethodSignature)
-       , [Annotations]
-       , [(B.MethodTypeAnnotation B.High, (TypePath, Annotation))]
-       )
-       ( [Annotated TypeParameter]
-       , [Annotated Type]
-       , Annotated ReturnType
-       , [Annotated ThrowsType]
-       )
-methodSignatureFormat =
-  PartIso msThere msBack . fromLens _1 _1 moreSignatureFormat
- where
-
-  msThere ((tp, prams, rt, thrws), _, _) = do
-    return
-      ( map withNoAnnotation tp
-      , map withNoAnnotation prams
-      , withNoAnnotation rt
-      , map withNoAnnotation thrws
-      )
-
-  msBack (tps, ts, rt, thrs) = do
-    return
-      ( ( map (view annotatedContent) tps
-        , map (view annotatedContent) ts
-        , view annotatedContent rt
-        , map (view annotatedContent) thrs
+  handleSignature
+    :: Formatter
+         ((B.MethodDescriptor, [B.Exceptions B.High]), [B.Signature B.High])
+         ([TypeParameter], [Type], ReturnType, [ThrowsType])
+  handleSignature =
+    moreSignatureFormat
+      . (   (inSecond $ compressList coerceFormat)
+        *** ( isomap (textSerialize @B.MethodSignature . coerceFormat)
+            . singletonList
+            )
         )
-      , []
-      , []
-      )
 
   moreSignatureFormat
     :: Formatter
          ((B.MethodDescriptor, [ClassName]), Maybe B.MethodSignature)
          ([TypeParameter], [Type], ReturnType, [ThrowsType])
   moreSignatureFormat =
-    withDefaultF . (unwrapMethodDescriptor *** isomap unwrapMethodSignature)
+    withDefaultF
+        (not . andOf
+          (fold
+            [ _1 . folded . like False
+            , _2 . folded . to typeIsSimple
+            , _3 . to returnTypeIsSimple
+            , _4 . folded . to throwsTypeIsSimple
+            ]
+          )
+        )
+      . (unwrapMethodDescriptor *** isomap unwrapMethodSignature)
 
   unwrapMethodSignature
     :: Formatter
@@ -422,6 +453,160 @@ methodSignatureFormat =
       )
     )
 
+  handleParameters = parameterAnnotationsFormat . inFirst
+    (parameterFormat . inSecond (isomap methodParametersFormat . singletonList))
+
+  parameterFormat
+    :: Formatter ([Type], Maybe [B.MethodParameter B.High]) [Parameter]
+  parameterFormat =
+    isomap
+        (fromIso
+          (\(tp, m) -> Parameter
+            (m <&> \(B.MethodParameter n a) -> (n, B.toSet a))
+            (withNoAnnotation tp)
+            []
+          )
+          (\(Parameter nt tp _) ->
+            ( view annotatedContent tp
+            , nt <&> \(n, a) -> B.MethodParameter n (B.BitSet a)
+            )
+          )
+        )
+      . allOrNothing
+
+parameterAnnotationsFormat
+  :: Formatter
+       ( [Parameter]
+       , ( [B.RuntimeVisibleParameterAnnotations B.High]
+         , [B.RuntimeInvisibleParameterAnnotations B.High]
+         )
+       )
+       [Parameter]
+parameterAnnotationsFormat = joinParameters . inSecond
+  ( zipPadList (flipDirection $ partitionList (view annotationIsRuntimeVisible))
+  . (   runtimeVisibleParameterAnnotationsFormat
+    *** runtimeInvisibleParameterAnnotationsFormat
+    )
+  )
+ where
+  joinParameters :: Formatter ([Parameter], [Annotations]) [Parameter]
+  joinParameters = PartIso
+    (\(ps, an) -> case an of
+      [] -> pure ps
+      _
+        | length ps == length an -> pure
+        $ zipWith (\p a -> p & parameterAnnotations .~ a) ps an
+        | otherwise -> Failure
+          ["Annotation length different from number of parameters"]
+    )
+    (\p ->
+      let x = map (view parameterAnnotations) p
+      in  pure (p, if all null x then [] else x)
+    )
+
+  runtimeVisibleParameterAnnotationsFormat
+    :: Formatter [B.RuntimeVisibleParameterAnnotations B.High] [Annotations]
+  runtimeVisibleParameterAnnotationsFormat =
+    isomap (annotationsFormat True) . compressList coerceFormat
+
+  runtimeInvisibleParameterAnnotationsFormat
+    :: Formatter [B.RuntimeInvisibleParameterAnnotations B.High] [Annotations]
+  runtimeInvisibleParameterAnnotationsFormat =
+    isomap (annotationsFormat False) . compressList coerceFormat
+
+annotateMethodTypesFormat
+  :: Formatter
+       ( ([TypeParameter], [Parameter], ReturnType, [ThrowsType])
+       , [(B.MethodTypeAnnotation B.High, (TypePath, Annotation))]
+       )
+       ( [Annotated TypeParameter]
+       , [Parameter]
+       , Annotated ReturnType
+       , [Annotated ThrowsType]
+       )
+annotateMethodTypesFormat = PartIso anThere anBack where
+  anThere ((tp, p, r, tt), mt) = do
+    let ann = fmap reverse $ Map.fromListWith (++) (map (over _2 (: [])) mt)
+
+    tpa <- validateEither . forM (zip tp [0 ..]) $ \(t, i) -> setTypeAnnotations
+      (Map.findWithDefault [] (MethodTypeParameterDeclaration i) ann)
+      (withNoAnnotation t)
+
+    pa <- validateEither . forM (zip p [0 ..]) $ \(p', i) ->
+      p' & parameterType %%~ setTypeAnnotations
+        (Map.findWithDefault [] (MethodFormalParameter i) ann)
+
+    ra <- validateEither $ setTypeAnnotations
+      (Map.findWithDefault [] MethodReturnType ann)
+      (withNoAnnotation r)
+
+    tta <- validateEither . forM (zip tt [0 ..]) $ \(t', i) ->
+      setTypeAnnotations (Map.findWithDefault [] (MethodThrowsClause i) ann)
+                         (withNoAnnotation t')
+
+    return (tpa, pa, ra, tta)
+
+  anBack (tpa, pa, ra, tta) = return
+    ( ( tpa ^.. folded . annotatedContent
+      , pa
+      , ra ^. annotatedContent
+      , tta ^.. folded . annotatedContent
+      )
+    , concat
+      [ concat
+        [ map (MethodTypeParameterDeclaration i, ) (getTypeAnnotations t)
+        | (i, t) <- zip [0 ..] tpa
+        ]
+      , concat
+        [ map (MethodFormalParameter i, )
+              (getTypeAnnotations . view parameterType $ t)
+        | (i, t) <- zip [0 ..] pa
+        ]
+      , map (MethodReturnType, ) (getTypeAnnotations ra)
+      , concat
+        [ map (MethodThrowsClause i, ) (getTypeAnnotations t)
+        | (i, t) <- zip [0 ..] tta
+        ]
+      ]
+    )
+
+ --  PartIso msThere msBack . fromLens _1 _1 moreSignatureFormat
+ -- where
+
+ --  msThere ((tp, prams, rt, thrws), pramsann, _) = do
+ --    return
+ --      ( map withNoAnnotation tp
+ --      , zipWith
+ --        (\p (a, mp) -> Parameter
+ --          (fmap (\(B.MethodParameter name af) -> (name, B.toSet af)) mp)
+ --          (withNoAnnotation p)
+ --          a
+ --        )
+ --        prams
+ --        pramsann
+ --      , withNoAnnotation rt
+ --      , map withNoAnnotation thrws
+ --      )
+
+ --  msBack (tps, prms, rt, thrs) = do
+ --    return
+ --      ( ( map (view annotatedContent)                   tps
+ --        , map (view $ parameterType . annotatedContent) prms
+ --        , view annotatedContent rt
+ --        , map (view annotatedContent) thrs
+ --        )
+ --      , map
+ --        (\p ->
+ --          ( p ^. parameterAnnotations
+ --          , fmap (\(a, b) -> B.MethodParameter a (B.BitSet b))
+ --                 (p ^. parameterNameAndFlags)
+ --          )
+ --        )
+ --        prms
+ --      , []
+ --      )
+
+
 
 codeFormat :: Formatter (B.Code B.High) Code
 codeFormat = PartIso
@@ -437,7 +622,7 @@ codeFormat = PartIso
   (\Code {..} -> do
     codeExceptionTable' <- fmap coerce
       $ mapM (back exceptionHandlerFormat) _codeExceptionTable
-    codeAttributes' <- back codeAttributesFormat Nothing
+    codeAttributes' <- back codeAttributesFormat _codeStackMap
     pure B.Code { codeMaxStack       = _codeMaxStack
                 , codeMaxLocals      = _codeMaxLocals
                 , codeByteCode       = B.ByteCode 0 _codeByteCode
@@ -476,7 +661,7 @@ exceptionHandlerFormat = PartIso
     in  pure B.ExceptionTable { .. }
   )
 
--- | Convert a `B.Field` to a `Field` 
+-- | Convert a `B.Field` to a `Field`
 fieldFormat :: Formatter (B.Field B.High) Field
 fieldFormat = PartIso { there = fieldThere, back = fieldBack } where
   fieldThere f = do
@@ -505,7 +690,7 @@ fieldTypeFormat
        ([(TypePath, Annotation)], (B.FieldDescriptor, [B.Signature B.High]))
        (Annotated Type)
 fieldTypeFormat = annotateType . inSecond
-  ( withDefaultF
+  ( withDefaultF (not . typeIsSimple)
   . (   (typeFromJTypeFormat (const "Ljava/lang/Object;") . coerceFormat)
     *** fieldTypeFromSignature
     )
@@ -521,18 +706,21 @@ fieldTypeFormat = annotateType . inSecond
   signatureFormat =
     coerceFormat . textSerialize @B.FieldSignature . coerceFormat
 
-  annotateType :: Formatter ([(TypePath, Annotation)], Type) (Annotated Type)
-  annotateType = PartIso anThere anBack   where
 
-    anThere
-      :: ([(TypePath, Annotation)], Type)
-      -> Validation [FormatError] (Annotated Type)
-    anThere (p, t) = validateEither $ setTypeAnnotations p (withNoAnnotation t)
+annotateType
+  :: forall a
+   . (Show a, HasTypeAnnotations a)
+  => Formatter ([(TypePath, Annotation)], a) (Annotated a)
+annotateType = PartIso anThere anBack where
 
-    anBack
-      :: Annotated Type
-      -> Validation [FormatError] ([(TypePath, Annotation)], Type)
-    anBack a = Success (getTypeAnnotations a, view annotatedContent a)
+  anThere
+    :: ([(TypePath, Annotation)], a) -> Validation [FormatError] (Annotated a)
+  anThere (p, t) = validateEither
+    (first ((show t ++ ": ") ++) $ setTypeAnnotations p (withNoAnnotation t))
+
+  anBack
+    :: Annotated a -> Validation [FormatError] ([(TypePath, Annotation)], a)
+  anBack a = Success (getTypeAnnotations a, view annotatedContent a)
 
 
 fieldAttributesFormat
@@ -569,7 +757,7 @@ fieldAttributesFormat = inSecond fieldTypeFormat . PartIso attrThere attrBack wh
 
 
 
--- | a converation between annotations 
+-- | a converation between annotations
 runtimeAnnotationsFormat
   :: Formatter
        ( [B.RuntimeVisibleAnnotations B.High]
@@ -590,28 +778,6 @@ runtimeAnnotationsFormat =
   runtimeInvisibleAnnotationsFormat =
     annotationsFormat False . compressList coerceFormat
 
-parameterAnnotationsFormat
-  :: Formatter
-       ( [B.RuntimeVisibleParameterAnnotations B.High]
-       , [B.RuntimeInvisibleParameterAnnotations B.High]
-       )
-       [Annotations]
-parameterAnnotationsFormat =
-  isomap (flipDirection (partitionList (view annotationIsRuntimeVisible)))
-    . zipList
-    . (   runtimeVisibleParameterAnnotationsFormat
-      *** runtimeInvisibleParameterAnnotationsFormat
-      )
- where
-  runtimeVisibleParameterAnnotationsFormat
-    :: Formatter [B.RuntimeVisibleParameterAnnotations B.High] [Annotations]
-  runtimeVisibleParameterAnnotationsFormat =
-    isomap (annotationsFormat True) . compressList coerceFormat
-
-  runtimeInvisibleParameterAnnotationsFormat
-    :: Formatter [B.RuntimeInvisibleParameterAnnotations B.High] [Annotations]
-  runtimeInvisibleParameterAnnotationsFormat =
-    isomap (annotationsFormat False) . compressList coerceFormat
 
 typeAnnotationsFormat
   :: forall a
@@ -774,16 +940,22 @@ fromClassFile = undefined
 typeParameterFormat :: Formatter B.TypeParameter TypeParameter
 typeParameterFormat = PartIso
   (\B.TypeParameter {..} -> do
-    _typeInterfaceBound <- mapM (there referenceTypeFromSignature)
-                                tpInterfaceBound
-    _typeClassBound <- mapM (there referenceTypeFromSignature) tpClassBound
+    _typeInterfaceBound <- mapM
+      (fmap withNoAnnotation . there referenceTypeFromSignature)
+      tpInterfaceBound
+    _typeClassBound <- mapM
+      (fmap withNoAnnotation . there referenceTypeFromSignature)
+      tpClassBound
     let _typeIdentifier = tpIdentifier
     pure TypeParameter { .. }
   )
   (\TypeParameter {..} -> do
-    tpInterfaceBound <- mapM (back referenceTypeFromSignature)
-                             _typeInterfaceBound
-    tpClassBound <- mapM (back referenceTypeFromSignature) _typeClassBound
+    tpInterfaceBound <- mapM
+      (back referenceTypeFromSignature . view annotatedContent)
+      _typeInterfaceBound
+    tpClassBound <- mapM
+      (back referenceTypeFromSignature . view annotatedContent)
+      _typeClassBound
     let tpIdentifier = _typeIdentifier
     pure B.TypeParameter { .. }
   )
@@ -930,315 +1102,3 @@ typeArgumentFromSignature = PartIso
         referenceTypeFromSignature
         (view annotatedContent rt)
   )
-
-
-
--- instance FromJVMBinary (B.Field B.High) Field where
---   _Binary =
---     iso toBField fromBField
---     where
---       fromBField = do
---         _name <- B.fName
---         _desc <- B.fDescriptor
---
---         _fieldAccessFlags <-
---           B.fAccessFlags
---
---         _fieldValue <-
---           Just . B.constantValue <=< B.fConstantValue
---
---         _fieldSignature <-
---           fmap (\(Signature a) ->
---                    fromRight (error $ "could not read " ++ show a)
---                    $ fieldSignatureFromText a
---                )
---           . B.fSignature
---
---         _fieldAnnotations <-
---           (readAnnotations <$> B.faVisibleAnnotations <*> B.faInvisibleAnnotations)
---           . B.fAttributes
---
---         pure (mkField (_name <:> _desc) (FieldContent {..}))
---
---       toBField =
---         B.Field
---           <$> B.BitSet . view fieldAccessFlags
---           <*> view fieldName
---           <*> view fieldDescriptor
---           <*> ( do
---                  faConstantValues <-
---                    maybeToList . fmap B.ConstantValue
---                    . view fieldValue
---
---                  faSignatures <-
---                    maybeToList . fmap (Signature . fieldSignatureToText)
---                    . view fieldSignature
---
---                  faVisibleAnnotations <-
---                    compress (B.RuntimeVisibleAnnotations . B.SizedList)
---                    . view (fieldAnnotations . visibleAnnotations)
---
---                  faInvisibleAnnotations <-
---                    compress (B.RuntimeInvisibleAnnotations . B.SizedList)
---                    . view (fieldAnnotations . invisibleAnnotations)
---
---                  faInvisibleTypeAnnotations <- pure []
---                  faVisibleTypeAnnotations <- pure []
---                  faOthers <- pure []
---
---                  pure (B.FieldAttributes {..} :: B.FieldAttributes B.High)
---              )
---
--- instance FromJVMBinary (B.Method B.High) Method where
---   _Binary = iso toBMethod fromBMethod
---     where
---       fromBMethod :: B.Method B.High -> Method
---       fromBMethod = do
---         _name <- B.mName
---         _desc <- B.mDescriptor
---
---         _methodAccessFlags <-
---           B.mAccessFlags
---
---         _methodCode <-
---           fmap fromBinaryCode . B.mCode
---
---         _defaultMethodExceptions <-
---           B.mExceptions
---
---         _methodSignature <-
---           fmap (\(Signature a) ->
---                   fromRight (error $ "could not read " ++ show a)
---                   $ methodSignatureFromText a
---                )
---           . B.mSignature
---
---         _methodAnnotations <-
---           (readAnnotations <$> B.maVisibleAnnotations <*> B.maInvisibleAnnotations)
---           . B.mAttributes
---
---         pure $ do
---           let
---             -- TODO: A method signature encoded by the Signature attribute may not
---             -- correspond exactly to the method descriptor in the method_info
---             -- structure (§4.3.3). In particular, there is no assurance that the
---             -- number of formal parameter types in the method signature is the same
---             -- as the number of parameter descriptors in the method descriptor. The
---             -- numbers are the same for most methods, but certain constructors in
---             -- the Java programming language have an implicitly declared parameter
---             -- which a compiler represents with a parameter descriptor but may omit
---             -- from the method signature. See the note in §4.7.18 for a similar
---             -- situation involving parameter annotations.
---             _methodExceptions =
---               zipWith (\a -> \case Just b -> b; Nothing -> throwsSignatureFromName a)
---               _defaultMethodExceptions
---               (map Just (maybe [] msThrows _methodSignature) ++ repeat Nothing)
---
---             _methodTypeParameters =
---               maybe [] msTypeParameters _methodSignature
---
---             _methodArguments =
---               maybe (map typeSignatureFromType . methodDescriptorArguments $ _desc)
---               msArguments _methodSignature
---
---             _methodReturn =
---               maybe (fmap typeSignatureFromType
---                      . asMaybeJType . methodDescriptorReturnType
---                      $ _desc)
---               msResults _methodSignature
---
---           mkMethod
---             (_name <:> _desc)
---             (MethodContent {..})
---
---
---       methodSignature :: Method -> Maybe MethodSignature
---       methodSignature = do
---         msTypeParameters <- view methodTypeParameters
---         msArguments <- view methodArguments
---         msResults <- view methodReturn
---         msThrows <- view methodExceptions
---         pure $ do
---           let x = MethodSignature {..}
---           if isSimpleMethodSignature x
---             then Nothing
---             else Just x
---
---       toBMethod :: Method -> B.Method B.High
---       toBMethod =
---         B.Method
---           <$> unsafeCoerce . view methodAccessFlags
---           <*> view methodName
---           <*> view methodDescriptor
---           <*> ( do
---                   maCode <-
---                     maybeToList . fmap toBinaryCode . view methodCode
---
---                   maVisibleAnnotations <-
---                     compress (B.RuntimeVisibleAnnotations . B.SizedList)
---                     . view (methodAnnotations . visibleAnnotations)
---
---                   maInvisibleAnnotations <-
---                     compress (B.RuntimeInvisibleAnnotations . B.SizedList)
---                     . view (methodAnnotations . invisibleAnnotations)
---
---                   maExceptions <-
---                     compress (B.Exceptions . B.SizedList)
---                     . toListOf (methodExceptions.folded.throwsSignatureName)
---
---                   maSignatures <-
---                     maybeToList . fmap (Signature . methodSignatureToText)
---                     . methodSignature
---
---                   maAnnotationDefault <- pure []
---
---                   maVisibleParameterAnnotations <- pure []
---                   maInvisibleParamterAnnotations <- pure []
---                   maVisibleTypeAnnotations <- pure []
---                   maInvisibleTypeAnnotations <- pure []
---                   maOthers <- pure []
---
---                   pure $ B.MethodAttributes {..}
---              )
---
--- instance FromJVMBinary (B.InnerClass B.High) InnerClass where
---   _Binary = iso toBInnerClass fromBInnerClass
---     where
---       fromBInnerClass =
---         InnerClass
---           <$> B.icClassName
---           <*> B.icOuterClassName
---           <*> B.icInnerName
---           <*> B.toSet . B.icInnerAccessFlags
---
---       toBInnerClass :: InnerClass -> B.InnerClass B.High
---       toBInnerClass =
---         B.InnerClass
---           <$> view innerClass
---           <*> preview (innerOuterClass . _Just)
---           <*> _innerClassName
---           <*> B.BitSet . _innerAccessFlags
---
--- fromClassFile :: B.ClassFile B.High -> Class
--- fromClassFile = do
---   _className <- B.cThisClass
---
---   classSignature <-
---     fmap (\(Signature a) ->
---             fromRight (error $ "could not read " ++ show a) $ classSignatureFromText a
---          ) . B.cSignature
---
---   let _classTypeParameters = concatMap csTypeParameters classSignature
---
---   _classSuper <- \cls ->
---     case fmap csSuperclassSignature classSignature of
---       _ | B.cThisClass cls == "java/lang/Object" ->
---           Nothing
---       Just sp
---         -> Just sp
---       Nothing
---         ->
---           Just . classTypeFromName $ B.cSuperClass cls
---
---   _classAccessFlags <-
---     B.cAccessFlags
---
---   _classInterfaces <- \cls ->
---     maybe [ classTypeFromName i | i <- toListOf (folding B.cInterfaces) cls ]
---       csInterfaceSignatures classSignature
---
---   _classFields <-
---     toListOf (folded.from _Binary) . B.cFields
---
---   _classMethods <-
---     toListOf (folded.from _Binary) . B.cMethods
---
---   _classBootstrapMethods <-
---     map fromBinaryBootstrapMethod . B.cBootstrapMethods
---
---   _classEnclosingMethod <-
---     fmap (\e ->
---             ( B.enclosingClassName e
---             , B.enclosingMethodName e
---             )
---          ) . B.cEnclosingMethod
---
---   _classInnerClasses <-
---     toListOf (folded.from _Binary) . B.cInnerClasses
---
---   _classAnnotations <-
---     (readAnnotations <$> B.caVisibleAnnotations <*> B.caInvisibleAnnotations)
---     . B.cAttributes
---
---   _classVersion  <-
---     Just <$> ((,) <$> B.cMajorVersion <*> B.cMinorVersion)
---
---   pure $ Class (Named _className (ClassContent {..}))
---
--- readAnnotations
---     ::         [B.RuntimeVisibleAnnotations B.High]
---     ->         [B.RuntimeInvisibleAnnotations B.High]
---     ->         Annotations
--- readAnnotations vis invis = Annotations
---   (concatMap (toList . B.asListOfRuntimeVisibleAnnotations) vis)
---   (concatMap (toList . B.asListOfRuntimeInvisibleAnnotations) invis)
---
--- toClassFile :: Class -> B.ClassFile B.High
--- toClassFile =
---
---   B.ClassFile 0xCAFEBABE
---     <$> maybe (0 :: Word16) snd . view classVersion
---     <*> maybe (52 :: Word16) fst . view classVersion
---     <*> pure ()
---     <*> B.BitSet . view classAccessFlags
---
---     <*> view className
---     <*> maybe "java/lang/Object" (view classTypeName)
---       . view classSuper
---
---     <*> B.SizedList . toListOf ( classInterfaces.folded.classTypeName)
---     <*> B.SizedList . toListOf ( classFields.folded._Binary )
---     <*> B.SizedList . toListOf ( classMethods.folded._Binary )
---     <*> ( do
---            caBootstrapMethods <-
---              compress (B.BootstrapMethods . B.SizedList)
---              . map toBinaryBootstrapMethod
---              . view classBootstrapMethods
---
---            caSignature <-
---              maybeToList
---              . fmap (Signature . classSignatureToText)
---              . (\cls ->
---                  case cls^.classSuper of
---                    Just x ->
---                      Just $ ClassSignature (cls^.classTypeParameters) x (cls^.classInterfaces)
---                    Nothing ->
---                      Nothing
---                )
---
---            caEnclosingMethod <-
---              maybeToList
---              . fmap (uncurry B.EnclosingMethod)
---              . view classEnclosingMethod
---
---            caInnerClasses <-
---              compress B.InnerClasses
---              . map (view _Binary)
---              . view classInnerClasses
---
---            caVisibleAnnotations <-
---              compress (B.RuntimeVisibleAnnotations . B.SizedList)
---              . view (classAnnotations . visibleAnnotations)
---
---            caInvisibleAnnotations <-
---              compress (B.RuntimeInvisibleAnnotations . B.SizedList)
---              . view (classAnnotations . invisibleAnnotations)
---
---            caVisibleTypeAnnotations <- pure []
---            caInvisibleTypeAnnotations <- pure []
---            caOthers <- pure []
---
---            pure $ B.ClassAttributes {..}
---        )
---
---

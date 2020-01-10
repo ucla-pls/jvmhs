@@ -62,12 +62,12 @@ module Jvmhs.Data.Identifier
   , AbsFieldId(..)
   , mkAbsFieldId
 
-
   -- * Access Flags
   , MAccessFlag(..)
   , FAccessFlag(..)
   , CAccessFlag(..)
   , ICAccessFlag(..)
+  , PAccessFlag(..)
 
   -- * Re-exports
   -- , B.JValue(..)

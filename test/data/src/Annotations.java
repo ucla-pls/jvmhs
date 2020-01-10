@@ -1,4 +1,5 @@
 import java.lang.annotation.*;
+import java.util.List;
 
 public class Annotations {
 
@@ -11,11 +12,11 @@ public class Annotations {
     TestType [] value ();
   }
   
-  public static @Repeatable(TestTypes.class) @Target({ElementType.FIELD, ElementType.TYPE, ElementType.TYPE_USE}) @interface TestType {
+  public static @Repeatable(TestTypes.class) @Target({ElementType.FIELD, ElementType.PARAMETER, ElementType.TYPE, ElementType.TYPE_USE}) @interface TestType {
     int value();
   };
   
-  public static @Target({ElementType.FIELD, ElementType.TYPE, ElementType.TYPE_USE}) @interface B {
+  public static @Target({ElementType.FIELD, ElementType.TYPE, ElementType.PARAMETER, ElementType.TYPE_USE}) @interface B {
     int value();
   };
 
@@ -29,7 +30,7 @@ public class Annotations {
 
   @TestType(3) int y;
 
-  @TestType(4) int m (@B(5) @TestType(3) @TestType(6) boolean b) throws @TestType(7) Exception{
+  @TestType(4) int m (@B(5) @TestType(3) @TestType(6) boolean b, @B(10) List<@B(9) Object> c) throws @TestType(7) Exception{
     return 0;
   }
 }

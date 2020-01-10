@@ -69,6 +69,12 @@ module Jvmhs.Data.Class
   , methodExceptions
   , methodAnnotations
 
+  -- ** Parameters
+  , Parameter(..)
+  , parameterNameAndFlags
+  , parameterType
+  , parameterAnnotations
+
   -- ** Accessors
   , methodDescriptor
 
@@ -83,6 +89,7 @@ module Jvmhs.Data.Class
   , CAccessFlag(..)
   , FAccessFlag(..)
   , MAccessFlag(..)
+  , PAccessFlag(..)
   , ICAccessFlag(..)
   , JValue(..)
   )
@@ -91,7 +98,6 @@ where
 -- base
 import           Data.Foldable                 as F
 import           Data.Word
--- import           Data.Maybe
 import           Data.Either
 import           GHC.Generics                   ( Generic )
 
@@ -165,7 +171,7 @@ data Method = Method
   -- ^ the name of the method
   , _methodTypeParameters :: ! [ Annotated TypeParameter ]
   -- ^ a method can have specific type parameters
-  , _methodParameters     :: ! [ Annotated Type ]
+  , _methodParameters     :: ! [Parameter]
   -- ^ the method parameters
   , _methodReturnType     :: ! (Annotated ReturnType)
   -- ^ the method return type
@@ -178,6 +184,13 @@ data Method = Method
   , _methodAnnotations     :: ! Annotations
   -- ^ the method can have annotations, these might be duplicated in the
   -- annotation for the return type.
+  } deriving (Eq, Show, Generic, NFData)
+
+-- | A parameter
+data Parameter = Parameter
+  { _parameterNameAndFlags :: ! (Maybe (Text.Text, Set.Set PAccessFlag))
+  , _parameterType :: ! (Annotated Type)
+  , _parameterAnnotations :: ! (Annotations)
   } deriving (Eq, Show, Generic, NFData)
 
 -- | An inner class
@@ -197,6 +210,7 @@ makeLenses ''InnerClass
 makeLenses ''Class
 makeLenses ''Field
 makeLenses ''Method
+makeLenses ''Parameter
 
 -- | A Class has a ClassName
 instance HasClassName Class where
@@ -235,108 +249,13 @@ classMethod mid = classMethods . to (find (\a -> a ^. methodId == mid))
 isInterface :: Class -> Bool
 isInterface cls = B.CInterface `Set.member` (cls ^. classAccessFlags)
 
-
 methodDescriptor :: Getter Method MethodDescriptor
 methodDescriptor = to
   (\m -> MethodDescriptor
-    (m ^.. methodParameters . folded . annotatedContent . to
+    (m ^.. methodParameters . folded . parameterType . annotatedContent . to
       (fromRight "java/lang/Object" . toJType)
     )
     (m ^. methodReturnType . annotatedContent . returnType . to
       (ReturnDescriptor . fmap (fromRight "java/lang/Object" . toJType))
     )
   )
-
-
--- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
--- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
--- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Class)
--- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''InnerClass)
-
--- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 6} ''Field)
--- $(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 7} ''Method)
-
-
--- traverseClass ::
---   Traversal' ClassName a
---   -> Traversal' (Maybe ClassType) a
---   -> Traversal' (Set.Set CAccessFlag) a
---   -> Traversal' [ TypeParameter ] a
---   -> Traversal' [ ClassType ] a
---   -> Traversal' [ Field ] a
---   -> Traversal' [ Method ] a
---   -> Traversal' [ BootstrapMethod ] a
---   -> Traversal' (Maybe (ClassName, Maybe MethodId)) a
---   -> Traversal' [ InnerClass ] a
---   -> Traversal' Annotations a
---   -> Traversal' Class a
--- traverseClass tcn tsn taf ttp tis tfs tms tbs tem tin tano g s =
---   mkClass
---   <$> (tcn g . view className $ s)
---   <*>
---   ( ClassContent
---     <$> (taf g . view classAccessFlags $ s)
---     <*> (ttp g . view classTypeParameters $ s)
---     <*> (tsn g . view classSuper $ s)
---     <*> (tis g . view classInterfaces $ s)
---     <*> (tfs g . view classFields $ s)
---     <*> (tms g . view classMethods $ s)
---     <*> (tbs g . view classBootstrapMethods $ s)
---     <*> (tem g . view classEnclosingMethod $ s)
---     <*> (tin g . view classInnerClasses $ s)
---     <*> (tano g . view classAnnotations $ s)
---     <*> pure (view classVersion s)
---   )
--- {-# INLINE traverseClass #-}
---
--- traverseField ::
---      Traversal' Text.Text a
---   -> Traversal' FieldDescriptor a
---   -> Traversal' (Set.Set FAccessFlag) a
---   -> Traversal' (Maybe JValue) a
---   -> Traversal' (Maybe FieldSignature) a
---   -> Traversal' Annotations a
---   -> Traversal' Field a
--- traverseField tfn tfd taf tjv ts tano g s =
---   mkField
---   <$> (
---   (<:>)
---     <$> (tfn g . view fieldName $ s)
---     <*> (tfd g . view fieldDescriptor $ s)
---   ) <*> (
---   FieldContent
---     <$> (taf g . view fieldAccessFlags $ s)
---     <*> (tjv g . view fieldValue $ s)
---     <*> (ts g .  view fieldSignature $ s)
---     <*> (tano g .  view fieldAnnotations $ s)
---   )
--- {-# INLINE traverseField #-}
---
--- traverseMethod ::
---      Traversal' Text.Text a
---   -> Traversal' MethodDescriptor a
---   -> Traversal' (Set.Set MAccessFlag) a
---   -> Traversal' (Maybe Code) a
---   -> Traversal' [ ThrowsSignature ] a
---   -> Traversal' [ TypeParameter ] a
---   -> Traversal' [ TypeSignature ] a
---   -> Traversal' (Maybe TypeSignature) a
---   -> Traversal' Annotations a
---   -> Traversal' Method a
--- traverseMethod tfn tfd taf tc tex tp targ tret tano g s =
---   mkMethod
---   <$> (
---     (<:>)
---     <$> (tfn g . view methodName $ s)
---     <*> (tfd g . view methodDescriptor $ s)
---   ) <*> (
---     MethodContent
---       <$> (taf g . view methodAccessFlags $ s)
---       <*> (tc  g . view methodCode $ s)
---       <*> (tex g . view methodExceptions $ s)
---       <*> (tp  g . view methodTypeParameters $ s)
---       <*> (targ  g . view methodArguments $ s)
---       <*> (tret  g . view methodReturn $ s)
---       <*> (tano  g . view methodAnnotations $ s)
---     )
--- {-# INLINE traverseMethod #-}

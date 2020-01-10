@@ -216,12 +216,35 @@ compressList (PartIso f t) = PartIso
 -- into a maybe. This is not checked.
 singletonList :: Semigroup e => PartIso e [a] (Maybe a)
 singletonList = fromIso listToMaybe maybeToList
+{-# INLINE singletonList #-}
 
-zipList :: Semigroup e => PartIso e ([a], [b]) [(a, b)]
-zipList = fromIso (uncurry List.zip) (List.unzip)
+-- | zip two lists with a function, 
+zipPadList :: Semigroup e => PartIso e (a, a) a -> PartIso e ([a], [a]) [a]
+zipPadList (PartIso th bk) = PartIso (\(as, bs) -> zipPad as bs)
+                                     (\xs -> List.unzip <$> mapM bk xs)
 
-withDefaultF :: PartIso e (a, Maybe a) a
-withDefaultF = fromIso (\(a, ma) -> fromMaybe a ma) (\a -> (a, Just a))
+ where
+  zipPad []       []       = pure []
+  zipPad (a : as) []       = (a :) <$> zipPad as []
+  zipPad []       (b : bs) = (b :) <$> zipPad bs []
+  zipPad (a : as) (b : bs) = (:) <$> th (a, b) <*> zipPad as bs
+{-# INLINE zipPadList #-}
+
+-- | zip two lists. This requires that the lists are of equal lenght
+zipList :: Monoid e => PartIso e ([a], [b]) [(a, b)]
+zipList = PartIso
+  (\(as, bs) ->
+    if length as == length bs then pure $ List.zip as bs else Failure mempty
+  )
+  (pure . List.unzip)
+{-# INLINE zipList #-}
+
+-- | A partial isomorphism that picks the lefthand side if the 
+-- right hand size is Nothing, and prints Nothing if the function 
+-- is False.
+withDefaultF :: (a -> Bool) -> PartIso e (a, Maybe a) a
+withDefaultF fn = fromIso (\(a, ma) -> fromMaybe a ma)
+                          (\a -> (a, if fn a then Just a else Nothing))
 
 partitionList :: (a -> Bool) -> PartIso e [a] ([a], [a])
 partitionList p = fromIso (List.partition p) (uncurry (++))

@@ -1,12 +1,14 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 module Jvmhs.Data.TypeSpec where
 
 import           SpecHelper
+import           Data.Either
 
 import           Test.QuickCheck
 
@@ -36,6 +38,54 @@ spec = do
     prop "a classtype should always produce the same ClassName"
       $ \cn -> classNameFromType (classTypeFromName cn) `shouldBe` cn
 
+  describe "annotations" $ do
+    prop "getting and then setting should be id" $ \(a :: Type) -> do
+      setTypeAnnotations (getTypeAnnotations a) a === Right a
+
+    it "getting should work on this" $ do
+      getTypeAnnotations
+          (ReferenceType . RefClassType $ ClassType
+            "Annotations"
+            (Just (Annotated (ClassType "Annotated" Nothing []) []))
+            [ Annotated
+                (TypeArg . RefArrayType . ArrayType $ Annotated
+                  (BaseType "I")
+                  [ Annotation "Annotations$TestType"
+                               False
+                               (HashMap.fromList [("value", AInt 0)])
+                  ]
+                )
+                []
+            ]
+          )
+        `shouldBe` [ ( [ TypePathItem TPathTypeArgument 0
+                       , TypePathItem TPathInArray      0
+                       ]
+                     , Annotation "Annotations$TestType"
+                                  False
+                                  (HashMap.fromList [("value", AInt 0)])
+                     )
+                   ]
+
+    it "should work on this example" $ do
+      setTypeAnnotations
+          [ ( [TypePathItem TPathTypeArgument 0, TypePathItem TPathInArray 0]
+            , Annotation "Annotations$TestType"
+                         False
+                         (HashMap.fromList [("value", AInt 0)])
+            )
+          ]
+          (ReferenceType . RefClassType $ ClassType
+            "Annotations"
+            (Just (Annotated (ClassType "Annotated" Nothing []) []))
+            [ Annotated
+                (TypeArg . RefArrayType . ArrayType $ Annotated (BaseType "I")
+                                                                []
+                )
+                []
+            ]
+          )
+        `shouldSatisfy` isRight
 
 -- * Generators
 
@@ -91,8 +141,8 @@ genTypeParameter =
   scale (`div` 2)
     $   TypeParameter
     <$> elements ["A", "B", "T"]
-    <*> liftArbitrary genReferenceType
-    <*> listOf genReferenceType
+    <*> liftArbitrary (genAnnotated genReferenceType)
+    <*> listOf (genAnnotated genReferenceType)
 
 genType :: Gen Type
 genType = oneof [ReferenceType <$> genReferenceType, BaseType <$> genBaseType]
@@ -112,6 +162,9 @@ instance Arbitrary ClassName where
 
 instance Arbitrary JRefType where
   arbitrary = scale (`div` 2) genericArbitraryU
+
+instance Arbitrary Type where
+  arbitrary = genType
 
 instance Arbitrary JBaseType where
   arbitrary = genericArbitraryU
@@ -186,12 +239,24 @@ genAnnotation =
     <*> arbitrary
     <*> genAnnotationMap
 
+genAnnotationWithVisibility :: Bool -> Gen Annotation
+genAnnotationWithVisibility visible =
+  scale (`div` 2)
+    $   Annotation
+    <$> elements ["an/annotations/Ano"]
+    <*> pure visible
+    <*> genAnnotationMap
+
 genAnnotationMap :: Gen AnnotationMap
 genAnnotationMap = HashMap.fromList
   <$> listOf ((,) <$> elements ["value", "item", "x"] <*> genAnnotationValue)
 
 genAnnotations :: Gen Annotations
-genAnnotations = listOf genAnnotation
+genAnnotations =
+  scale (`div` 2)
+    $   (++)
+    <$> listOf (genAnnotationWithVisibility True)
+    <*> listOf (genAnnotationWithVisibility False)
 
 genAnnotationValue :: Gen AnnotationValue
 genAnnotationValue = scale (`div` 2) $ oneof

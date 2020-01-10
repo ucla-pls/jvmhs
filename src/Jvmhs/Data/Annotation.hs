@@ -39,6 +39,7 @@ module Jvmhs.Data.Annotation
 
   -- * Re-exports
   , B.EnumValue(..)
+  , B.MethodTypeAnnotation(..)
   )
 where
 

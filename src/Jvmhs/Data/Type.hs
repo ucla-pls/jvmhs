@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE ApplicativeDo        #-}
 {-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE EmptyCase             #-}
@@ -78,6 +79,17 @@ module Jvmhs.Data.Type
   , TypeVariable(..)
   , TypeArgument(..)
 
+  -- * IsSimple
+  -- Tests if the types are simple types. This means that there 
+  -- are type variables or type applications used.
+  , typeIsSimple
+  , referenceTypeIsSimple
+  , classTypeIsSimple
+  , arrayTypeIsSimple
+  , annotatedIsSimple
+  , returnTypeIsSimple
+  , throwsTypeIsSimple
+
   -- * Annotations
   -- This module uses annotations from the annotations module, we have 
   -- re-exported Annotated here for convinence.
@@ -94,6 +106,7 @@ module Jvmhs.Data.Type
 
   -- * Re-exports
   , B.JValue(..)
+  , HasTypeAnnotations(..)
   )
 where
 
@@ -129,8 +142,8 @@ import           Jvmhs.Data.Annotation
 -- | This is an annotated type paramater, modeled after `B.TypeParameter`.
 data TypeParameter = TypeParameter
   { _typeIdentifier :: ! Text.Text
-  , _typeClassBound     :: ! (Maybe ReferenceType)
-  , _typeInterfaceBound :: ! [ReferenceType]
+  , _typeClassBound     :: ! (Maybe (Annotated ReferenceType))
+  , _typeInterfaceBound :: ! [Annotated ReferenceType]
   } deriving (Show, Eq, Generic, NFData)
 
 -- | A reference type can also be Annotated
@@ -258,6 +271,47 @@ toJRefType = \case
   RefArrayType (ArrayType (Annotated atp _)) -> JTArray <$> toJType atp
   RefTypeVariable tv -> Left tv
 
+
+-- | Check if the type is a simple type. This means that there 
+-- are no annotations
+typeIsSimple :: Type -> Bool
+typeIsSimple = \case
+  ReferenceType t -> referenceTypeIsSimple t
+  BaseType      _ -> True
+
+referenceTypeIsSimple :: ReferenceType -> Bool
+referenceTypeIsSimple = \case
+  RefClassType    ct  -> classTypeIsSimple ct
+  RefTypeVariable _   -> False
+  RefArrayType    atp -> arrayTypeIsSimple atp
+
+annotatedIsSimple :: (a -> Bool) -> Annotated a -> Bool
+annotatedIsSimple isSimple = view (annotatedContent . to isSimple)
+
+classTypeIsSimple :: ClassType -> Bool
+classTypeIsSimple = andOf
+  ((classTypeArguments . folded . like False) <> classTypeInner . folded . to
+    (annotatedIsSimple classTypeIsSimple)
+  )
+
+-- | Check if an ArrayType is simple
+arrayTypeIsSimple :: ArrayType -> Bool
+arrayTypeIsSimple = view (arrayType . to (annotatedIsSimple typeIsSimple))
+
+throwsTypeIsSimple :: ThrowsType -> Bool
+throwsTypeIsSimple = \case
+  ThrowsClass        ct -> classTypeIsSimple ct
+  ThrowsTypeVariable _  -> False
+
+
+returnTypeIsSimple :: ReturnType -> Bool
+returnTypeIsSimple = andOf (returnType . _Just . to typeIsSimple)
+
+
+
+
+
+
 -- updateOrFail
 --   :: Traversal' s a
 --   -> (a -> Either String a)
@@ -303,10 +357,14 @@ setTypeAnnotations items a =
 
 
 instance HasTypeAnnotations a => HasTypeAnnotations (Annotated a) where
-  typeAnnotations afb (Annotated {..}) =
-    Annotated
-      <$> typeAnnotations afb _annotatedContent
-      <*> indexed afb ([] :: [B.TypePathItem]) _annotatedAnnotations
+  typeAnnotations afb (Annotated {..}) = do
+    _annotatedAnnotations' <- indexed afb
+                                      ([] :: [B.TypePathItem])
+                                      _annotatedAnnotations
+    _annotatedContent' <- typeAnnotations afb _annotatedContent
+    pure $ Annotated { _annotatedAnnotations = _annotatedAnnotations'
+                     , _annotatedContent     = _annotatedContent'
+                     }
 
 instance HasTypeAnnotations ArrayType where
   typeAnnotations =
@@ -324,21 +382,21 @@ instance HasTypeAnnotations ReferenceType where
     a              -> pure a
 
 instance HasTypeAnnotations ClassType where
-  typeAnnotations afb (ClassType {..}) =
-    ClassType
-      <$> pure _classTypeName
-      <*> reindexed (B.TypePathItem B.TPathInNested 0 :)
-                    (_Just . typeAnnotations)
-                    afb
-                    _classTypeInner
-      <*> icompose
-            (\(i :: Int) j ->
-              B.TypePathItem B.TPathTypeArgument (fromIntegral i) : j
-            )
-            itraversed
-            typeAnnotations
-            afb
-            _classTypeArguments
+  typeAnnotations afb (ClassType {..}) = do
+
+    nested <- reindexed (B.TypePathItem B.TPathInNested 0 :)
+                        (_Just . typeAnnotations)
+                        afb
+                        _classTypeInner
+
+    typeargs <- icompose
+      (\(i :: Int) j -> B.TypePathItem B.TPathTypeArgument (fromIntegral i) : j)
+      itraversed
+      typeAnnotations
+      afb
+      _classTypeArguments
+
+    pure $ ClassType _classTypeName nested typeargs
 
 instance HasTypeAnnotations TypeArgument where
   typeAnnotations afb = \case
@@ -354,4 +412,18 @@ instance HasTypeAnnotations TypeArgument where
                       typeAnnotations
                       afb
                       t'
-    a -> pure a
+    TypeArg a  -> TypeArg <$> typeAnnotations afb a
+    AnyTypeArg -> pure AnyTypeArg
+
+-- | Even though TypeParameter have type annotations they are not
+-- accessable through a path. Use the other functions instead.
+instance HasTypeAnnotations TypeParameter where
+  typeAnnotations _ = pure
+
+instance HasTypeAnnotations ThrowsType where
+  typeAnnotations afb = \case
+    ThrowsClass ct -> ThrowsClass <$> typeAnnotations afb ct
+    a              -> pure a
+
+instance HasTypeAnnotations ReturnType where
+  typeAnnotations = returnType . _Just . typeAnnotations

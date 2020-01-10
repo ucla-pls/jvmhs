@@ -33,9 +33,12 @@ module Jvmhs.Data.Code
   , ehHandler
   , ehCatchType
   , traverseExceptionHandler
-  , StackMapTable
   , verificationTypeInfo
-  , VerificationTypeInfo
+  -- * Re-exports
+  , B.StackMapTable(..)
+  , B.StackMapFrame(..)
+  , B.StackMapFrameType(..)
+  , B.VerificationTypeInfo(..)
   , ByteCodeInst
   )
 where
