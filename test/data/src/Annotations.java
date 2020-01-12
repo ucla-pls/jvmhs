@@ -1,5 +1,6 @@
 import java.lang.annotation.*;
 import java.util.List;
+import java.io.IOException;
 
 public class Annotations {
 
@@ -30,7 +31,11 @@ public class Annotations {
 
   @TestType(3) int y;
 
-  @TestType(4) int m (@B(5) @TestType(3) @TestType(6) boolean b, @B(10) List<@B(9) Object> c) throws @TestType(7) Exception{
+  @TestType(4) int m (@B(5) @TestType(3) @TestType(6) boolean b, @B(10) List<@B(9) Object> c) throws @TestType(7) Exception, Throwable, IOException {
+    return 0;
+  }
+  
+  <@B(10) T extends Throwable> int n () throws T, Exception{
     return 0;
   }
 }

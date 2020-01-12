@@ -19,6 +19,7 @@ import           Text.Nicify
 import           Control.Monad
 import           Data.Coerce
 import           Data.Either
+import qualified Data.List                     as List
 import           Text.Printf
 
 -- text
@@ -44,6 +45,8 @@ import qualified Language.JVM                  as B
 import qualified Language.JVM.Attribute.BootstrapMethods
                                                as B
 import qualified Language.JVM.Attribute.Code   as B
+import qualified Language.JVM.Attribute.Annotations
+                                               as B
 
 import           Jvmhs.Format.ClassFile
 import           Jvmhs.Format.Internal         as Format
@@ -211,7 +214,7 @@ spec_method = describe "methodFormat" $ do
     _methodAccessFlags    <- pure (Set.empty)
     _methodCode           <- pure Nothing
     _methodExceptions     <- listOf (genAnnotated genThrowsType)
-    _methodAnnotations    <- genAnnotations
+    _methodAnnotations    <- pure []
     pure Method { .. }
 
 spec_class :: Spec
@@ -264,8 +267,8 @@ spec_testclasses = do
               r
                 &  lens B.cMethods' (\a x -> a { B.cMethods' = x })
                 .  traverse
-                .  lens B.mAttributes (\a x -> a { B.mAttributes = x })
-                .  lens B.maCode      (\a x -> a { B.maCode = x })
+                .  mAttributesL
+                .  lens B.maCode (\a x -> a { B.maCode = x })
                 .  traverse
                 .  lens B.codeByteCode (\a x -> a { B.codeByteCode = x })
                 .  lens B.byteCodeSize (\a x -> a { B.byteCodeSize = x })
@@ -288,10 +291,41 @@ spec_testclasses = do
               )
             $ do
                 test_formatterOn m methodFormat
+                test_limitedIsomorphism
+                  (  mAttributesL
+                  %~ ( over maVisibleTypeAnnotationsL   (map List.sort)
+                     . over maInvisibleTypeAnnotationsL (map List.sort)
+                     )
+                  )
+                  m
+                  methodFormat
 
         it "everything" $ do
           test_formatterOn cleaned classFormat
       Left _ -> return ()
+
+
+ where
+  mAttributesL :: Lens' (B.Method B.High) (B.MethodAttributes B.High)
+  mAttributesL = lens B.mAttributes (\a x -> a { B.mAttributes = x })
+
+  maInvisibleTypeAnnotationsL
+    :: Lens'
+         (B.MethodAttributes B.High)
+         [[B.TypeAnnotation B.MethodTypeAnnotation B.High]]
+  maInvisibleTypeAnnotationsL =
+    lens B.maInvisibleTypeAnnotations
+         (\a x -> a { B.maInvisibleTypeAnnotations = x })
+      . coerced
+
+  maVisibleTypeAnnotationsL
+    :: Lens'
+         (B.MethodAttributes B.High)
+         [[B.TypeAnnotation B.MethodTypeAnnotation B.High]]
+  maVisibleTypeAnnotationsL =
+    lens B.maVisibleTypeAnnotations
+         (\a x -> a { B.maVisibleTypeAnnotations = x })
+      . coerced
 
 genParameter :: Gen Parameter
 genParameter =
@@ -313,7 +347,15 @@ test_formatterOn a PartIso { there, back } =
   let b  = there a
       a' = b >>= back
   in  do
-        a' `shouldBe` Format.Success a
+        (there =<< a') `shouldBe` b
+
+test_limitedIsomorphism
+  :: (Eq a, Eq b, Show b, Show a) => (a -> a) -> a -> Formatter a b -> IO ()
+test_limitedIsomorphism limit a PartIso { there, back } =
+  let b  = there a
+      a' = b >>= back
+  in  do
+        fmap limit a' `shouldBe` fmap limit (Format.Success a)
 
 test_formatter :: (Eq a, Eq b, Show b, Show a) => Gen a -> Formatter a b -> Spec
 test_formatter gen PartIso { there, back } =
