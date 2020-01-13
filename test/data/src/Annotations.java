@@ -1,8 +1,9 @@
 import java.lang.annotation.*;
 import java.util.List;
+import java.util.Set;
 import java.io.IOException;
 
-public class Annotations {
+public class Annotations <O> {
 
   @interface TestNotation {
     String a();
@@ -35,7 +36,16 @@ public class Annotations {
     return 0;
   }
   
-  <@B(10) T extends Throwable> int n () throws T, Exception{
+  <@B(10) T extends Throwable & List<Object[]>> int n () throws T, Exception{
     return 0;
   }
+
+  <T extends Comparable & List<T>> T k () {
+    return null;
+  }
+  
+  <T extends List<T> & Comparable > T j () {
+    return null;
+  }
+  
 }

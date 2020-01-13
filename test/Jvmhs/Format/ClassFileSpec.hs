@@ -52,6 +52,8 @@ import           Jvmhs.Format.ClassFile
 import           Jvmhs.Format.Internal         as Format
 
 import           Jvmhs.Data.Class
+import           Jvmhs.Data.Type
+import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Identifier
 import           Jvmhs.Data.BootstrapMethod
@@ -83,17 +85,18 @@ spec_signature :: Spec
 spec_signature = describe "fromSignature conversions" $ do
   describe "typeFromJTypeFormat" $ do
     test_formatter
-      genType
+      (genType [])
       (flipDirection $ typeFromJTypeFormat (const "Ljava/lang/Object;"))
 
   describe "classTypeFormat" $ do
-    test_formatter genClassType (flipDirection classTypeFormat)
+    test_formatter (genClassType []) (flipDirection classTypeFormat)
 
   describe "referenceTypeFromSignature" $ do
-    test_formatter genReferenceType (flipDirection referenceTypeFromSignature)
+    test_formatter (genReferenceType [])
+                   (flipDirection referenceTypeFromSignature)
 
   describe "typeFormat" $ do
-    test_formatter genType (flipDirection typeFormat)
+    test_formatter (genType []) (flipDirection typeFormat)
 
 spec_annotationValueFormat :: Spec
 spec_annotationValueFormat = describe "annotationValueFormat" $ do
@@ -111,13 +114,13 @@ spec_fieldAttributes = describe "fieldAttributeFormat" $ do
   genFieldAttributes = do
     value       <- pure (Just $ VInteger 0)
     annotations <- genAnnotations
-    tpe         <- genAnnotated genType
+    tpe         <- genAnnotated (genType [])
 
     pure ((value, annotations), tpe)
 
 spec_fieldType :: Spec
 spec_fieldType = describe "fieldTypeFormat" $ do
-  test_formatter (genAnnotated genType) (flipDirection fieldTypeFormat)
+  test_formatter (genAnnotated (genType [])) (flipDirection fieldTypeFormat)
 
 spec_field :: Spec
 spec_field = describe "fieldFormat" $ do
@@ -127,7 +130,7 @@ spec_field = describe "fieldFormat" $ do
 
   genField = do
     _fieldName        <- pure "field"
-    _fieldType        <- genAnnotated genType
+    _fieldType        <- genAnnotated (genType [])
     _fieldAccessFlags <- pure (Set.empty)
     _fieldValue       <- pure Nothing
     _fieldAnnotations <- genAnnotations
@@ -172,7 +175,7 @@ instance Arbitrary (VerificationTypeInfo B.High) where
 
 spec_parameterAnnotations :: Spec
 spec_parameterAnnotations = describe "parameterAnnotationsFormat" $ do
-  test_formatter (listOf genParameter)
+  test_formatter (listOf (genParameter []))
                  (flipDirection parameterAnnotationsFormat)
 
 spec_annotateMethodTypes :: Spec
@@ -180,41 +183,52 @@ spec_annotateMethodTypes = describe "annotateMethodTypesFormat" $ do
   test_formatter (genMethodTypes) (flipDirection annotateMethodTypesFormat)
  where
   genMethodTypes = do
-    tpa <- listOf (genAnnotated genTypeParameter)
-    pa  <- listOf genParameter
-    ra  <- genAnnotated genReturnType
-    tta <- listOf (genAnnotated genThrowsType)
+    tts <- listOf (genTypeParameter [])
+    tpa <- listOf (genAnnotated $ genTypeParameter tts)
+    pa  <- listOf (genParameter tts)
+    ra  <- genAnnotated (genReturnType tts)
+    tta <- listOf (genAnnotated (genThrowsType tts))
     pure (tpa, pa, ra, tta)
 
 spec_methodAttributes :: Spec
 spec_methodAttributes = describe "methodAttributesFormat" $ do
-  test_formatter genMethodAttributes (flipDirection methodAttributesFormat)
+  test_formatter genMethodAttributes
+                 (flipDirection $ methodAttributesFormat clsparam)
 
  where
+  clsparam            = [TypeParameter (TypeVariable "V") Nothing []]
+
   genMethodAttributes = do
-    parm <- listOf genParameter
-    rt   <- genAnnotated genReturnType
-    tp   <- listOf (genAnnotated genTypeParameter)
-    excp <- listOf (genAnnotated genThrowsType)
+    tp <- listOf (genAnnotated (genTypeParameter clsparam))
+
+    let tparams = (map (view annotatedContent) tp ++ clsparam)
+
+    parm <- listOf (genParameter tparams)
+    rt   <- genAnnotated (genReturnType tparams)
+    excp <- listOf (genAnnotated (genThrowsType tparams))
     code <- pure Nothing
     anno <- genAnnotations
     pure ((tp, parm, rt, excp), code, anno)
 
 spec_method :: Spec
 spec_method = describe "methodFormat" $ do
-  test_formatter genMethod (flipDirection methodFormat)
+  test_formatter genMethod (flipDirection (methodFormat clsparam))
 
  where
+  clsparam  = [TypeParameter (TypeVariable "V") Nothing []]
 
   genMethod = do
-    _methodName           <- pure "method"
-    _methodParameters     <- listOf genParameter
-    _methodReturnType     <- genAnnotated genReturnType
-    _methodTypeParameters <- listOf (genAnnotated genTypeParameter)
-    _methodAccessFlags    <- pure (Set.empty)
-    _methodCode           <- pure Nothing
-    _methodExceptions     <- listOf (genAnnotated genThrowsType)
-    _methodAnnotations    <- pure []
+    _methodTypeParameters <- listOf (genAnnotated $ genTypeParameter clsparam)
+
+    let params = map (view annotatedContent) _methodTypeParameters ++ clsparam
+
+    _methodName        <- pure "method"
+    _methodParameters  <- listOf (genParameter params)
+    _methodReturnType  <- genAnnotated (genReturnType params)
+    _methodAccessFlags <- pure (Set.empty)
+    _methodCode        <- pure Nothing
+    _methodExceptions  <- listOf (genAnnotated $ genThrowsType params)
+    _methodAnnotations <- pure []
     pure Method { .. }
 
 spec_class :: Spec
@@ -226,9 +240,10 @@ spec_class = do
   genClass = do
     let _className'       = "some/ObjectType" :: ClassName
     let _classAccessFlags = Set.empty
-    _classTypeParameters <- listOf (genAnnotated genTypeParameter)
-    _classSuper          <- liftArbitrary $ genAnnotated genClassType
-    _classInterfaces     <- liftArbitrary $ genAnnotated genClassType
+    _classTypeParameters <- listOf . genAnnotated $ genTypeParameter []
+    let params = map (view annotatedContent) _classTypeParameters
+    _classSuper      <- liftArbitrary . genAnnotated $ genClassType params
+    _classInterfaces <- liftArbitrary . genAnnotated $ genClassType params
     let _classFields  = []
     let _classMethods = []
     _classVersion          <- liftArbitrary (pure (52, 0))
@@ -290,7 +305,7 @@ spec_testclasses = do
                 (Text.unpack $ B.serialize (B.mName m <:> B.mDescriptor m))
               )
             $ do
-                test_formatterOn m methodFormat
+                test_formatterOn m (methodFormat [])
                 test_limitedIsomorphism
                   (  mAttributesL
                   %~ ( over maVisibleTypeAnnotationsL   (map List.sort)
@@ -298,7 +313,7 @@ spec_testclasses = do
                      )
                   )
                   m
-                  methodFormat
+                  (methodFormat [])
 
         it "everything" $ do
           test_formatterOn cleaned classFormat
@@ -327,13 +342,13 @@ spec_testclasses = do
          (\a x -> a { B.maVisibleTypeAnnotations = x })
       . coerced
 
-genParameter :: Gen Parameter
-genParameter =
+genParameter :: [TypeParameter] -> Gen Parameter
+genParameter tps =
   scale (`div` 2)
     $   Parameter
     <$> pure Nothing
     -- TODO: Not yet supported.
-    <*> genAnnotated genType
+    <*> genAnnotated (genType tps)
     <*> genAnnotations
 
 genBootstrapMethod :: Gen BootstrapMethod

@@ -21,7 +21,6 @@ import           Jvmhs.Data.Annotation
 
 import           Jvmhs.Data.AnnotationSpec      ( )
 
-
 spec :: Spec
 spec = do
   describe "ClassType" $ do
@@ -92,27 +91,29 @@ spec = do
 genBaseType :: Gen JBaseType
 genBaseType = genericArbitraryU
 
-genReferenceType :: Gen ReferenceType
-genReferenceType = oneof
-  [ RefClassType <$> genClassType
-  , RefTypeVariable <$> genTypeVariable
-  , RefArrayType <$> genArrayType
-  ]
+genReferenceType :: [TypeParameter] -> Gen ReferenceType
+genReferenceType tp =
+  oneof
+    $  [RefClassType <$> genClassType tp, RefArrayType <$> genArrayType tp]
+    ++ [ RefTypeVariable <$> genTypeVariable tp | not (null tp) ]
 
-genReturnType :: Gen ReturnType
-genReturnType = ReturnType <$> liftArbitrary genType
+genReturnType :: [TypeParameter] -> Gen ReturnType
+genReturnType tp = ReturnType <$> liftArbitrary (genType tp)
 
-genThrowsType :: Gen ThrowsType
-genThrowsType = scale (`div` 2) $ oneof
-  [ThrowsClass <$> genClassType, ThrowsTypeVariable <$> genTypeVariable]
+genThrowsType :: [TypeParameter] -> Gen ThrowsType
+genThrowsType tp =
+  scale (`div` 2)
+    .  oneof
+    $  [ThrowsClass <$> genClassType tp]
+    ++ [ ThrowsTypeVariable <$> genTypeVariable tp | not (null tp) ]
 
-genClassType :: Gen ClassType
-genClassType =
+genClassType :: [TypeParameter] -> Gen ClassType
+genClassType tp =
   scale (`div` 2)
     $   ClassType
     <$> elements ["A", "pkg/A", "a/B"]
     <*> genInnerClassType
-    <*> listOf (genAnnotated genTypeArgument)
+    <*> listOf (genAnnotated (genTypeArgument tp))
  where
   genInnerClassType = sized \case
     0 -> pure Nothing
@@ -123,38 +124,39 @@ genClassType =
         $   ClassType
         <$> elements ["In1", "In2"]
         <*> genInnerClassType
-        <*> listOf (genAnnotated genTypeArgument)
+        <*> listOf (genAnnotated (genTypeArgument tp))
 
 genAnnotated :: Gen a -> Gen (Annotated a)
 genAnnotated f = scale (`div` 2) $ Annotated <$> f <*> genAnnotations
 
-genTypeArgument :: Gen TypeArgument
-genTypeArgument = scale (`div` 2) $ oneof
+genTypeArgument :: [TypeParameter] -> Gen TypeArgument
+genTypeArgument tp = scale (`div` 2) $ oneof
   [ pure AnyTypeArg
-  , TypeArg <$> genReferenceType
-  , ExtendedTypeArg <$> genAnnotated genReferenceType
-  , ImplementedTypeArg <$> genAnnotated genReferenceType
+  , TypeArg <$> genReferenceType tp
+  , ExtendedTypeArg <$> genAnnotated (genReferenceType tp)
+  , ImplementedTypeArg <$> genAnnotated (genReferenceType tp)
   ]
 
-genTypeParameter :: Gen TypeParameter
-genTypeParameter =
+genTypeParameter :: [TypeParameter] -> Gen TypeParameter
+genTypeParameter tp =
   scale (`div` 2)
     $   TypeParameter
-    <$> elements ["A", "B", "T"]
-    <*> liftArbitrary (genAnnotated genReferenceType)
-    <*> listOf (genAnnotated genReferenceType)
+    <$> (TypeVariable <$> elements ["A", "B", "T"])
+    <*> liftArbitrary (genAnnotated $ genThrowsType tp)
+    <*> listOf (genAnnotated $ genThrowsType tp)
 
-genType :: Gen Type
-genType = oneof [ReferenceType <$> genReferenceType, BaseType <$> genBaseType]
+genType :: [TypeParameter] -> Gen Type
+genType tp =
+  oneof [ReferenceType <$> genReferenceType tp, BaseType <$> genBaseType]
 
-genArrayType :: Gen ArrayType
-genArrayType = ArrayType <$> genAnnotated genType
+genArrayType :: [TypeParameter] -> Gen ArrayType
+genArrayType tp = ArrayType <$> genAnnotated (genType tp)
 
-genTypeVariable :: Gen TypeVariable
-genTypeVariable = TypeVariable <$> elements ["A", "B", "T"]
+genTypeVariable :: [TypeParameter] -> Gen TypeVariable
+genTypeVariable tp = elements (map (view typeIdentifier) tp)
 
-instance Arbitrary TypeVariable where
-  arbitrary = genTypeVariable
+-- instance Arbitrary TypeVariable where
+--   arbitrary = genTypeVariable
 
 instance Arbitrary ClassName where
   arbitrary =
@@ -164,7 +166,7 @@ instance Arbitrary JRefType where
   arbitrary = scale (`div` 2) genericArbitraryU
 
 instance Arbitrary Type where
-  arbitrary = genType
+  arbitrary = listOf (genTypeParameter []) >>= genType
 
 instance Arbitrary JBaseType where
   arbitrary = genericArbitraryU

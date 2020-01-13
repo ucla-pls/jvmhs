@@ -73,9 +73,13 @@ module Jvmhs.Data.Type
   , _ThrowsClass
   , _ThrowsTypeVariable
   , classNameFromThrowsType
+  , boundClassNameFromThrowsType
 
   -- ** Others
   , TypeParameter(..)
+  , typeIdentifier
+  , typeClassBound
+  , typeInterfaceBound
   , TypeVariable(..)
   , TypeArgument(..)
 
@@ -103,6 +107,7 @@ module Jvmhs.Data.Type
   -- * Helpers
   , fromJType
   , toJType
+  , toBoundJType
 
   -- * Re-exports
   , B.JValue(..)
@@ -140,10 +145,12 @@ import qualified Language.JVM.Attribute.Annotations
 import           Jvmhs.Data.Annotation
 
 -- | This is an annotated type paramater, modeled after `B.TypeParameter`.
+-- NOTE While the class bound and can technicaly be any reference type, it 
+-- is not allowed in the Java language.
 data TypeParameter = TypeParameter
-  { _typeIdentifier :: ! Text.Text
-  , _typeClassBound     :: ! (Maybe (Annotated ReferenceType))
-  , _typeInterfaceBound :: ! [Annotated ReferenceType]
+  { _typeIdentifier :: ! TypeVariable
+  , _typeClassBound     :: ! (Maybe (Annotated ThrowsType))
+  , _typeInterfaceBound :: ! [Annotated ThrowsType]
   } deriving (Show, Eq, Generic, NFData)
 
 -- | A reference type can also be Annotated
@@ -198,6 +205,7 @@ newtype TypeVariable = TypeVariable
 makeLenses ''ClassType
 makeLenses ''ArrayType
 makeLenses ''ReturnType
+makeLenses ''TypeParameter
 makePrisms ''ThrowsType
 makePrisms ''ReferenceType
 makePrisms ''Type
@@ -210,7 +218,7 @@ makePrisms ''JBaseType
 -- type signatures
 classNameFromType :: ClassType -> ClassName
 classNameFromType ct =
-  fromRight (error "Unexpected behaviour, please report a bug")
+  fromRight (error $ "Unexpected behaviour, please report a bug: " ++ show ct)
     $ B.textCls (Text.intercalate "$" $ nameOf ct)
  where
   nameOf t = t ^. classTypeName : maybe
@@ -222,6 +230,14 @@ classNameFromThrowsType :: ThrowsType -> Either TypeVariable ClassName
 classNameFromThrowsType = \case
   ThrowsClass        cn -> Right $ classNameFromType cn
   ThrowsTypeVariable tv -> Left tv
+
+-- | Like 'classNameFromThrowsType' but tries to lookup any type variable
+-- in an environment first.
+boundClassNameFromThrowsType
+  :: [TypeParameter] -> ThrowsType -> Either TypeVariable ClassName
+boundClassNameFromThrowsType tps =
+  either (\v -> typeVariableBound tps v) Right . classNameFromThrowsType
+
 
 -- | Extend a ClassType with an inner classType.
 extendClassType :: ClassType -> ClassType -> ClassType
@@ -255,6 +271,10 @@ fromJType :: B.JType -> Type
 fromJType = \case
   JTRef  rt -> ReferenceType (fromJRefType rt)
   JTBase bt -> BaseType bt
+
+toBoundJType :: [TypeParameter] -> Type -> Either TypeVariable B.JType
+toBoundJType tps =
+  either (fmap (B.JTRef . B.JTClass) . typeVariableBound tps) Right . toJType
 
 -- | Create a 'ReferenceType' from a 'JRefType', without any annotations 
 -- or generics.
@@ -307,8 +327,25 @@ throwsTypeIsSimple = \case
 returnTypeIsSimple :: ReturnType -> Bool
 returnTypeIsSimple = andOf (returnType . _Just . to typeIsSimple)
 
+-- | The bound of a type parameter. This is the class that the type
+-- parameter will take in code. It is the name of the first bound. 
+typeParameterBound
+  :: [TypeParameter] -> TypeParameter -> Either TypeVariable ClassName
+typeParameterBound tps tp =
+  maybe
+      (Right "java/lang/Object")
+      ( boundClassNameFromThrowsType
+          (filter (hasn't $ typeIdentifier . only (tp ^. typeIdentifier)) tps)
+      . view annotatedContent
+      )
+    . firstOf (typeClassBound . folded <> typeInterfaceBound . folded)
+    $ tp
 
-
+typeVariableBound
+  :: [TypeParameter] -> TypeVariable -> Either TypeVariable ClassName
+typeVariableBound tps tv = case find (has $ typeIdentifier . only tv) tps of
+  Just x  -> typeParameterBound tps x
+  Nothing -> Left tv
 
 
 
@@ -340,24 +377,21 @@ setTypeAnnotations
   :: HasTypeAnnotations a => [(TypePath, Annotation)] -> a -> Either String a
 setTypeAnnotations items a =
   let m =
-          Map.map toList
-            . Map.fromListWith (><)
-            . map (over _2 Seq.singleton)
-            $ items
+          Map.map toList . Map.fromListWith (><) $ over _2 Seq.singleton <$> items
   in  case
           Map.toList $ m Map.\\ Map.fromList
-            (map (view (_1 . to (, ()))) $ itoListOf typeAnnotations a)
+            (fmap (view (_1 . to (, ()))) $ itoListOf typeAnnotations a)
         of
           [] ->
             Right
               $   a
               &   typeAnnotations
               .@~ (\k -> reverse $ Map.findWithDefault [] k m)
-          as -> Left $ "The type does not have the paths " ++ show as
+          as -> Left $ "The type does not have the paths " <> show as
 
 
 instance HasTypeAnnotations a => HasTypeAnnotations (Annotated a) where
-  typeAnnotations afb (Annotated {..}) = do
+  typeAnnotations afb Annotated {..} = do
     _annotatedAnnotations' <- indexed afb
                                       ([] :: [B.TypePathItem])
                                       _annotatedAnnotations
@@ -382,7 +416,7 @@ instance HasTypeAnnotations ReferenceType where
     a              -> pure a
 
 instance HasTypeAnnotations ClassType where
-  typeAnnotations afb (ClassType {..}) = do
+  typeAnnotations afb ClassType {..} = do
 
     nested <- reindexed (B.TypePathItem B.TPathInNested 0 :)
                         (_Just . typeAnnotations)
