@@ -190,8 +190,7 @@ spec_annotateMethodTypes = describe "annotateMethodTypesFormat" $ do
 
 spec_methodAttributes :: Spec
 spec_methodAttributes = describe "methodAttributesFormat" $ do
-  test_formatter genMethodAttributes
-                 (flipDirection $ methodAttributesFormat clsparam)
+  test_formatter genMethodAttributes (flipDirection methodAttributesFormat)
 
  where
   clsparam            = [TypeParameter (TypeVariableName "V") Nothing []]
@@ -210,7 +209,7 @@ spec_methodAttributes = describe "methodAttributesFormat" $ do
 
 spec_method :: Spec
 spec_method = describe "methodFormat" $ do
-  test_formatter genMethod (flipDirection (methodFormat clsparam))
+  test_formatter genMethod (flipDirection methodFormat)
 
  where
   clsparam  = [TypeParameter (TypeVariableName "V") Nothing []]
@@ -303,7 +302,7 @@ spec_testclasses = do
                 (Text.unpack $ B.serialize (B.mName m <:> B.mDescriptor m))
               )
             $ do
-                test_formatterOn m (methodFormat [])
+                test_formatterOn m methodFormat
                 test_limitedIsomorphism
                   (  mAttributesL
                   %~ ( over maVisibleTypeAnnotationsL   (map List.sort)
@@ -311,7 +310,7 @@ spec_testclasses = do
                      )
                   )
                   m
-                  (methodFormat [])
+                  methodFormat
 
         it "everything" $ do
           test_formatterOn cleaned classFormat

@@ -98,11 +98,7 @@ classFormat = PartIso
 
     _classFields  <- there (coerceFormat . isomap fieldFormat) cFields'
 
-    _classMethods <- there
-      (coerceFormat . isomap
-        (methodFormat (_classTypeParameters ^.. folded . annotatedContent))
-      )
-      cMethods'
+    _classMethods <- there (coerceFormat . isomap methodFormat) cMethods'
 
 
     let _classSuper = if _className' == "java/lang/Object"
@@ -119,11 +115,7 @@ classFormat = PartIso
     let (cMajorVersion, cMinorVersion) = fromMaybe (52, 0) _classVersion
 
     cFields'  <- back (coerceFormat . isomap fieldFormat) _classFields
-    cMethods' <- back
-      (coerceFormat . isomap
-        (methodFormat (_classTypeParameters ^.. folded . annotatedContent))
-      )
-      _classMethods
+    cMethods' <- back (coerceFormat . isomap methodFormat) _classMethods
 
     ((cSuperClass, cInterfaces), cAttributes) <- back
       classAttributeFormat
@@ -292,14 +284,14 @@ innerClassesFormat =
       )
     . coerceFormat
 
-methodFormat :: [TypeParameter] -> Formatter (B.Method B.High) Method
-methodFormat clsparam = PartIso methodThere methodBack where
+methodFormat :: Formatter (B.Method B.High) Method
+methodFormat = PartIso methodThere methodBack where
   methodThere m = do
     let _methodName        = B.mName m
     let _methodAccessFlags = B.mAccessFlags m
 
     ((_methodTypeParameters, _methodParameters, _methodReturnType, _methodExceptions), _methodCode, _methodAnnotations) <-
-      there (methodAttributesFormat clsparam) (B.mDescriptor m, B.mAttributes m)
+      there methodAttributesFormat (B.mDescriptor m, B.mAttributes m)
 
     pure Method { .. }
 
@@ -308,7 +300,7 @@ methodFormat clsparam = PartIso methodThere methodBack where
     let mAccessFlags' = B.BitSet (m ^. methodAccessFlags)
 
     (mDescriptor, mAttributes) <- back
-      (methodAttributesFormat clsparam)
+      methodAttributesFormat
       ( ( m ^. methodTypeParameters
         , m ^. methodParameters
         , m ^. methodReturnType
@@ -338,8 +330,7 @@ allOrNothing = PartIso
 
 
 methodAttributesFormat
-  :: [TypeParameter]
-  -> Formatter
+  :: Formatter
        (B.MethodDescriptor, B.MethodAttributes B.High)
        ( ( [Annotated TypeParameter]
          , [Parameter]
@@ -349,7 +340,7 @@ methodAttributesFormat
        , Maybe Code
        , Annotations
        )
-methodAttributesFormat clsparam =
+methodAttributesFormat =
   triple (annotateMethodTypesFormat . inSecond typeAnnotationsFormat)
          (isomap codeFormat . singletonList)
          runtimeAnnotationsFormat
@@ -390,7 +381,7 @@ methodAttributesFormat clsparam =
          ((B.MethodDescriptor, [B.Signature B.High]), [B.Exceptions B.High])
          ([TypeParameter], [Type], ReturnType, [ThrowsType])
   handleSignature =
-    methodSignatureFormat clsparam
+    methodSignatureFormat
       . (   inSecond
             ( isomap (textSerialize @B.MethodSignature . coerceFormat)
             . singletonList
@@ -424,11 +415,10 @@ methodAttributesFormat clsparam =
 
 
 methodSignatureFormat
-  :: [TypeParameter]
-  -> Formatter
+  :: Formatter
        ((B.MethodDescriptor, Maybe B.MethodSignature), [ClassName])
        ([TypeParameter], [Type], ReturnType, [ThrowsType])
-methodSignatureFormat _ = addThrows
+methodSignatureFormat = addThrows
   . inFirst (joinem . inSecond (isomap unwrapMethodSignature))
  where
 -- , [ClassName]) [ThrowsType])
