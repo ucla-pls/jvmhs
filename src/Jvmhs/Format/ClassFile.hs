@@ -85,6 +85,11 @@ textSerialize = PartIso (validateEither . B.deserialize) (pure . B.serialize)
 constantValueFormat :: Formatter [B.ConstantValue B.High] (Maybe JValue)
 constantValueFormat = coerceFormat . singletonList
 
+toClassFile :: Class -> Validation [FormatError] (B.ClassFile B.High)
+toClassFile = back classFormat
+
+fromClassFile :: B.ClassFile B.High -> Validation [FormatError] Class
+fromClassFile = there classFormat
 
 classFormat :: Formatter (B.ClassFile B.High) Class
 classFormat = PartIso
@@ -948,16 +953,6 @@ annotationValueFormat = PartIso { there = valueThere, back = valueBack } where
 -- | A SizedList is just a list
 sizedList32Format :: Formatter (B.SizedList16 a) [a]
 sizedList32Format = coerceFormat
-
--- | An Isomorphism between classfiles and checked classes.
-isoBinary :: Iso' (B.ClassFile B.High) Class
-isoBinary = iso fromClassFile toClassFile
-
-toClassFile :: Class -> B.ClassFile B.High
-toClassFile = undefined
-
-fromClassFile :: B.ClassFile B.High -> Class
-fromClassFile = undefined
 
 
 -- * Signatures

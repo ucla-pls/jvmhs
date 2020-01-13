@@ -56,20 +56,31 @@ module Jvmhs.ClassReader
   )
 where
 
-import           Control.DeepSeq
-import           Control.Lens
-import           Control.Monad.Reader
+-- base 
 import           Data.Bifunctor
-import qualified Data.ByteString.Lazy          as BL
+import           GHC.Generics                   ( Generic )
 import           Data.Functor
+import           Data.Monoid
 import           Data.Maybe                     ( catMaybes
                                                 , mapMaybe
+                                                , fromJust
                                                 )
-import           Data.Monoid
+
+
+-- lens
+import           Control.Lens
+
+import           Control.DeepSeq
+import           Control.Monad.Reader
+import qualified Data.ByteString.Lazy          as BL
 import qualified Data.Text                     as Text
-import           GHC.Generics                   ( Generic )
+
+-- directory
 import           System.Directory
+
+-- filepath
 import           System.FilePath
+
 import           System.Process
 
 -- mtl
@@ -88,6 +99,7 @@ import qualified Language.JVM                  as B
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Identifier
 import           Jvmhs.Format.ClassFile
+import           Jvmhs.Format
 
 
 -- Reader options
@@ -205,10 +217,11 @@ readClassFile m cn = do
   readClassBytes m b
 
 serializeClass :: Class -> BL.ByteString
-serializeClass = B.writeClassFile . toClassFile
+serializeClass = B.writeClassFile . (fromJust . preview _Success) . toClassFile
 
 deserializeClass :: Bool -> BL.ByteString -> Either ClassReadError Class
-deserializeClass keep bs = fromClassFile <$> readClassFile' keep bs
+deserializeClass keep bs =
+  either error id . convertClass <$> readClassFile' keep bs
 
 -- | Write a class to a folder
 writeClass :: FilePath -> Class -> IO ()
@@ -255,7 +268,7 @@ readClass
   -> ReaderOptions r
   -> IO (Either ClassReadError Class)
 readClass cn r = do
-  runExceptT $ convertClass <$> readClassFile r cn
+  runExceptT $ either error id . convertClass <$> readClassFile r cn
 
 -- | Read a checked class from a class reader.
 readClassM
@@ -273,8 +286,8 @@ readClassesM = do
   liftIO . forM classnames $ \(cn, con) ->
     first (cn, ) <$> readClass cn (r $> con)
 
-convertClass :: B.ClassFile B.High -> Class
-convertClass = force . view isoBinary
+convertClass :: B.ClassFile B.High -> Either String Class
+convertClass = bimap unlines force . runValidation . fromClassFile
 
 -- | Classes can be in a folder
 newtype CFolder = CFolder

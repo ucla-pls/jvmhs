@@ -1,9 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveFunctor #-}
 module Jvmhs.Format.Internal where
-
 
 import           Prelude                 hiding ( id
                                                 , (.)
@@ -50,11 +50,19 @@ data Validation e a
   | Failure !e
   deriving (Eq, Ord, Show, Functor)
 
+makePrisms ''Validation
+
 -- | An either can be turned into a validation
 validateEither :: Either e a -> Validation [e] a
 validateEither = \case
   Left  e -> Failure [e]
   Right a -> Success a
+
+-- | Convert a 'Validation' to an 'Either'
+runValidation :: Validation [e] a -> Either [e] a
+runValidation = \case
+  Success a -> Right a
+  Failure a -> Left a
 
 instance Semigroup e => Applicative (Validation e) where
   pure = Success
