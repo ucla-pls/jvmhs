@@ -141,7 +141,7 @@ genTypeParameter :: [TypeParameter] -> Gen TypeParameter
 genTypeParameter tp =
   scale (`div` 2)
     $   TypeParameter
-    <$> (TypeVariable <$> elements ["A", "B", "T"])
+    <$> (TypeVariableName <$> elements ["A", "B", "T"])
     <*> liftArbitrary (genAnnotated $ genThrowsType tp)
     <*> listOf (genAnnotated $ genThrowsType tp)
 
@@ -153,7 +153,8 @@ genArrayType :: [TypeParameter] -> Gen ArrayType
 genArrayType tp = ArrayType <$> genAnnotated (genType tp)
 
 genTypeVariable :: [TypeParameter] -> Gen TypeVariable
-genTypeVariable tp = elements (map (view typeIdentifier) tp)
+genTypeVariable tp =
+  TypeVariable <$> elements (map (view typeParameterName) tp) <*> arbitrary
 
 -- instance Arbitrary TypeVariable where
 --   arbitrary = genTypeVariable

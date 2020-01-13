@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE ApplicativeDo        #-}
+{-# LANGUAGE BlockArguments        #-}
 {-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE EmptyCase             #-}
@@ -75,12 +76,21 @@ module Jvmhs.Data.Type
   , classNameFromThrowsType
   , boundClassNameFromThrowsType
 
-  -- ** Others
+  -- ** TypeParameter
   , TypeParameter(..)
-  , typeIdentifier
-  , typeClassBound
-  , typeInterfaceBound
+  , typeParameterName
+  , typeParameterClassBound
+  , typeParameterInterfaceBound
+
+  -- ** TypeVariable
   , TypeVariable(..)
+  , typeVariableBound
+  , typeVariableName
+  , unboundTypeVariable
+  , TypeVariableName(..)
+  , unTypeVariableName
+
+  -- ** TypeArgument
   , TypeArgument(..)
 
   -- * IsSimple
@@ -93,6 +103,14 @@ module Jvmhs.Data.Type
   , annotatedIsSimple
   , returnTypeIsSimple
   , throwsTypeIsSimple
+
+  -- * Bind
+  -- This enables bindings of classnames to variables
+  , bindType
+  , bindReferenceType
+  , bindReturnType
+  , bindThrowsType
+  , bindTypeVariable
 
   -- * Annotations
   -- This module uses annotations from the annotations module, we have 
@@ -148,9 +166,9 @@ import           Jvmhs.Data.Annotation
 -- NOTE While the class bound and can technicaly be any reference type, it 
 -- is not allowed in the Java language.
 data TypeParameter = TypeParameter
-  { _typeIdentifier :: ! TypeVariable
-  , _typeClassBound     :: ! (Maybe (Annotated ThrowsType))
-  , _typeInterfaceBound :: ! [Annotated ThrowsType]
+  { _typeParameterName :: ! TypeVariableName
+  , _typeParameterClassBound     :: ! (Maybe (Annotated ThrowsType))
+  , _typeParameterInterfaceBound :: ! [Annotated ThrowsType]
   } deriving (Show, Eq, Generic, NFData)
 
 -- | A reference type can also be Annotated
@@ -198,14 +216,28 @@ data TypeArgument
   | TypeArg !ReferenceType
   deriving (Show, Eq, Generic, NFData)
 
-newtype TypeVariable = TypeVariable
-  { _typeVarName :: Text.Text
+-- | A Type variable is a name and a bound. The bound is semi-artificial
+-- and is used to determine the type of the variable when flattened. It
+-- corresponds to the bound of the type parameter and should be changed if
+-- the typeparameter changes.
+data TypeVariable = TypeVariable
+  { _typeVariableName  :: !TypeVariableName
+  , _typeVariableBound :: !ClassName
+  } deriving (Show, Eq, Generic, NFData)
+
+unboundTypeVariable :: TypeVariableName -> TypeVariable
+unboundTypeVariable = flip TypeVariable "java/lang/Object"
+
+newtype TypeVariableName = TypeVariableName
+  { _unTypeVariableName :: Text.Text
   } deriving (Show, Eq, Generic, NFData)
 
 makeLenses ''ClassType
 makeLenses ''ArrayType
 makeLenses ''ReturnType
 makeLenses ''TypeParameter
+makeLenses ''TypeVariable
+makeLenses ''TypeVariableName
 makePrisms ''ThrowsType
 makePrisms ''ReferenceType
 makePrisms ''Type
@@ -233,10 +265,9 @@ classNameFromThrowsType = \case
 
 -- | Like 'classNameFromThrowsType' but tries to lookup any type variable
 -- in an environment first.
-boundClassNameFromThrowsType
-  :: [TypeParameter] -> ThrowsType -> Either TypeVariable ClassName
-boundClassNameFromThrowsType tps =
-  either (\v -> typeVariableBound tps v) Right . classNameFromThrowsType
+boundClassNameFromThrowsType :: ThrowsType -> ClassName
+boundClassNameFromThrowsType =
+  either (view typeVariableBound) id . classNameFromThrowsType
 
 
 -- | Extend a ClassType with an inner classType.
@@ -260,10 +291,10 @@ innerClassTypeFromName = fromJust . go . Text.split (== '$')
   go (a : as) = Just $ ClassType a (withNoAnnotation <$> go as) []
 
 -- | Convert a Type to either A TypeVariable or a simple type.
-toJType :: Type -> Either TypeVariable B.JType
-toJType = \case
-  ReferenceType rt -> B.JTRef <$> toJRefType rt
-  BaseType      bt -> Right $ B.JTBase bt
+toJType :: (TypeVariable -> ClassName) -> Type -> B.JType
+toJType fn = \case
+  ReferenceType rt -> B.JTRef (toJRefType fn rt)
+  BaseType      bt -> B.JTBase bt
 
 -- | We can convert a JType to a 'Type' without any annotations or 
 -- generics
@@ -272,9 +303,8 @@ fromJType = \case
   JTRef  rt -> ReferenceType (fromJRefType rt)
   JTBase bt -> BaseType bt
 
-toBoundJType :: [TypeParameter] -> Type -> Either TypeVariable B.JType
-toBoundJType tps =
-  either (fmap (B.JTRef . B.JTClass) . typeVariableBound tps) Right . toJType
+toBoundJType :: Type -> B.JType
+toBoundJType = toJType (view typeVariableBound)
 
 -- | Create a 'ReferenceType' from a 'JRefType', without any annotations 
 -- or generics.
@@ -285,11 +315,11 @@ fromJRefType = \case
 
 -- | Convert a ReferenceType to either a 'TypeVariable' or a simple
 -- 'B.JRefType'.
-toJRefType :: ReferenceType -> Either TypeVariable B.JRefType
-toJRefType = \case
-  RefClassType ct -> Right $ JTClass (classNameFromType ct)
-  RefArrayType (ArrayType (Annotated atp _)) -> JTArray <$> toJType atp
-  RefTypeVariable tv -> Left tv
+toJRefType :: (TypeVariable -> ClassName) -> ReferenceType -> B.JRefType
+toJRefType fn = \case
+  RefClassType ct -> JTClass (classNameFromType ct)
+  RefArrayType (ArrayType (Annotated atp _)) -> JTArray (toJType fn atp)
+  RefTypeVariable tv -> JTClass (fn tv)
 
 
 -- | Check if the type is a simple type. This means that there 
@@ -323,29 +353,64 @@ throwsTypeIsSimple = \case
   ThrowsClass        ct -> classTypeIsSimple ct
   ThrowsTypeVariable _  -> False
 
-
 returnTypeIsSimple :: ReturnType -> Bool
 returnTypeIsSimple = andOf (returnType . _Just . to typeIsSimple)
 
--- | The bound of a type parameter. This is the class that the type
--- parameter will take in code. It is the name of the first bound. 
-typeParameterBound
-  :: [TypeParameter] -> TypeParameter -> Either TypeVariable ClassName
-typeParameterBound tps tp =
-  maybe
-      (Right "java/lang/Object")
-      ( boundClassNameFromThrowsType
-          (filter (hasn't $ typeIdentifier . only (tp ^. typeIdentifier)) tps)
-      . view annotatedContent
-      )
-    . firstOf (typeClassBound . folded <> typeInterfaceBound . folded)
-    $ tp
 
-typeVariableBound
-  :: [TypeParameter] -> TypeVariable -> Either TypeVariable ClassName
-typeVariableBound tps tv = case find (has $ typeIdentifier . only tv) tps of
-  Just x  -> typeParameterBound tps x
-  Nothing -> Left tv
+bindType :: JType -> Type -> Maybe Type
+bindType = curry \case
+  (JTRef t, ReferenceType rt) -> ReferenceType <$> bindReferenceType t rt
+  (JTBase b, BaseType b') | b == b -> Just (BaseType b')
+  _                           -> Nothing
+
+bindReferenceType :: JRefType -> ReferenceType -> Maybe ReferenceType
+bindReferenceType = curry \case
+  (JTClass cn, RefTypeVariable tv) ->
+    Just . RefTypeVariable $ bindTypeVariable cn tv
+  (JTArray t', RefArrayType t) -> RefArrayType <$> bindArrayType t' t
+  (JTClass cn, RefClassType ct) | classNameFromType ct == cn ->
+    Just (RefClassType ct)
+  _ -> Nothing
+
+bindArrayType :: JType -> ArrayType -> Maybe ArrayType
+bindArrayType t' = arrayType . annotatedContent $ bindType t'
+
+bindThrowsType :: ClassName -> ThrowsType -> Maybe ThrowsType
+bindThrowsType cn = \case
+  ThrowsTypeVariable tv -> Just . ThrowsTypeVariable $ bindTypeVariable cn tv
+  ThrowsClass ct | classNameFromType ct == cn -> Just (ThrowsClass ct)
+                 | otherwise                  -> Nothing
+
+bindReturnType :: Maybe JType -> ReturnType -> Maybe ReturnType
+bindReturnType = curry \case
+  (Just x , ReturnType (Just t)) -> ReturnType . Just <$> bindType x t
+  (Nothing, ReturnType Nothing ) -> Just $ ReturnType Nothing
+  _                              -> Nothing
+
+bindTypeVariable :: ClassName -> TypeVariable -> TypeVariable
+bindTypeVariable = set typeVariableBound
+
+-- -- | The bound of a type parameter. This is the class that the type
+-- -- parameter will take in code. It is the name of the first bound. 
+-- typeParameterBound
+--   :: [TypeParameter] -> TypeParameter -> Either TypeVariable ClassName
+-- typeParameterBound tps tp =
+--   maybe
+--       (Right "java/lang/Object")
+--       ( boundClassNameFromThrowsType
+--           (filter
+--             (hasn't $ typeParameterName . only (tp ^. typeParameterName))
+--             tps
+--           )
+--       . view annotatedContent
+--       )
+--     . firstOf
+--         (  typeParameterClassBound
+--         .  folded
+--         <> typeParameterInterfaceBound
+--         .  folded
+--         )
+--     $ tp
 
 
 

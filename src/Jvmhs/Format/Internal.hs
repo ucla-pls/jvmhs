@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveFunctor #-}
 module Jvmhs.Format.Internal where
 
@@ -202,6 +203,7 @@ isomap (PartIso f t) = PartIso (traverse f) (traverse t)
 
 
 
+
 -- | Given an isomorphism from a to list of b's, then create 
 -- a compression that create a 
 compressList :: Semigroup e => PartIso e a [b] -> PartIso e [a] [b]
@@ -245,6 +247,13 @@ zipList = PartIso
 withDefaultF :: (a -> Bool) -> PartIso e (a, Maybe a) a
 withDefaultF fn = fromIso (\(a, ma) -> fromMaybe a ma)
                           (\a -> (a, if fn a then Just a else Nothing))
+
+-- | Merge formatter.
+mergeF :: (a -> Bool) -> (a -> a -> a) -> PartIso e (a, Maybe a) a
+mergeF fn t = fromIso (\(a, ma) -> maybe a (t a) ma)
+                      (\a -> (a, if fn a then Just a else Nothing))
+
+
 
 partitionList :: (a -> Bool) -> PartIso e [a] ([a], [a])
 partitionList p = fromIso (List.partition p) (uncurry (++))

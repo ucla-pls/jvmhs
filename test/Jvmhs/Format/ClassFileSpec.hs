@@ -84,9 +84,7 @@ spec = do
 spec_signature :: Spec
 spec_signature = describe "fromSignature conversions" $ do
   describe "typeFromJTypeFormat" $ do
-    test_formatter
-      (genType [])
-      (flipDirection $ typeFromJTypeFormat (const "Ljava/lang/Object;"))
+    test_formatter (genType []) (flipDirection typeFromJTypeFormat)
 
   describe "classTypeFormat" $ do
     test_formatter (genClassType []) (flipDirection classTypeFormat)
@@ -196,7 +194,7 @@ spec_methodAttributes = describe "methodAttributesFormat" $ do
                  (flipDirection $ methodAttributesFormat clsparam)
 
  where
-  clsparam            = [TypeParameter (TypeVariable "V") Nothing []]
+  clsparam            = [TypeParameter (TypeVariableName "V") Nothing []]
 
   genMethodAttributes = do
     tp <- listOf (genAnnotated (genTypeParameter clsparam))
@@ -215,7 +213,7 @@ spec_method = describe "methodFormat" $ do
   test_formatter genMethod (flipDirection (methodFormat clsparam))
 
  where
-  clsparam  = [TypeParameter (TypeVariable "V") Nothing []]
+  clsparam  = [TypeParameter (TypeVariableName "V") Nothing []]
 
   genMethod = do
     _methodTypeParameters <- listOf (genAnnotated $ genTypeParameter clsparam)

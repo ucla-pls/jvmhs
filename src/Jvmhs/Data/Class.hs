@@ -98,7 +98,6 @@ where
 -- base
 import           Data.Foldable                 as F
 import           Data.Word
-import           Data.Either
 import           GHC.Generics                   ( Generic )
 
 -- deep-seq
@@ -252,10 +251,14 @@ isInterface cls = B.CInterface `Set.member` (cls ^. classAccessFlags)
 methodDescriptor :: Getter Method MethodDescriptor
 methodDescriptor = to
   (\m -> MethodDescriptor
-    (m ^.. methodParameters . folded . parameterType . annotatedContent . to
-      (fromRight "java/lang/Object" . toJType)
+    (   m
+    ^.. methodParameters
+    .   folded
+    .   parameterType
+    .   annotatedContent
+    .   to toBoundJType
     )
     (m ^. methodReturnType . annotatedContent . returnType . to
-      (ReturnDescriptor . fmap (fromRight "java/lang/Object" . toJType))
+      (ReturnDescriptor . fmap toBoundJType)
     )
   )

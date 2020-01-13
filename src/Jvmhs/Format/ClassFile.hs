@@ -28,7 +28,6 @@ import           Control.Category
 import           Control.Monad
 import           Data.Bifunctor
 import           Data.Coerce
-import           Data.Either
 import           Data.Foldable
 import           Data.Maybe
 import           Data.Traversable
@@ -420,62 +419,108 @@ methodAttributesFormat clsparam =
         )
       . allOrNothing
 
+
+
+
+
 methodSignatureFormat
   :: [TypeParameter]
   -> Formatter
        ((B.MethodDescriptor, Maybe B.MethodSignature), [ClassName])
        ([TypeParameter], [Type], ReturnType, [ThrowsType])
-methodSignatureFormat clsparam = addThrows . inFirst
-  ( withDefaultF
-      (not . andOf
-        (fold
-          [ _1 . folded . like False
-          , _2 . folded . to typeIsSimple
-          , _3 . to returnTypeIsSimple
-          , _4 . folded . to throwsTypeIsSimple
-          ]
-        )
-      )
-  . (unwrapMethodDescriptor *** isomap unwrapMethodSignature)
-  )
+methodSignatureFormat _ = addThrows
+  . inFirst (joinem . inSecond (isomap unwrapMethodSignature))
  where
+-- , [ClassName]) [ThrowsType])
+  -- unwrapMethodDescriptor
+  --   :: Formatter
+  --        B.MethodDescriptor
+  --        ([TypeParameter], [Type], ReturnType, [ThrowsType])
+  -- unwrapMethodDescriptor = PartIso
+  --   (\md -> pure
+  --     ( []
+  --     , map fromJType (methodDescriptorArguments md)
+  --     , ReturnType
+  --     . fmap fromJType
+  --     . B.asMaybeJType
+  --     . methodDescriptorReturnType
+  --     $ md
+  --     , []
+  --     )
+  --   )
+  --   (\(_, prm, ReturnType rt, _) -> do
+  --     let prm' = fmap toBoundJType prm
+  --     let rt'  = fmap toBoundJType rt
+  --     pure $ B.MethodDescriptor prm' (B.ReturnDescriptor rt')
+  --   )
+
+  joinem
+    :: Formatter
+         ( B.MethodDescriptor
+         , Maybe ([TypeParameter], [Type], ReturnType, [ThrowsType])
+         )
+         ([TypeParameter], [Type], ReturnType, [ThrowsType])
+  joinem = PartIso maThere maBack   where
+    maThere (B.MethodDescriptor {..}, sig) = case sig of
+      Just (tpm, tps, rt, thrws) -> do
+        tps' <-
+          case sequence (zipWith bindType methodDescriptorArguments tps) of
+            Just tps' -> Success tps'
+            Nothing   -> Failure ["Signature and parameters does not match"]
+        rt' <-
+          case bindReturnType (B.asMaybeJType methodDescriptorReturnType) rt of
+            Just rt' -> Success rt'
+            Nothing  -> Failure
+              [ "Signature and return type does not match: "
+                ++ show methodDescriptorReturnType
+                ++ " =/= "
+                ++ show rt
+              ]
+
+        pure (tpm, tps', rt', thrws)
+      Nothing -> pure
+        ( []
+        , map fromJType methodDescriptorArguments
+        , ReturnType
+          (fmap fromJType (B.asMaybeJType methodDescriptorReturnType))
+        , []
+        )
+
+    maBack (tpm, tps, rt, thrws) = do
+      let methodDescriptorArguments = map toBoundJType tps
+      let methodDescriptorReturnType =
+            B.ReturnDescriptor (fmap toBoundJType . view returnType $ rt)
+      pure
+        ( B.MethodDescriptor { .. }
+        , if null tpm
+             && all typeIsSimple tps
+             && returnTypeIsSimple rt
+             && all throwsTypeIsSimple thrws
+          then Nothing
+          else Just (tpm, tps, rt, thrws)
+        )
 
   addThrows
     :: Formatter
          (([TypeParameter], [Type], ReturnType, [ThrowsType]), [ClassName])
          ([TypeParameter], [Type], ReturnType, [ThrowsType])
-  addThrows = PartIso
-    (\(a, c) -> _4
+  addThrows = PartIso aThere aBack   where
+    aThere (a, c) = _4
       (\case
         [] -> pure $ map (ThrowsClass . classTypeFromName) c
         as -> if length as /= length c
           then Failure ["Incompatable lenghts of exceptions"]
-          else pure as
+          else case sequence $ zipWith (\cn x' -> bindThrowsType cn x') c as of
+            Just r  -> Success r
+            Nothing -> Failure ["Signature and exception list does not match"]
       )
       a
-    )
-    (\a ->
-      validateTypeVariable (a ^. _1 ++ clsparam)
-                           (forM (a ^. _4) . boundClassNameFromThrowsType)
-        <&> \x ->
-              ( a
-                &  _4
-                %~ (\z -> if andOf (folded . to throwsTypeIsSimple) z
-                     then []
-                     else z
-                   )
-              , x
-              )
-    )
-
-  validateTypeVariable
-    :: [TypeParameter]
-    -> ([TypeParameter] -> Either TypeVariable a)
-    -> Validation [FormatError] a
-  validateTypeVariable scope fn = case fn scope of
-    Right a -> pure a
-    Left tv ->
-      Failure ["Type variable " ++ show tv ++ " not bound. Had " ++ show scope]
+    aBack a = pure
+      ( a
+      &  _4
+      %~ (\z -> if andOf (folded . to throwsTypeIsSimple) z then [] else z)
+      , map boundClassNameFromThrowsType (a ^. _4)
+      )
 
   unwrapMethodSignature
     :: Formatter
@@ -497,31 +542,6 @@ methodSignatureFormat clsparam = addThrows . inFirst
       msThrows         <- mapM (back throwsTypeFormat) thrws
 
       pure B.MethodSignature { .. }
-
--- , [ClassName]) [ThrowsType])
-  unwrapMethodDescriptor
-    :: Formatter
-         B.MethodDescriptor
-         ([TypeParameter], [Type], ReturnType, [ThrowsType])
-  unwrapMethodDescriptor = PartIso
-    (\md -> pure
-      ( []
-      , map fromJType (methodDescriptorArguments md)
-      , ReturnType
-      . fmap fromJType
-      . B.asMaybeJType
-      . methodDescriptorReturnType
-      $ md
-      , []
-      )
-    )
-    (\(tp, prm, ReturnType rt, _) -> do
-      let typeparams = tp ++ clsparam
-      aparams <- validateTypeVariable typeparams $ forM prm . toBoundJType
-      rt'     <- validateTypeVariable typeparams $ forM rt . toBoundJType
-
-      pure $ B.MethodDescriptor aparams (B.ReturnDescriptor rt')
-    )
 
 
 parameterAnnotationsFormat
@@ -626,43 +646,6 @@ annotateMethodTypesFormat = PartIso anThere anBack where
       ]
     )
 
- --  PartIso msThere msBack . fromLens _1 _1 moreSignatureFormat
- -- where
-
- --  msThere ((tp, prams, rt, thrws), pramsann, _) = do
- --    return
- --      ( map withNoAnnotation tp
- --      , zipWith
- --        (\p (a, mp) -> Parameter
- --          (fmap (\(B.MethodParameter name af) -> (name, B.toSet af)) mp)
- --          (withNoAnnotation p)
- --          a
- --        )
- --        prams
- --        pramsann
- --      , withNoAnnotation rt
- --      , map withNoAnnotation thrws
- --      )
-
- --  msBack (tps, prms, rt, thrs) = do
- --    return
- --      ( ( map (view annotatedContent)                   tps
- --        , map (view $ parameterType . annotatedContent) prms
- --        , view annotatedContent rt
- --        , map (view annotatedContent) thrs
- --        )
- --      , map
- --        (\p ->
- --          ( p ^. parameterAnnotations
- --          , fmap (\(a, b) -> B.MethodParameter a (B.BitSet b))
- --                 (p ^. parameterNameAndFlags)
- --          )
- --        )
- --        prms
- --      , []
- --      )
-
-
 
 codeFormat :: Formatter (B.Code B.High) Code
 codeFormat = PartIso
@@ -747,9 +730,7 @@ fieldTypeFormat
        (Annotated Type)
 fieldTypeFormat = annotateType . inSecond
   ( withDefaultF (not . typeIsSimple)
-  . (   (typeFromJTypeFormat (const "Ljava/lang/Object;") . coerceFormat)
-    *** fieldTypeFromSignature
-    )
+  . ((typeFromJTypeFormat . coerceFormat) *** fieldTypeFromSignature)
   )
  where
   fieldTypeFromSignature :: Formatter [B.Signature B.High] (Maybe Type)
@@ -994,23 +975,23 @@ fromClassFile = undefined
 typeParameterFormat :: Formatter B.TypeParameter TypeParameter
 typeParameterFormat = PartIso
   (\B.TypeParameter {..} -> do
-    _typeInterfaceBound <- mapM
+    _typeParameterInterfaceBound <- mapM
       (fmap withNoAnnotation . there throwsTypeFromReferenceType)
       tpInterfaceBound
-    _typeClassBound <- mapM
+    _typeParameterClassBound <- mapM
       (fmap withNoAnnotation . there throwsTypeFromReferenceType)
       tpClassBound
-    let _typeIdentifier = TypeVariable tpIdentifier
+    let _typeParameterName = TypeVariableName tpIdentifier
     pure TypeParameter { .. }
   )
   (\TypeParameter {..} -> do
     tpInterfaceBound <- mapM
       (back throwsTypeFromReferenceType . view annotatedContent)
-      _typeInterfaceBound
+      _typeParameterInterfaceBound
     tpClassBound <- mapM
       (back throwsTypeFromReferenceType . view annotatedContent)
-      _typeClassBound
-    let tpIdentifier = _typeVarName _typeIdentifier
+      _typeParameterClassBound
+    let tpIdentifier = _typeParameterName ^. unTypeVariableName
     pure B.TypeParameter { .. }
   )
 
@@ -1050,12 +1031,12 @@ throwsTypeFormat = PartIso
   --     )
   --   )
 
-typeFromJTypeFormat :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
-typeFromJTypeFormat fn = fromIso fromJType (either (B.JTRef . fn) id . toJType)
+typeFromJTypeFormat :: Formatter B.JType Type
+typeFromJTypeFormat = fromIso fromJType toBoundJType
 
-typeFromJRefTypeFormat :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
-typeFromJRefTypeFormat fn =
-  fromIso fromJType (either (B.JTRef . fn) id . toJType)
+-- typeFromJRefTypeFormat :: (TypeVariable -> B.JRefType) -> Formatter B.JType Type
+-- typeFromJRefTypeFormat fn =
+--   fromIso fromJType (either (B.JTRef . fn) id . toJType)
 
 -- | This exist because many places it is actually impossible to have
 -- refence types in the possition of the types. This will just parse 
@@ -1122,7 +1103,8 @@ typeFormat = PartIso
   )
 
 typeVariableFromSignature :: Formatter B.TypeVariable TypeVariable
-typeVariableFromSignature = coerceFormat
+typeVariableFromSignature =
+  fromIso unboundTypeVariable (view typeVariableName) . coerceFormat
 
 -- | Create a classType from a signature. The semantics of this construct
 -- changes meaning. The ClassType defined in this library have slots for
