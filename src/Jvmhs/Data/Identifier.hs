@@ -30,6 +30,7 @@ module Jvmhs.Data.Identifier
   , HasClassName(..)
   , dotCls
   , strCls
+  , textCls
   , splitClassName
   , fullyQualifiedName
   , isInnerClass

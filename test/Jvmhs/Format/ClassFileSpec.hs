@@ -17,7 +17,6 @@ import           Text.Nicify
 
 -- base
 import           Control.Monad
-import           Data.Coerce
 import           Data.Either
 import qualified Data.List                     as List
 import           Text.Printf
@@ -42,8 +41,6 @@ import qualified Data.Vector                   as V
 import qualified Data.Set                      as Set
 
 import qualified Language.JVM                  as B
-import qualified Language.JVM.Attribute.BootstrapMethods
-                                               as B
 import qualified Language.JVM.Attribute.Code   as B
 import qualified Language.JVM.Attribute.Annotations
                                                as B
@@ -55,7 +52,6 @@ import           Jvmhs.Data.Class
 import           Jvmhs.Data.Type
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Identifier
-import           Jvmhs.Data.BootstrapMethod
 
 import           Jvmhs.Data.TypeSpec
 
@@ -348,10 +344,7 @@ genParameter tps =
     <*> genAnnotations
 
 genBootstrapMethod :: Gen BootstrapMethod
-genBootstrapMethod =
-  BootstrapMethod
-    <$> (B.BootstrapMethod <$> genMethodHandle <*> (coerce <$> listOf genJValue)
-        )
+genBootstrapMethod = BootstrapMethod <$> genMethodHandle <*> listOf genJValue
 
 test_formatterOn :: (Eq a, Eq b, Show b, Show a) => a -> Formatter a b -> IO ()
 test_formatterOn a PartIso { there, back } =

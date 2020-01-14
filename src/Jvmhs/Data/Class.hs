@@ -1,6 +1,7 @@
 {-# LANGUAGE ApplicativeDo         #-}
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE QuantifiedConstraints         #-}
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -58,6 +59,9 @@ module Jvmhs.Data.Class
   , fieldValue
   , fieldAnnotations
 
+  -- ** Accessors
+  , fieldDescriptor
+
   -- * Method
   , Method(..)
   , methodName
@@ -69,14 +73,14 @@ module Jvmhs.Data.Class
   , methodExceptions
   , methodAnnotations
 
+  -- ** Accessors
+  , methodDescriptor
+
   -- ** Parameters
   , Parameter(..)
   , parameterNameAndFlags
   , parameterType
   , parameterAnnotations
-
-  -- ** Accessors
-  , methodDescriptor
 
   -- * InnerClass
   , InnerClass(..)
@@ -85,13 +89,23 @@ module Jvmhs.Data.Class
   , innerClassName
   , innerAccessFlags
 
+  -- * BootstrapMethod 
+  , BootstrapMethod(..)
+  , bootstrapMethodHandle
+  , bootstrapMethodArguments
+
+  -- ** Re-exports
+  , B.MethodHandle(..)
+  , _MHField
+  , _MHMethod
+  , _MHInterface
+
   -- * Re-exports
   , CAccessFlag(..)
   , FAccessFlag(..)
   , MAccessFlag(..)
   , PAccessFlag(..)
   , ICAccessFlag(..)
-  , JValue(..)
   )
 where
 
@@ -116,7 +130,6 @@ import qualified Data.Set                      as Set
 import qualified Language.JVM                  as B
 
 -- jvmhs
-import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type
 import           Jvmhs.Data.Identifier
@@ -203,12 +216,20 @@ data InnerClass = InnerClass
   -- ^ The access flags of the inner class.
   } deriving (Eq, Show, Generic, NFData)
 
-makeLenses ''InnerClass
+-- | A BootstrapMethod
+data BootstrapMethod = BootstrapMethod
+  { _bootstrapMethodHandle :: B.MethodHandle B.High
+  , _bootstrapMethodArguments :: [JValue]
+  } deriving (Eq, Show, Generic, NFData)
 
 makeLenses ''Class
 makeLenses ''Field
 makeLenses ''Method
 makeLenses ''Parameter
+makeLenses ''InnerClass
+makeLenses ''BootstrapMethod
+
+makePrisms ''B.MethodHandle
 
 -- | A Class has a ClassName
 instance HasClassName Class where

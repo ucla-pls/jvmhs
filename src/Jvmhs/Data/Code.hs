@@ -24,15 +24,11 @@ module Jvmhs.Data.Code
   , codeByteCode
   , codeExceptionTable
   , codeStackMap
-  , traverseCode
-  , fromBinaryCode
-  , toBinaryCode
   , ExceptionHandler(..)
   , ehStart
   , ehEnd
   , ehHandler
   , ehCatchType
-  , traverseExceptionHandler
   , verificationTypeInfo
   -- * Re-exports
   , B.StackMapTable(..)
@@ -44,7 +40,6 @@ module Jvmhs.Data.Code
 where
 
 -- base
-import           Data.Maybe
 import           Data.Word
 import           GHC.Generics                   ( Generic )
 
@@ -65,7 +60,6 @@ import qualified Data.Vector                   as V
 
 -- jvm-binary
 import qualified Language.JVM                  as B
-import qualified Language.JVM.Attribute.Code   as B
 import qualified Language.JVM.Attribute.StackMapTable
                                                as B
 
@@ -95,56 +89,6 @@ data ExceptionHandler = ExceptionHandler
 
 makeLenses ''Code
 makeLenses ''ExceptionHandler
-
-fromBinaryCode :: B.Code B.High -> Code
-fromBinaryCode =
-  Code
-    <$> B.codeMaxStack
-    <*> B.codeMaxLocals
-    <*> B.codeByteCodeInsts
-    <*> fmap (view $ from _Binary)
-    .   B.unSizedList
-    .   B.codeExceptionTable
-    <*> B.codeStackMapTable
-
-toBinaryCode :: Code -> B.Code B.High
-toBinaryCode c = B.Code
-  (c ^. codeMaxStack)
-  (c ^. codeMaxLocals)
-  (B.ByteCode 0 (c ^. codeByteCode))
-  (B.SizedList $ c ^.. codeExceptionTable . folded . _Binary)
-  (B.emptyCodeAttributes { B.caStackMapTable = maybeToList $ c ^. codeStackMap }
-  )
-
-instance FromJVMBinary (B.ExceptionTable B.High) ExceptionHandler where
-  _Binary = iso toBinaryExceptionTable fromBinaryExceptionTable
-   where
-    fromBinaryExceptionTable =
-      ExceptionHandler <$> B.start <*> B.end <*> B.handler <*> B.catchType
-
-    toBinaryExceptionTable =
-      B.ExceptionTable <$> _ehStart <*> _ehEnd <*> _ehHandler <*> _ehCatchType
-
-traverseCode
-  :: Traversal' Word16 a
-  -> Traversal' Word16 a
-  -> Traversal' (V.Vector ByteCodeInst) a
-  -> Traversal' [ExceptionHandler] a
-  -> Traversal' (Maybe StackMapTable) a
-  -> Traversal' Code a
-traverseCode tms tml tbc tet tst g (Code ms ml bc et st) =
-  Code <$> tms g ms <*> tml g ml <*> tbc g bc <*> tet g et <*> tst g st
-{-# INLINE traverseCode #-}
-
-traverseExceptionHandler
-  :: Traversal' Int a
-  -> Traversal' Int a
-  -> Traversal' Int a
-  -> Traversal' (Maybe ClassName) a
-  -> Traversal' ExceptionHandler a
-traverseExceptionHandler ts te th tc g (ExceptionHandler s e h c) =
-  ExceptionHandler <$> ts g s <*> te g e <*> th g h <*> tc g c
-{-# INLINE traverseExceptionHandler #-}
 
 verificationTypeInfo :: Traversal' StackMapTable VerificationTypeInfo
 verificationTypeInfo g (B.StackMapTable s) =
@@ -255,7 +199,6 @@ instance ToJSON ByteCodeInst where
           B.DupX2 wordsize -> ["size" .= wordsize]
 
           B.Swap           -> []
-
 
 byteCodeOprOpCode :: B.ByteCodeOpr B.High -> Text.Text
 byteCodeOprOpCode = \case

@@ -11,7 +11,8 @@ module Jvmhs
   , module Jvmhs.Data.Type
   , module Jvmhs.Data.Identifier
 
-  -- , module Jvmhs.Inspection
+  -- * Inspection
+  , module Jvmhs.Inspection.ClassNames
   )
 where
 
@@ -23,4 +24,4 @@ import           Jvmhs.Data.Class
 -- import           Jvmhs.Data.Graph
 import           Jvmhs.Data.Type
 import           Jvmhs.Data.Identifier
--- import           Jvmhs.Inspection
+import           Jvmhs.Inspection.ClassNames

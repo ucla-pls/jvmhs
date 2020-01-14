@@ -65,7 +65,6 @@ import qualified Language.JVM.Attribute.MethodParameters
 import qualified Language.JVM.Attribute.Signature
                                                as B
 
-import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Identifier
@@ -258,7 +257,12 @@ classAttributeFormat =
 
 bootstrapMethodsFormat
   :: Formatter (B.BootstrapMethods B.High) [BootstrapMethod]
-bootstrapMethodsFormat = coerceFormat
+bootstrapMethodsFormat =
+  isomap
+      (fromIso (\(B.BootstrapMethod a b) -> BootstrapMethod a (coerce b))
+               (\(BootstrapMethod a b) -> B.BootstrapMethod a (coerce b))
+      )
+    . coerceFormat
 {-# INLINE bootstrapMethodsFormat #-}
 
 methodParametersFormat

@@ -92,6 +92,10 @@ module Jvmhs.Data.Type
 
   -- ** TypeArgument
   , TypeArgument(..)
+  , _AnyTypeArg
+  , _ExtendedTypeArg
+  , _ImplementedTypeArg
+  , _TypeArg
 
   -- * IsSimple
   -- Tests if the types are simple types. This means that there 
@@ -320,6 +324,7 @@ makeLenses ''ReturnType
 makeLenses ''TypeParameter
 makeLenses ''TypeVariable
 makeLenses ''TypeVariableName
+makePrisms ''TypeArgument
 makePrisms ''ThrowsType
 makePrisms ''ReferenceType
 makePrisms ''Type
