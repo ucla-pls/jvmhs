@@ -38,6 +38,7 @@ module Jvmhs.Data.Identifier
 
   -- * MethodId
   , MethodId(..)
+  , mkMethodId
   , HasMethodId(..)
   , MethodDescriptor(..)
   , methodDArguments
@@ -46,6 +47,7 @@ module Jvmhs.Data.Identifier
 
   -- * FieldId
   , FieldId(..)
+  , mkFieldId
   , HasFieldId(..)
   , FieldDescriptor(..)
 
@@ -167,8 +169,13 @@ ntNameL = lens ntName (\(NameAndType _ b) a -> NameAndType a b)
 ntDescriptorL :: Lens' (NameAndType a) a
 ntDescriptorL = lens ntDescriptor (\(NameAndType a _) b -> NameAndType a b)
 
+-- * MethodId
+
 makeWrapped ''MethodId
 makeWrapped ''ReturnDescriptor
+
+mkMethodId :: Text.Text -> MethodDescriptor -> MethodId
+mkMethodId = (<:>)
 
 -- | Get a the argument types from a method descriptor
 methodDArguments :: Lens' MethodDescriptor [JType]
@@ -194,24 +201,24 @@ instance Hashable MethodDescriptor where
   hashWithSalt i (MethodDescriptor a b) = i `hashWithSalt` a `hashWithSalt` b
 
 class HasMethodId a where
-  methodId :: Lens' a MethodId
+  methodId :: Getter a MethodId
 
-  methodIdName :: Lens' a Text.Text
+  methodIdName :: Getter a Text.Text
   methodIdName = methodId . _Wrapped . ntNameL
   {-# INLINE methodIdName #-}
 
-  methodIdDescriptor :: Lens' a MethodDescriptor
+  methodIdDescriptor :: Getter a MethodDescriptor
   methodIdDescriptor = methodId . _Wrapped . ntDescriptorL
   {-# INLINE methodIdDescriptor #-}
 
   -- | Get the type of field
-  methodIdArgumentTypes :: Lens' a [JType]
+  methodIdArgumentTypes :: Getter a [JType]
   methodIdArgumentTypes =
     methodIdDescriptor . methodDArguments
   {-# INLINE methodIdArgumentTypes #-}
 
   -- | Get the return type
-  methodIdReturnType :: Lens' a (Maybe JType)
+  methodIdReturnType :: Getter a (Maybe JType)
   methodIdReturnType =
     methodIdDescriptor . methodDReturnType
   {-# INLINE methodIdReturnType #-}
@@ -230,6 +237,9 @@ makeWrapped ''FieldId
 fieldDType :: Iso' FieldDescriptor JType
 fieldDType = coerced
 {-# INLINE fieldDType #-}
+
+mkFieldId :: Text.Text -> FieldDescriptor -> FieldId
+mkFieldId = (<:>)
 
 class HasFieldId a where
   fieldId :: Getter a FieldId

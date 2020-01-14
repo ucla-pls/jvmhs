@@ -217,12 +217,12 @@ instance HasClassName Class where
 
 -- | A Field has a 'FieldId'
 instance HasFieldId Field where
-  fieldId = undefined --  NameAndType (f ^. fieldName) (f ^. fieldType)
+  fieldId = to (\f -> mkFieldId (f ^. fieldName) (f ^. fieldDescriptor))
   {-# INLINE fieldId #-}
 
 -- | A Method has a 'MethodId'
 instance HasMethodId Method where
-  methodId = undefined -- 
+  methodId = to (\m -> mkMethodId (m ^. methodName) (m ^. methodDescriptor)) -- 
   {-# INLINE methodId #-}
 
 -- | Fold over the absolute method ids of the class
@@ -261,3 +261,7 @@ methodDescriptor = to
       (ReturnDescriptor . fmap toBoundJType)
     )
   )
+
+fieldDescriptor :: Getter Field FieldDescriptor
+fieldDescriptor =
+  fieldType . annotatedContent . to (FieldDescriptor . toBoundJType)

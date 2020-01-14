@@ -1,5 +1,5 @@
 name: jvmhs
-version: '0.0.1'
+version: '0.1.0'
 author: Christian Gram Kalhauge
 maintainer: "Christian Gram Kalhauge <kalhauge@cs.ucla.edu>"
 synopsis: A library for reading Java class-files
