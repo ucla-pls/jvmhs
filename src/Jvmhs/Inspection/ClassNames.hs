@@ -29,9 +29,13 @@ import           Data.Foldable
 
 -- lens 
 import           Control.Lens
+import           Data.Set.Lens
 
 -- text
 import qualified Data.Text                     as Text
+
+-- containers 
+import qualified Data.Set                      as Set
 
 -- jvm-binary
 import qualified Language.JVM                  as B
@@ -44,9 +48,12 @@ import           Jvmhs.Data.Identifier
 
 type ClassNamer a = forall r . Monoid r => Getting r a ClassName
 
+classNames :: ClassNamer a -> a -> Set.Set ClassName
+classNames = setOf
+
 -- | A fold over all classnames mentioned in a class.
-classNames :: ClassNamer Class
-classNames = fold
+classNamesOfClass :: ClassNamer Class
+classNamesOfClass = fold
   [ className
   , classTypeParameters
   . folded
