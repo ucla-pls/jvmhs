@@ -116,7 +116,6 @@ import qualified Data.Set                      as Set
 import qualified Language.JVM                  as B
 
 -- jvmhs
-import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Type

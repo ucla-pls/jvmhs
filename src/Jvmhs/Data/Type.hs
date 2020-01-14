@@ -113,23 +113,62 @@ module Jvmhs.Data.Type
   , bindTypeVariable
 
   -- * Annotations
-  -- This module uses annotations from the annotations module, we have 
-  -- re-exported Annotated here for convinence.
-  , Annotated(..)
-  , TypePath
-  , B.TypePathItem(..)
-  , B.TypePathKind(..)
+  , Annotations
+  , AnnotationMap
+  , Annotation(..)
+  , annotationValues
+  , annotationIsRuntimeVisible
+  , annotationType
+  , getAnnotation
+
+  -- ** Accessors
   , setTypeAnnotations
   , getTypeAnnotations
+  , HasTypeAnnotations(..)
+
+  -- ** Annotated
+  , Annotated(..)
+  , annotatedAnnotations
+  , annotatedContent
+  , withNoAnnotation
+
+  -- ** AnnotationValue
+  , AnnotationValue(..)
+  , _AByte
+  , _AChar
+  , _ADouble
+  , _AFloat
+  , _AInt
+  , _ALong
+  , _AShort
+  , _ABoolean
+  , _AString
+  , _AEnum
+  , _AClass
+  , _AAnnotation
+  , _AArray
 
   -- * Helpers
   , fromJType
   , toJType
   , toBoundJType
 
-  -- * Re-exports
+  -- ** Re-exports
+  -- *** TypeAnnotation
+  , B.MethodTypeAnnotation(..)
+  , B.FieldTypeAnnotation(..)
+  , B.ClassTypeAnnotation(..)
+  , B.CodeTypeAnnotation(..)
+
+  -- *** TypePath
+  , TypePath
+  , B.TypePathItem(..)
+  , B.TypePathKind(..)
+  -- *** EnumValue
+  , B.EnumValue(..)
+
+  -- *** Values 
   , B.JValue(..)
-  , HasTypeAnnotations(..)
   )
 where
 
@@ -147,6 +186,9 @@ import           Data.Sequence                  ( (><) )
 import qualified Data.Sequence                 as Seq
 import qualified Data.Map.Strict               as Map
 
+-- unorderd-containers
+import qualified Data.HashMap.Strict           as HashMap
+
 -- text
 import qualified Data.Text                     as Text
 
@@ -158,9 +200,6 @@ import qualified Language.JVM                  as B
 import           Language.JVM.Type
 import qualified Language.JVM.Attribute.Annotations
                                                as B
-
--- jvmhs
-import           Jvmhs.Data.Annotation
 
 -- | This is an annotated type paramater, modeled after `B.TypeParameter`.
 -- NOTE While the class bound and can technicaly be any reference type, it 
@@ -232,6 +271,49 @@ newtype TypeVariableName = TypeVariableName
   { _unTypeVariableName :: Text.Text
   } deriving (Show, Eq, Generic, NFData)
 
+-- | An annotation is a map of names to values.
+data Annotation = Annotation
+  { _annotationType             :: !ClassName
+  -- ^ any field descriptor type is allowed here, but in practice only
+  -- classes are used.
+  , _annotationIsRuntimeVisible :: !Bool
+  , _annotationValues           :: !AnnotationMap
+  } deriving (Show, Eq, Generic, NFData)
+
+  -- | An annotation map is a map of annotation types to annotation objects.
+type AnnotationMap = HashMap.HashMap Text.Text AnnotationValue
+
+-- | We collect annotations in a list.
+type Annotations = [Annotation]
+
+-- | A type can be annotated.
+data Annotated a = Annotated
+  { _annotatedContent :: !a
+  , _annotatedAnnotations :: [Annotation]
+  -- ^ It is assumed that the list does not contain dublicates.
+  } deriving (Show, Eq, Generic, NFData)
+
+-- | An annoation contains values which can be set using multiple types.
+data AnnotationValue
+  = AByte !B.VInteger
+  | AChar !B.VInteger
+  | ADouble !B.VDouble
+  | AFloat !B.VFloat
+  | AInt !B.VInteger
+  | ALong !B.VLong
+  | AShort !B.VInteger
+  | ABoolean !B.VInteger
+  | AString !B.VString
+  | AEnum !(B.EnumValue B.High)
+  | AClass !B.ReturnDescriptor
+  | AAnnotation !(ClassName, AnnotationMap)
+  -- ^ Almost a complete annotation without the information about
+  -- visibility this information is inheirited from
+  | AArray ![ AnnotationValue ]
+  deriving (Show, Eq, Generic, NFData)
+
+
+
 makeLenses ''ClassType
 makeLenses ''ArrayType
 makeLenses ''ReturnType
@@ -245,6 +327,10 @@ makePrisms ''Type
 makePrisms ''JType
 makePrisms ''JRefType
 makePrisms ''JBaseType
+
+makeLenses ''Annotation
+makePrisms ''AnnotationValue
+makeLenses ''Annotated
 
 -- | Get the name of a class type, this throws away all anotations and 
 -- type signatures
@@ -390,39 +476,35 @@ bindReturnType = curry \case
 bindTypeVariable :: ClassName -> TypeVariable -> TypeVariable
 bindTypeVariable = set typeVariableBound
 
--- -- | The bound of a type parameter. This is the class that the type
--- -- parameter will take in code. It is the name of the first bound. 
--- typeParameterBound
---   :: [TypeParameter] -> TypeParameter -> Either TypeVariable ClassName
--- typeParameterBound tps tp =
---   maybe
---       (Right "java/lang/Object")
---       ( boundClassNameFromThrowsType
---           (filter
---             (hasn't $ typeParameterName . only (tp ^. typeParameterName))
---             tps
---           )
---       . view annotatedContent
---       )
---     . firstOf
---         (  typeParameterClassBound
---         .  folded
---         <> typeParameterInterfaceBound
---         .  folded
---         )
---     $ tp
+-- instance ToJSON Annotations where
+--   toJSON Annotations {..} = object
+--     ["visible" .= _visibleAnnotations, "invisible" .= _invisibleAnnotations]
 
+-- instance ToJSON AnnotationValue where
+--   toJSON = \case
+--     AByte       a                 -> object ["byte" .= a]
+--     AChar       a                 -> object ["char" .= chr (fromIntegral a)]
+--     ADouble     a                 -> object ["double" .= a]
+--     AFloat      a                 -> object ["float" .= a]
+--     AInt        a                 -> object ["int" .= a]
+--     ALong       a                 -> object ["long" .= a]
+--     AShort      a                 -> object ["short" .= a]
+--     ABoolean    a                 -> object ["boolean" .= (a /= 0)]
+--     AString     a                 -> object ["string" .= a]
+--     AEnum       (B.EnumValue a b) -> object ["enum" .= b, "enum_class" .= a]
+--     AClass      a                 -> object ["class_info" .= a]
+--     AAnnotation (name, a) -> object ["annotation" .= name, "values" .= a]
+--     AArray      a                 -> object ["array" .= a]
 
+-- | Create an annotated value with no annotations
+withNoAnnotation :: a -> Annotated a
+withNoAnnotation a = Annotated a []
 
--- updateOrFail
---   :: Traversal' s a
---   -> (a -> Either String a)
---   -> String
---   -> s
---   -> (Either String s)
--- updateOrFail ln fn err s = case s ^? ln of
---   Nothing -> Left err
---   Just a  -> fn a <&> \b -> set ln b s
+-- | Get an annotation with ClassName
+getAnnotation :: ClassName -> Annotated a -> Maybe Annotation
+getAnnotation cn =
+  findOf (annotatedAnnotations . folded) (view $ annotationType . to (== cn))
+
 
 -- | Redefining '@B.TypePath'
 type TypePath = [B.TypePathItem]

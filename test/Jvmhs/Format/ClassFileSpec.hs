@@ -53,7 +53,6 @@ import           Jvmhs.Format.Internal         as Format
 
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Type
-import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.Code
 import           Jvmhs.Data.Identifier
 import           Jvmhs.Data.BootstrapMethod

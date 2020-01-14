@@ -17,9 +17,7 @@ import qualified Data.HashMap.Strict           as HashMap
 import qualified Language.JVM                  as B
 
 import           Jvmhs.Data.Type
-import           Jvmhs.Data.Annotation
 
-import           Jvmhs.Data.AnnotationSpec      ( )
 
 spec :: Spec
 spec = do

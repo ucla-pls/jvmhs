@@ -65,7 +65,6 @@ import qualified Language.JVM.Attribute.MethodParameters
 import qualified Language.JVM.Attribute.Signature
                                                as B
 
-import           Jvmhs.Data.Annotation
 import           Jvmhs.Data.BootstrapMethod
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
