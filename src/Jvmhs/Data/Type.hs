@@ -1,5 +1,8 @@
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE TypeApplications        #-}
+{-# LANGUAGE DeriveFunctor        #-}
+{-# LANGUAGE DeriveFoldable        #-}
+{-# LANGUAGE DeriveTraversable        #-}
 {-# LANGUAGE ApplicativeDo        #-}
 {-# LANGUAGE BlockArguments        #-}
 {-# LANGUAGE TupleSections        #-}
@@ -300,7 +303,7 @@ data Annotated a = Annotated
   { _annotatedContent :: !a
   , _annotatedAnnotations :: [Annotation]
   -- ^ It is assumed that the list does not contain dublicates.
-  } deriving (Show, Eq, Generic, NFData)
+  } deriving (Show, Eq, Generic, NFData, Functor, Foldable, Traversable)
 
 -- | An annoation contains values which can be set using multiple types.
 data AnnotationValue

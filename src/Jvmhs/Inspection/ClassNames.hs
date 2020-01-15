@@ -221,6 +221,10 @@ classNamesOfCode = fold
   , codeStackMap . _Just . classNamesOfStackMapTable
   ]
 
+instance HasClassNames ExceptionHandler where
+  classNames = classNamesOfExceptionHandler
+  {-# INLINE classNames #-}
+
 classNamesOfExceptionHandler :: ClassNamer ExceptionHandler
 classNamesOfExceptionHandler = ehCatchType . _Just
 
