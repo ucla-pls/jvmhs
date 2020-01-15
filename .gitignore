@@ -1,6 +1,5 @@
 .stack-work/
 *.cabal
-jvmhs/test/data/classes
 .dir-locals.el
 *.prof
 test/output
