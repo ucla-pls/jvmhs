@@ -3,6 +3,9 @@ module Jvmhs.Inspection.ClassNamesSpec where
 
 import           SpecHelper
 
+-- lens
+import           Data.Set.Lens
+
 -- containers
 import qualified Data.Set                      as Set
 
@@ -13,7 +16,7 @@ spec :: Spec
 spec = describe "classNamesOfClass" $ do
   cls <- runIO (getClassFromTestPool "Annotations")
   it "should list all classes in Annotations" $ do
-    classNames (_Just . classNamesOfClass) cls `shouldBe` Set.fromList
+    setOf (_Just . classNames) cls `shouldBe` Set.fromList
       [ "Annotations"
       , "Annotations$Annotated"
       , "Annotations$B"
