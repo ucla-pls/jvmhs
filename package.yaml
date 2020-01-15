@@ -23,6 +23,7 @@ extra-source-files:
   - package.yaml
   - README.md
   - test/stdlib-stubs.json
+  - test/data/classes/*.class
 
 dependencies:
   - base >= 4.10 && < 4.13

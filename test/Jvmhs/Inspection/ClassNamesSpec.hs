@@ -11,7 +11,7 @@ import           Jvmhs.Inspection.ClassNames
 
 spec :: Spec
 spec = describe "classNamesOfClass" $ do
-  cls <- runIO $ getClassFromTestPool "Annotations"
+  cls <- runIO (getClassFromTestPool "Annotations")
   it "should list all classes in Annotations" $ do
     classNames (_Just . classNamesOfClass) cls `shouldBe` Set.fromList
       [ "Annotations"
