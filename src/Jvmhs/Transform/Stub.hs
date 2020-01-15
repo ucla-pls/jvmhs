@@ -31,6 +31,7 @@ import qualified Language.JVM.Constant         as B
 -- jvmhs
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Code
+import           Jvmhs.Data.Identifier
 import           Jvmhs.Data.Type
 
 -- | If the method has a code and it is not a constructor then stub it.
@@ -41,11 +42,11 @@ stub m | isConstructor m = m & methodCode . _Just .~ constructorStub
   constructorStub =
     makeConstructorStub "java/lang/Object.<init>:()V" requiredLocals
 
-  regularStub = makeStub requiredLocals (m ^. methodReturnType)
+  regularStub = makeStub requiredLocals (m ^. methodReturnType . simpleType)
 
   requiredLocals =
     (if not $ m ^. methodAccessFlags . contains MStatic then (+ 1) else id)
-      (sumOf (methodParameters . folded . to typeSize) m)
+      (sumOf (methodIdArgumentTypes . folded . to typeSize) m)
 
 defaultValue :: JType -> Maybe B.JValue
 defaultValue = \case
@@ -111,7 +112,7 @@ makeConstructorStub m requiredLocals = Code
   , _codeExceptionTable = []
   , _codeStackMap       = Nothing
   }
-  where arguments = m ^. methodParameters
+  where arguments = m ^. methodIdArgumentTypes
 
 -- | A Type in Java have different sizes.
 typeSize :: JType -> Word16

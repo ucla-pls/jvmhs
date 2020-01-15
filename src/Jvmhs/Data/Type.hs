@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE TypeApplications        #-}
 {-# LANGUAGE ApplicativeDo        #-}
 {-# LANGUAGE BlockArguments        #-}
 {-# LANGUAGE TupleSections        #-}
@@ -6,6 +7,7 @@
 {-# LANGUAGE EmptyCase             #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE TypeFamilies     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -156,6 +158,9 @@ module Jvmhs.Data.Type
   , fromJType
   , toJType
   , toBoundJType
+
+  -- ** HasSimpleType
+  , HasSimpleType(..)
 
   -- ** Re-exports
   -- *** TypeAnnotation
@@ -523,7 +528,6 @@ class HasTypeAnnotations a where
 -- | Get a list of all annotations in the type
 getTypeAnnotations :: HasTypeAnnotations a => a -> [(TypePath, Annotation)]
 getTypeAnnotations = itoListOf (typeAnnotations <. traverse)
-
 -- | Given a list of annotations set them in the type.
 setTypeAnnotations
   :: HasTypeAnnotations a => [(TypePath, Annotation)] -> a -> Either String a
@@ -613,3 +617,39 @@ instance HasTypeAnnotations ThrowsType where
 
 instance HasTypeAnnotations ReturnType where
   typeAnnotations = returnType . _Just . typeAnnotations
+
+-- | These types here have simpler types
+class HasSimpleType a where
+  type SimpleType a :: *
+  -- Get the simpler type
+  simpleType :: Getter a (SimpleType a)
+
+instance HasSimpleType a => HasSimpleType (Annotated a) where
+  type SimpleType (Annotated a) = SimpleType a
+  simpleType = annotatedContent . simpleType
+  {-# INLINE simpleType #-}
+
+instance HasSimpleType Type where
+  type SimpleType Type = JType
+  simpleType = to toBoundJType
+  {-# INLINE simpleType #-}
+
+instance HasSimpleType ReturnType where
+  type SimpleType ReturnType = Maybe JType
+  simpleType = returnType . to (\(a :: Maybe Type) -> view simpleType <$> a)
+  {-# INLINE simpleType #-}
+
+instance HasSimpleType ArrayType where
+  type SimpleType ArrayType = JType
+  simpleType = arrayType . simpleType
+  {-# INLINE simpleType #-}
+
+instance HasSimpleType ThrowsType where
+  type SimpleType ThrowsType = ClassName
+  simpleType = to boundClassNameFromThrowsType
+  {-# INLINE simpleType #-}
+
+instance HasSimpleType ClassType where
+  type SimpleType ClassType = ClassName
+  simpleType = to classNameFromType
+  {-# INLINE simpleType #-}

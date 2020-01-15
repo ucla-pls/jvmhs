@@ -271,18 +271,9 @@ isInterface cls = B.CInterface `Set.member` (cls ^. classAccessFlags)
 methodDescriptor :: Getter Method MethodDescriptor
 methodDescriptor = to
   (\m -> MethodDescriptor
-    (   m
-    ^.. methodParameters
-    .   folded
-    .   parameterType
-    .   annotatedContent
-    .   to toBoundJType
-    )
-    (m ^. methodReturnType . annotatedContent . returnType . to
-      (ReturnDescriptor . fmap toBoundJType)
-    )
+    (m ^.. methodParameters . folded . parameterType . simpleType)
+    (m ^. methodReturnType . simpleType . to ReturnDescriptor)
   )
 
 fieldDescriptor :: Getter Field FieldDescriptor
-fieldDescriptor =
-  fieldType . annotatedContent . to (FieldDescriptor . toBoundJType)
+fieldDescriptor = fieldType . simpleType . to FieldDescriptor

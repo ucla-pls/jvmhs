@@ -86,7 +86,6 @@ data ExceptionHandler = ExceptionHandler
   , _ehCatchType :: !(Maybe ClassName)
   } deriving (Show, Eq, Generic, NFData)
 
-
 makeLenses ''Code
 makeLenses ''ExceptionHandler
 
@@ -245,15 +244,12 @@ instance ToJSON B.FieldAccess where
     B.FldStatic -> True
     B.FldField  -> False
 
-
 instance ToJSON (B.StackMapTable B.High) where
   toJSON (B.StackMapTable a) = object ["table" .= a]
-
 
 instance ToJSON (B.StackMapFrame B.High) where
   toJSON (B.StackMapFrame deltaoffset frametype) =
     object (("offset" .= deltaoffset) : getFrameDetails frametype)
-
 
 instance ToJSON (B.VerificationTypeInfo B.High) where
   toJSON = object . getTypeInfo
@@ -265,8 +261,6 @@ instance ToJSON B.BinOpr where
     B.Mul -> "mul"
     B.Div -> "div"
     B.Rem -> "rem"
-
-
 
 instance ToJSON B.BitOpr where
   toJSON = String . \case
@@ -368,7 +362,7 @@ getInvokeDynamicMethod = \case
 
 -- * Type Conversion
 
-data SimpleType
+data TypeName
    = STInteger
    | STLong
    | STShort
@@ -380,7 +374,7 @@ data SimpleType
    | STRef
   deriving (Show, Eq, Enum)
 
-instance ToJSON SimpleType where
+instance ToJSON TypeName where
   toJSON = String . \case
     STInteger -> "I"
     STLong    -> "J"
@@ -392,13 +386,13 @@ instance ToJSON SimpleType where
     STDouble  -> "D"
     STRef     -> "R"
 
-fromSmallArithmeticType :: B.SmallArithmeticType -> SimpleType
+fromSmallArithmeticType :: B.SmallArithmeticType -> TypeName
 fromSmallArithmeticType = \case
   B.MByte  -> STByte
   B.MChar  -> STChar
   B.MShort -> STShort
 
-fromArithmeticType :: B.ArithmeticType -> SimpleType
+fromArithmeticType :: B.ArithmeticType -> TypeName
 fromArithmeticType = \case
   B.MInt    -> STInteger
   B.MLong   -> STLong
@@ -406,7 +400,7 @@ fromArithmeticType = \case
   B.MDouble -> STDouble
 
 
-fromArrayType :: B.ArrayType -> SimpleType
+fromArrayType :: B.ArrayType -> TypeName
 fromArrayType = \case
   B.AByte   -> STByte
   B.AChar   -> STChar
@@ -418,7 +412,7 @@ fromArrayType = \case
   B.ARef    -> STRef
 
 
-fromLocalType :: B.LocalType -> SimpleType
+fromLocalType :: B.LocalType -> TypeName
 fromLocalType = \case
   B.LInt    -> STInteger
   B.LLong   -> STLong
