@@ -69,3 +69,5 @@ tests:
       - hspec-discover
       - hspec-expectations-pretty-diff
       - generic-random
+      - HUnit >= 1.6.0.0 
+      - nicify-lib >= 1.0.1
