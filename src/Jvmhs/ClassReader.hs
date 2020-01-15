@@ -246,7 +246,7 @@ writeBytesToFilePath fp bytes
     createDirectoryIfMissing True (takeDirectory path)
     BL.writeFile path bs
  where
-    -- | Adds an entry to an archive
+  -- | Adds an entry to an archive
   addClassToArchive (cn, bs) = addEntryToArchive
     $ toEntry (cn ^. fullyQualifiedName . to Text.unpack ++ ".class") 0 bs
 

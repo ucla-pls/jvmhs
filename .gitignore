@@ -8,7 +8,6 @@ test/regression
 cabal.config
 .DS_Store
 tags
-*.class
 dist-newstyle
 .ghc.*
 

@@ -284,7 +284,7 @@ data Annotation = Annotation
   , _annotationValues           :: !AnnotationMap
   } deriving (Show, Eq, Generic, NFData)
 
-  -- | An annotation map is a map of annotation types to annotation objects.
+-- | An annotation map is a map of annotation types to annotation objects.
 type AnnotationMap = HashMap.HashMap Text.Text AnnotationValue
 
 -- | We collect annotations in a list.
