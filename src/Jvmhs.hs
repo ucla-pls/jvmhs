@@ -13,15 +13,22 @@ module Jvmhs
 
   -- * Inspection
   , module Jvmhs.Inspection.ClassNames
+
+  -- * Analyses
+  , module Jvmhs.Analysis.Hierarchy
+  , module Jvmhs.TypeCheck
   )
 where
 
 -- import           Jvmhs.Analysis.Closure
--- import           Jvmhs.Analysis.Hierarchy
+import           Jvmhs.Analysis.Hierarchy
 import           Jvmhs.ClassPool
 import           Jvmhs.ClassReader
 import           Jvmhs.Data.Class
 -- import           Jvmhs.Data.Graph
+
 import           Jvmhs.Data.Type
 import           Jvmhs.Data.Identifier
 import           Jvmhs.Inspection.ClassNames
+
+import           Jvmhs.TypeCheck
