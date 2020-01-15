@@ -100,12 +100,18 @@ classNamesOfMethod = fold
   . folded
   . classNamesOfAnnotated classNamesOfTypeParameter
   , methodParameters . folded . classNamesOfParameter
-  , methodReturnType
-    . classNamesOfAnnotated (coerced . _Just . classNamesOfType)
+  , methodReturnType . classNamesOfAnnotated classNamesOfReturnType
   , methodCode . _Just . classNamesOfCode
   , methodExceptions . folded . classNamesOfAnnotated classNamesOfThrowsType
   , methodAnnotations . folded . classNamesOfAnnotation
   ]
+
+instance HasClassNames ReturnType where
+  classNames = classNamesOfReturnType
+  {-# INLINE classNames #-}
+
+classNamesOfReturnType :: ClassNamer ReturnType
+classNamesOfReturnType = coerced . _Just . classNamesOfType
 
 instance HasClassNames Parameter where
   classNames = classNamesOfParameter
@@ -210,39 +216,58 @@ instance HasClassNames Code where
 
 classNamesOfCode :: ClassNamer Code
 classNamesOfCode = fold
-  [ codeByteCode . folded . to B.opcode . classNamesOfByteCodeOpr
-  , codeExceptionTable . folded . ehCatchType . _Just
+  [ codeByteCode . folded . classNamesOfByteCodeInst
+  , codeExceptionTable . folded . classNamesOfExceptionHandler
   , codeStackMap . _Just . classNamesOfStackMapTable
   ]
+
+classNamesOfExceptionHandler :: ClassNamer ExceptionHandler
+classNamesOfExceptionHandler = ehCatchType . _Just
+
+instance HasClassNames (B.ByteCodeInst B.High) where
+  classNames = classNamesOfByteCodeInst
+  {-# INLINE classNames #-}
+
+classNamesOfByteCodeInst :: ClassNamer (B.ByteCodeInst B.High)
+classNamesOfByteCodeInst = to B.opcode . classNamesOfByteCodeOpr
+
+instance HasClassNames (B.ByteCodeOpr B.High) where
+  classNames = classNamesOfByteCodeOpr
+  {-# INLINE classNames #-}
+
+classNamesOfByteCodeOpr :: ClassNamer (B.ByteCodeOpr B.High)
+classNamesOfByteCodeOpr f a = case a of
+  B.Push c  -> classNamesOfBConstant f c $> a
+  B.Get _ r -> classNamesOfAbsFieldId f r $> a
+  B.Put _ r -> classNamesOfAbsFieldId f r $> a
+  B.Invoke r -> classNamesOfInvocation f r $> a
+  B.New r   -> f r $> a
+  B.NewArray (B.NewArrayType _ r) -> classNamesOfJType f r $> a
+  B.CheckCast r -> classNamesOfJRefType f r $> a
+  B.InstanceOf r -> classNamesOfJRefType f r $> a
+  _         -> pure a
  where
-  classNamesOfByteCodeOpr f a = case a of
-    B.Push c  -> classNamesOfBConstant f c $> a
-    B.Get _ r -> classNamesOfAbsFieldId f r $> a
-    B.Put _ r -> classNamesOfAbsFieldId f r $> a
-    B.Invoke r -> classNamesOfInvocation f r $> a
-    B.New r   -> f r $> a
-    B.NewArray (B.NewArrayType _ r) -> classNamesOfJType f r $> a
-    B.CheckCast r -> classNamesOfJRefType f r $> a
-    B.InstanceOf r -> classNamesOfJRefType f r $> a
-    _         -> pure a
-
-
   classNamesOfBConstant = _Just . classNamesOfJValue
 
-  classNamesOfInvocation f a = case a of
-    B.InvkSpecial r     -> classNamesOfAbsVariableMethodId f r $> a
-    B.InvkVirtual r     -> (classNamesOfInRefType classNamesOfMethodId) f r $> a
-    B.InvkStatic  r     -> classNamesOfAbsVariableMethodId f r $> a
-    B.InvkInterface _ r -> classNamesOfAbsInterfaceMethodId f r $> a
+  classNamesOfInvocation f' a' = case a' of
+    B.InvkSpecial r     -> classNamesOfAbsVariableMethodId f' r $> a
+    B.InvkVirtual r -> (classNamesOfInRefType classNamesOfMethodId) f' r $> a
+    B.InvkStatic  r     -> classNamesOfAbsVariableMethodId f' r $> a
+    B.InvkInterface _ r -> classNamesOfAbsInterfaceMethodId f' r $> a
     B.InvkDynamic r ->
-      (to B.invokeDynamicMethod . classNamesOfMethodId) f r $> a
+      (to B.invokeDynamicMethod . classNamesOfMethodId) f' r $> a
 
-  classNamesOfStackMapTable =
-    verificationTypeInfo
-      . (\f c -> case c of
-          VTObject n -> classNamesOfJRefType f n $> c
-          _          -> pure c
-        )
+instance HasClassNames (B.StackMapTable B.High) where
+  classNames = classNamesOfStackMapTable
+  {-# INLINE classNames #-}
+
+classNamesOfStackMapTable :: ClassNamer (B.StackMapTable B.High)
+classNamesOfStackMapTable =
+  verificationTypeInfo
+    . (\f c -> case c of
+        VTObject n -> classNamesOfJRefType f n $> c
+        _          -> pure c
+      )
 
 
 instance HasClassNames MethodId where
