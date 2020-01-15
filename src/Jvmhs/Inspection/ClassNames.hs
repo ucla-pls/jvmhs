@@ -54,6 +54,9 @@ classNameSet = setOf classNames
 class HasClassNames a where
   classNames :: forall r . Monoid r => Getting r a ClassName
 
+instance HasClassNames ClassName where
+  classNames = id
+  {-# INLINE classNames #-}
 
 instance HasClassNames Class where
   classNames = classNamesOfClass
@@ -408,6 +411,7 @@ instance HasClassNames ArrayType where
 
 classNamesOfArrayType :: ClassNamer ArrayType
 classNamesOfArrayType = arrayType . classNamesOfAnnotated classNamesOfType
+
 
 instance HasClassNames TypeArgument where
   classNames = classNamesOfTypeArgument
