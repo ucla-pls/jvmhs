@@ -99,7 +99,6 @@ import qualified Language.JVM                  as B
 import           Jvmhs.Data.Class
 import           Jvmhs.Data.Identifier
 import           Jvmhs.Format.ClassFile
-import           Jvmhs.Format
 
 
 -- Reader options
@@ -217,7 +216,7 @@ readClassFile m cn = do
   readClassBytes m b
 
 serializeClass :: Class -> BL.ByteString
-serializeClass = B.writeClassFile . (fromJust . preview _Success) . toClassFile
+serializeClass = B.writeClassFile . (fromJust . preview _Right) . toClassFile
 
 deserializeClass :: Bool -> BL.ByteString -> Either ClassReadError Class
 deserializeClass keep bs =
@@ -287,7 +286,7 @@ readClassesM = do
     first (cn, ) <$> readClass cn (r $> con)
 
 convertClass :: B.ClassFile B.High -> Either String Class
-convertClass = bimap unlines force . runValidation . fromClassFile
+convertClass = bimap unlines force . fromClassFile
 
 -- | Classes can be in a folder
 newtype CFolder = CFolder

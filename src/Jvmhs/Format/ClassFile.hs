@@ -83,11 +83,11 @@ textSerialize = PartIso (validateEither . B.deserialize) (pure . B.serialize)
 constantValueFormat :: Formatter [B.ConstantValue B.High] (Maybe JValue)
 constantValueFormat = coerceFormat . singletonList
 
-toClassFile :: Class -> Validation [FormatError] (B.ClassFile B.High)
-toClassFile = back classFormat
+toClassFile :: Class -> Either [FormatError] (B.ClassFile B.High)
+toClassFile = runValidation . back classFormat
 
-fromClassFile :: B.ClassFile B.High -> Validation [FormatError] Class
-fromClassFile = there classFormat
+fromClassFile :: B.ClassFile B.High -> Either [FormatError] Class
+fromClassFile = runValidation . there classFormat
 
 classFormat :: Formatter (B.ClassFile B.High) Class
 classFormat = PartIso
