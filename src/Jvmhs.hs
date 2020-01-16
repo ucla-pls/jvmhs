@@ -30,3 +30,5 @@ import           Jvmhs.Inspection.ClassNames
 
 import           Jvmhs.TypeCheck
 import           Jvmhs.Transform.Stub
+
+import           Jvmhs.Format.Json              ( )
