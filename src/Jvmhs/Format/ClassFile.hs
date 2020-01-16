@@ -387,7 +387,7 @@ methodAttributesFormat =
   handleSignature
     :: Formatter
          ((B.MethodDescriptor, [B.Signature B.High]), [B.Exceptions B.High])
-         ([TypeParameter], [Type], ReturnType, [ThrowsType])
+         ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
   handleSignature =
     methodSignatureFormat
       . (   inSecond
@@ -401,17 +401,18 @@ methodAttributesFormat =
     (parameterFormat . inSecond (isomap methodParametersFormat . singletonList))
 
   parameterFormat
-    :: Formatter ([Type], Maybe [B.MethodParameter B.High]) [Parameter]
+    :: Formatter ([(Bool, Type)], Maybe [B.MethodParameter B.High]) [Parameter]
   parameterFormat =
     isomap
         (fromIso
-          (\(tp, m) -> Parameter
+          (\((b, tp), m) -> Parameter
             (m <&> \(B.MethodParameter n a) -> (n, B.toSet a))
+            b
             (withNoAnnotation tp)
             []
           )
-          (\(Parameter nt tp _) ->
-            ( view annotatedContent tp
+          (\(Parameter nt b tp _) ->
+            ( (b, view annotatedContent tp)
             , nt <&> \(n, a) -> B.MethodParameter n (B.BitSet a)
             )
           )
@@ -425,7 +426,7 @@ methodAttributesFormat =
 methodSignatureFormat
   :: Formatter
        ((B.MethodDescriptor, Maybe B.MethodSignature), [ClassName])
-       ([TypeParameter], [Type], ReturnType, [ThrowsType])
+       ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
 methodSignatureFormat = addThrows
   . inFirst (joinem . inSecond (isomap unwrapMethodSignature))
  where
@@ -457,14 +458,26 @@ methodSignatureFormat = addThrows
          ( B.MethodDescriptor
          , Maybe ([TypeParameter], [Type], ReturnType, [ThrowsType])
          )
-         ([TypeParameter], [Type], ReturnType, [ThrowsType])
+         ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
   joinem = PartIso maThere maBack   where
     maThere (B.MethodDescriptor {..}, sig) = case sig of
       Just (tpm, tps, rt, thrws) -> do
         tps' <-
-          case sequence (zipWith bindType methodDescriptorArguments tps) of
-            Just tps' -> Success tps'
-            Nothing   -> Failure ["Signature and parameters does not match"]
+          case
+            sequence
+              (zipWith bindType
+                       (reverse methodDescriptorArguments)
+                       (reverse tps)
+              )
+          of
+            Just tps' -> Success
+              (  [ (False, fromJType t)
+                 | t <- take (length methodDescriptorArguments - length tps)
+                             methodDescriptorArguments
+                 ]
+              ++ (map (True, ) $ reverse tps')
+              )
+            Nothing -> Failure ["Signature and parameters does not match"]
         rt' <-
           case bindReturnType (B.asMaybeJType methodDescriptorReturnType) rt of
             Just rt' -> Success rt'
@@ -478,30 +491,32 @@ methodSignatureFormat = addThrows
         pure (tpm, tps', rt', thrws)
       Nothing -> pure
         ( []
-        , map fromJType methodDescriptorArguments
+        , map ((True, ) . fromJType) methodDescriptorArguments
         , ReturnType
           (fmap fromJType (B.asMaybeJType methodDescriptorReturnType))
         , []
         )
 
     maBack (tpm, tps, rt, thrws) = do
-      let methodDescriptorArguments = map toBoundJType tps
+      let methodDescriptorArguments = map (toBoundJType . snd) tps
       let methodDescriptorReturnType =
             B.ReturnDescriptor (fmap toBoundJType . view returnType $ rt)
       pure
         ( B.MethodDescriptor { .. }
         , if null tpm
-             && all typeIsSimple tps
+             && all (typeIsSimple . snd) tps
              && returnTypeIsSimple rt
              && all throwsTypeIsSimple thrws
           then Nothing
-          else Just (tpm, tps, rt, thrws)
+          else Just (tpm, map snd (filter fst tps), rt, thrws)
         )
 
   addThrows
     :: Formatter
-         (([TypeParameter], [Type], ReturnType, [ThrowsType]), [ClassName])
-         ([TypeParameter], [Type], ReturnType, [ThrowsType])
+         ( ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
+         , [ClassName]
+         )
+         ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
   addThrows = PartIso aThere aBack   where
     aThere (a, c) = _4
       (\case
@@ -562,12 +577,19 @@ parameterAnnotationsFormat = joinParameters . inSecond
     (\(ps, an) -> case an of
       [] -> pure ps
       _
-        | length ps == length an -> pure
-        $ zipWith (\p a -> p & parameterAnnotations .~ a) ps an
+        | length an <= length ps -> pure . reverse $ zipWith
+          (\p a -> p & parameterAnnotations .~ a)
+          (reverse ps)
+          (reverse an ++ repeat [])
         | otherwise -> Failure
-          ["Annotation length different from number of parameters"]
+          [ "Annotation length must be smaller or equal to the number of parameters"
+          ]
     )
-    (\p -> let x = map (view parameterAnnotations) p in pure (p, x))
+    (\p ->
+      let x =
+              map (view parameterAnnotations) . filter (view parameterVisible) $ p
+      in  pure (p, x)
+    )
 
   runtimeVisibleParameterAnnotationsFormat
     :: Formatter [B.RuntimeVisibleParameterAnnotations B.High] [Annotations]

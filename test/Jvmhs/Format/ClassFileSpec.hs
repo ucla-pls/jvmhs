@@ -254,32 +254,58 @@ spec_class = do
 
 spec_testclasses :: Spec
 spec_testclasses = do
-  classes <- runIO $ do
-    doesDirectoryExist "test/data/classes" >>= \case
-      True -> do
-        listDirectory "test/data/classes" >>= mapM
-          (\fn -> (fn, ) <$> BL.readFile ("test/data/classes/" ++ fn))
-        -- return (rights . map B.readClassFile $ x)
+  describe
+    "classes"
+    do
+      classes <- runIO $ do
+        doesDirectoryExist "test/data/classes" >>= \case
+          True -> do
+            listDirectory "test/data/classes" >>= mapM
+              (\fn -> (fn, ) <$> BL.readFile ("test/data/classes/" ++ fn))
+          False -> return []
 
-      False -> return []
+      forM_ classes $ \(fn, c) -> testClass fn c
 
-  forM_ classes $ \(fn, c) -> describe fn $ do
+  fdescribe
+    "extras"
+    do
+      classes <- runIO $ do
+        doesDirectoryExist "test/data/extras" >>= \case
+          True -> do
+            listDirectory "test/data/extras" >>= mapM
+              (\fn -> (fn, ) <$> BL.readFile ("test/data/extras/" ++ fn))
+          False -> return []
+
+      forM_ classes $ \(fn, c) -> testClass fn c
+
+ where
+  testClass fn c = describe fn $ do
     let cf = B.readClassFile c
     it "should read the classfile" $ do
       cf `shouldSatisfy` isRight
 
     case cf of
       Right r -> do
-        let cleaned =
-              r
-                &  lens B.cMethods' (\a x -> a { B.cMethods' = x })
-                .  traverse
-                .  mAttributesL
-                .  lens B.maCode (\a x -> a { B.maCode = x })
-                .  traverse
-                .  lens B.codeByteCode (\a x -> a { B.codeByteCode = x })
-                .  lens B.byteCodeSize (\a x -> a { B.byteCodeSize = x })
-                .~ 0
+        let
+          cleaned =
+            r
+              &  lens B.cMethods' (\a x -> a { B.cMethods' = x })
+              .  traverse
+              .  mAttributesL
+              .  lens B.maCode (\a x -> a { B.maCode = x })
+              .  traverse
+              %~ set
+                   ( lens B.codeByteCode (\a x -> a { B.codeByteCode = x })
+                   . lens B.byteCodeSize (\a x -> a { B.byteCodeSize = x })
+                   )
+                   0
+              .  set
+                   ( lens B.codeAttributes (\a x -> a { B.codeAttributes = x })
+                   . lens
+                       B.caLineNumberTable
+                       (\a x -> a { B.caLineNumberTable = x })
+                   )
+                   []
 
         describe "fields" $ forM_ (B.cFields' cleaned) $ \f ->
           it
@@ -311,8 +337,6 @@ spec_testclasses = do
           test_formatterOn cleaned classFormat
       Left _ -> return ()
 
-
- where
   mAttributesL :: Lens' (B.Method B.High) (B.MethodAttributes B.High)
   mAttributesL = lens B.mAttributes (\a x -> a { B.mAttributes = x })
 
@@ -334,12 +358,14 @@ spec_testclasses = do
          (\a x -> a { B.maVisibleTypeAnnotations = x })
       . coerced
 
+
 genParameter :: [TypeParameter] -> Gen Parameter
 genParameter tps =
   scale (`div` 2)
     $   Parameter
     <$> pure Nothing
     -- TODO: Not yet supported.
+    <*> pure True
     <*> genAnnotated (genType tps)
     <*> genAnnotations
 

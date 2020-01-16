@@ -80,6 +80,7 @@ module Jvmhs.Data.Class
   , Parameter(..)
   , parameterNameAndFlags
   , parameterType
+  , parameterVisible
   , parameterAnnotations
 
   -- * InnerClass
@@ -200,6 +201,7 @@ data Method = Method
 -- | A parameter
 data Parameter = Parameter
   { _parameterNameAndFlags :: ! (Maybe (Text.Text, Set.Set PAccessFlag))
+  , _parameterVisible :: Bool
   , _parameterType :: ! (Annotated Type)
   , _parameterAnnotations :: ! (Annotations)
   } deriving (Eq, Show, Generic, NFData)
