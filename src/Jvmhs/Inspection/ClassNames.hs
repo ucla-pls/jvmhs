@@ -392,7 +392,7 @@ classNamesOfClassType = go ""
           )
           f
           ct
-        , (classTypeInner . _Just . classNamesOfAnnotated (go n')) f ct
+        , (classTypeInner . _Just . classNamesOfAnnotated (go (n' <> "$"))) f ct
         ]
 
 instance HasClassNames Type where
