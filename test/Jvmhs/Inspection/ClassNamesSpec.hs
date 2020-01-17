@@ -23,7 +23,6 @@ spec = describe "classNamesOfClass" $ do
       , "Annotations$TestNotation"
       , "Annotations$TestType"
       , "Annotations$TestTypes"
-      , "AnnotationsAnnotated"
       , "java/io/IOException"
       , "java/lang/Comparable"
       , "java/lang/Exception"

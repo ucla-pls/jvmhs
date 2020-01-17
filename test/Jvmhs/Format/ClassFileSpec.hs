@@ -266,7 +266,7 @@ spec_testclasses = do
 
       forM_ classes $ \(fn, c) -> testClass fn c
 
-  fdescribe
+  describe
     "extras"
     do
       classes <- runIO $ do
