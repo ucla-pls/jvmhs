@@ -505,6 +505,7 @@ methodSignatureFormat = addThrows
         ( B.MethodDescriptor { .. }
         , if null tpm
              && all (typeIsSimple . snd) tps
+             && all fst                  tps
              && returnTypeIsSimple rt
              && all throwsTypeIsSimple thrws
           then Nothing
