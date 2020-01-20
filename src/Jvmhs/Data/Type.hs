@@ -63,6 +63,8 @@ module Jvmhs.Data.Type
   , classTypeInner
   , extendClassType
   , classTypeFromName
+  , classTypeFromNameAndTypeArgs
+  , insertTypeArgument
   , innerClassTypeFromName
   , classNameFromType
 
@@ -133,6 +135,7 @@ module Jvmhs.Data.Type
   -- ** Accessors
   , setTypeAnnotations
   , getTypeAnnotations
+  , removeAnnotations
   , HasTypeAnnotations(..)
 
   -- ** Annotated
@@ -240,7 +243,7 @@ data ThrowsType
 data ClassType = ClassType
   { _classTypeName :: ! Text.Text
   , _classTypeInner :: ! (Maybe (Annotated ClassType))
-  , _classTypeArguments :: [ Annotated TypeArgument ]
+  , _classTypeArguments :: ! [ Annotated TypeArgument ]
   } deriving (Show, Eq, Generic, NFData)
 
 newtype ArrayType = ArrayType
@@ -324,8 +327,6 @@ data AnnotationValue
   | AArray ![ AnnotationValue ]
   deriving (Show, Eq, Generic, NFData)
 
-
-
 makeLenses ''ClassType
 makeLenses ''ArrayType
 makeLenses ''ReturnType
@@ -370,17 +371,30 @@ boundClassNameFromThrowsType =
 
 
 -- | Extend a ClassType with an inner classType.
-extendClassType :: ClassType -> ClassType -> ClassType
+extendClassType :: (Annotated ClassType) -> ClassType -> ClassType
 extendClassType ct =
   classTypeInner
     %~ (Just . \case
          Just (Annotated x a) -> Annotated (extendClassType ct x) a
-         Nothing              -> withNoAnnotation ct
+         Nothing              -> ct
        )
 
 -- | Creates a ClassType without any annotations and typesignatures
 classTypeFromName :: ClassName -> ClassType
 classTypeFromName = innerClassTypeFromName . classNameAsText
+
+-- | Creates a ClassType without any annotations and typesignatures
+classTypeFromNameAndTypeArgs
+  :: ClassName -> [Annotated TypeArgument] -> ClassType
+classTypeFromNameAndTypeArgs cn ta =
+  insertTypeArgument ta . innerClassTypeFromName . classNameAsText $ cn
+
+
+insertTypeArgument :: [Annotated TypeArgument] -> ClassType -> ClassType
+insertTypeArgument ta ct@(ClassType _ x _) = case x of
+  Nothing -> ct & classTypeArguments .~ ta
+  Just x' -> ct & classTypeInner .~ Just
+    (over annotatedContent (insertTypeArgument ta) x')
 
 -- | Creates a ClassType without any annotations and typesignatures
 innerClassTypeFromName :: Text.Text -> ClassType
@@ -547,6 +561,9 @@ setTypeAnnotations items a =
               &   typeAnnotations
               .@~ (\k -> reverse $ Map.findWithDefault [] k m)
           as -> Left $ "The type does not have the paths " <> show as
+
+removeAnnotations :: HasTypeAnnotations a => a -> a
+removeAnnotations = set typeAnnotations []
 
 
 instance HasTypeAnnotations a => HasTypeAnnotations (Annotated a) where

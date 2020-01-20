@@ -3,6 +3,7 @@
 .dir-locals.el
 *.prof
 test/output
+test/data/extras
 test/regression
 .idea/
 cabal.config

@@ -83,6 +83,9 @@ spec_signature = describe "fromSignature conversions" $ do
 
   describe "classTypeFormat" $ do
     test_formatter (genClassType []) (flipDirection classTypeFormat)
+    test_isomorphism (removeAnnotations)
+                     (genClassType [])
+                     (flipDirection classTypeFormat)
 
   describe "referenceTypeFromSignature" $ do
     test_formatter (genReferenceType [])
@@ -120,7 +123,6 @@ spec_field = describe "fieldFormat" $ do
   test_formatter genField (flipDirection fieldFormat)
 
  where
-
   genField = do
     _fieldName        <- pure "field"
     _fieldType        <- genAnnotated (genType [])
@@ -289,7 +291,7 @@ spec_testclasses = do
         let
           cleaned =
             r
-              &  lens B.cMethods' (\a x -> a { B.cMethods' = x })
+              &  cMethods
               .  traverse
               .  mAttributesL
               .  lens B.maCode (\a x -> a { B.maCode = x })
@@ -315,6 +317,7 @@ spec_testclasses = do
               )
             $ do
                 test_formatterOn f fieldFormat
+                test_limitedIsomorphism id f fieldFormat
 
         describe "methods" $ forM_ (B.cMethods' cleaned) $ \m ->
           it
@@ -335,7 +338,17 @@ spec_testclasses = do
 
         it "everything" $ do
           test_formatterOn cleaned classFormat
+          test_limitedIsomorphism (set cMethods [] . set cFields [])
+                                  cleaned
+                                  classFormat
       Left _ -> return ()
+
+
+  cMethods :: Lens' (B.ClassFile B.High) [B.Method B.High]
+  cMethods = lens B.cMethods' (\a x -> a { B.cMethods' = x }) . coerced
+
+  cFields :: Lens' (B.ClassFile B.High) [B.Field B.High]
+  cFields = lens B.cFields' (\a x -> a { B.cFields' = x }) . coerced
 
   mAttributesL :: Lens' (B.Method B.High) (B.MethodAttributes B.High)
   mAttributesL = lens B.mAttributes (\a x -> a { B.mAttributes = x })
@@ -404,3 +417,13 @@ test_formatter gen PartIso { there, back } =
               case b of
                 Format.Failure x -> assertString (unlines x)
                 _                -> return ()
+
+test_isomorphism
+  :: (Eq a, Eq b, Show b, Show a) => (a -> a) -> Gen a -> Formatter a b -> Spec
+test_isomorphism limit gen PartIso { there, back } =
+  prop "should be an isomorphism" . forAll gen $ \a ->
+    let b  = there a
+        a' = b >>= back
+    in  counterexample
+          (nicify (show b))
+          (fmap limit a' `shouldBe` fmap limit (Format.Success a))
