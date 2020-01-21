@@ -503,26 +503,6 @@ bindReturnType = curry \case
 bindTypeVariable :: ClassName -> TypeVariable -> TypeVariable
 bindTypeVariable = set typeVariableBound
 
--- instance ToJSON Annotations where
---   toJSON Annotations {..} = object
---     ["visible" .= _visibleAnnotations, "invisible" .= _invisibleAnnotations]
-
--- instance ToJSON AnnotationValue where
---   toJSON = \case
---     AByte       a                 -> object ["byte" .= a]
---     AChar       a                 -> object ["char" .= chr (fromIntegral a)]
---     ADouble     a                 -> object ["double" .= a]
---     AFloat      a                 -> object ["float" .= a]
---     AInt        a                 -> object ["int" .= a]
---     ALong       a                 -> object ["long" .= a]
---     AShort      a                 -> object ["short" .= a]
---     ABoolean    a                 -> object ["boolean" .= (a /= 0)]
---     AString     a                 -> object ["string" .= a]
---     AEnum       (B.EnumValue a b) -> object ["enum" .= b, "enum_class" .= a]
---     AClass      a                 -> object ["class_info" .= a]
---     AAnnotation (name, a) -> object ["annotation" .= name, "values" .= a]
---     AArray      a                 -> object ["array" .= a]
-
 -- | Create an annotated value with no annotations
 withNoAnnotation :: a -> Annotated a
 withNoAnnotation a = Annotated a []
@@ -540,103 +520,142 @@ type TypePath = [B.TypePathItem]
 class HasTypeAnnotations a where
   -- | A path points to a list of annotations or have an error
   typeAnnotations
-    :: IndexedTraversal' TypePath a [Annotation]
+    :: (ClassName -> Bool) -> IndexedTraversal' TypePath a [Annotation]
+
 
 -- | Get a list of all annotations in the type
-getTypeAnnotations :: HasTypeAnnotations a => a -> [(TypePath, Annotation)]
-getTypeAnnotations = itoListOf (typeAnnotations <. traverse)
+getTypeAnnotations
+  :: HasTypeAnnotations a
+  => (ClassName -> Bool)
+  -- ^ Is the ClassName a static inner class
+  -> a
+  -> [(TypePath, Annotation)]
+getTypeAnnotations isStatic = itoListOf (typeAnnotations isStatic <. traverse)
+
 -- | Given a list of annotations set them in the type.
 setTypeAnnotations
-  :: HasTypeAnnotations a => [(TypePath, Annotation)] -> a -> Either String a
-setTypeAnnotations items a =
+  :: HasTypeAnnotations a
+  => (ClassName -> Bool)
+  -> [(TypePath, Annotation)]
+  -> a
+  -> Either String a
+setTypeAnnotations isStatic items a =
   let m =
           Map.map toList . Map.fromListWith (><) $ over _2 Seq.singleton <$> items
   in  case
           Map.toList $ m Map.\\ Map.fromList
-            (fmap (view (_1 . to (, ()))) $ itoListOf typeAnnotations a)
+            ( fmap (view (_1 . to (, ())))
+            $ itoListOf (typeAnnotations isStatic) a
+            )
         of
           [] ->
             Right
               $   a
-              &   typeAnnotations
+              &   (typeAnnotations isStatic)
               .@~ (\k -> reverse $ Map.findWithDefault [] k m)
           as -> Left $ "The type does not have the paths " <> show as
 
-removeAnnotations :: HasTypeAnnotations a => a -> a
-removeAnnotations = set typeAnnotations []
+removeAnnotations :: HasTypeAnnotations a => (ClassName -> Bool) -> a -> a
+removeAnnotations isStatic = set (typeAnnotations isStatic) []
 
+typeAnnotationOfAnnotated
+  :: IndexedTraversal' TypePath a [Annotation]
+  -> IndexedTraversal' TypePath (Annotated a) [Annotation]
+typeAnnotationOfAnnotated trav afb Annotated {..} = do
+  _annotatedAnnotations' <- indexed afb
+                                    ([] :: [B.TypePathItem])
+                                    _annotatedAnnotations
+  _annotatedContent' <- trav afb _annotatedContent
+  pure $ Annotated { _annotatedAnnotations = _annotatedAnnotations'
+                   , _annotatedContent     = _annotatedContent'
+                   }
 
 instance HasTypeAnnotations a => HasTypeAnnotations (Annotated a) where
-  typeAnnotations afb Annotated {..} = do
-    _annotatedAnnotations' <- indexed afb
-                                      ([] :: [B.TypePathItem])
-                                      _annotatedAnnotations
-    _annotatedContent' <- typeAnnotations afb _annotatedContent
-    pure $ Annotated { _annotatedAnnotations = _annotatedAnnotations'
-                     , _annotatedContent     = _annotatedContent'
-                     }
+  typeAnnotations isStatic =
+    typeAnnotationOfAnnotated (typeAnnotations isStatic)
 
 instance HasTypeAnnotations ArrayType where
-  typeAnnotations =
-    reindexed (B.TypePathItem B.TPathInArray 0 :) (arrayType . typeAnnotations)
+  typeAnnotations isStatic = reindexed (B.TypePathItem B.TPathInArray 0 :)
+                                       (arrayType . typeAnnotations isStatic)
 
 instance HasTypeAnnotations Type where
-  typeAnnotations afb = \case
-    ReferenceType f -> ReferenceType <$> typeAnnotations afb f
+  typeAnnotations isStatic afb = \case
+    ReferenceType f -> ReferenceType <$> typeAnnotations isStatic afb f
     a               -> pure a
 
 instance HasTypeAnnotations ReferenceType where
-  typeAnnotations afb = \case
-    RefClassType f -> RefClassType <$> typeAnnotations afb f
-    RefArrayType f -> RefArrayType <$> typeAnnotations afb f
+  typeAnnotations isStatic afb = \case
+    RefClassType f -> RefClassType <$> typeAnnotations isStatic afb f
+    RefArrayType f -> RefArrayType <$> typeAnnotations isStatic afb f
     a              -> pure a
 
 instance HasTypeAnnotations ClassType where
-  typeAnnotations afb ClassType {..} = do
+  typeAnnotations isStatic _afb ct = go (_classTypeName ct) _afb ct
+   where
+    go :: Text.Text -> IndexedTraversal' TypePath ClassType [Annotation]
+    go cn afb ClassType {..} = case _classTypeInner of
+      Just ict
+        | isStatic (B.unsafeTextCls icn) -> do
+          nested <- (annotatedContent . go icn) afb ict
+          pure $ ClassType _classTypeName (Just nested) (_classTypeArguments)
+        | otherwise -> do
+          nested <- reindexed (B.TypePathItem B.TPathInNested 0 :)
+                              (typeAnnotationOfAnnotated (go icn))
+                              afb
+                              ict
 
-    nested <- reindexed (B.TypePathItem B.TPathInNested 0 :)
-                        (_Just . typeAnnotations)
-                        afb
-                        _classTypeInner
+          typeargs <- icompose
+            (\(i :: Int) j ->
+              B.TypePathItem B.TPathTypeArgument (fromIntegral i) : j
+            )
+            itraversed
+            (typeAnnotations isStatic)
+            afb
+            _classTypeArguments
 
-    typeargs <- icompose
-      (\(i :: Int) j -> B.TypePathItem B.TPathTypeArgument (fromIntegral i) : j)
-      itraversed
-      typeAnnotations
-      afb
-      _classTypeArguments
+          pure $ ClassType _classTypeName (Just nested) typeargs
+        where icn = (cn <> "$" <> ict ^. annotatedContent . classTypeName)
+      Nothing -> do
+        typeargs <- icompose
+          (\(i :: Int) j ->
+            B.TypePathItem B.TPathTypeArgument (fromIntegral i) : j
+          )
+          itraversed
+          (typeAnnotations isStatic)
+          afb
+          _classTypeArguments
 
-    pure $ ClassType _classTypeName nested typeargs
+        pure $ ClassType _classTypeName Nothing typeargs
 
 instance HasTypeAnnotations TypeArgument where
-  typeAnnotations afb = \case
+  typeAnnotations isStatic afb = \case
     ExtendedTypeArg t' ->
       ExtendedTypeArg
         <$> reindexed (B.TypePathItem B.TPathWildcard 0 :)
-                      typeAnnotations
+                      (typeAnnotations isStatic)
                       afb
                       t'
     ImplementedTypeArg t' ->
       ImplementedTypeArg
         <$> reindexed (B.TypePathItem B.TPathWildcard 0 :)
-                      typeAnnotations
+                      (typeAnnotations isStatic)
                       afb
                       t'
-    TypeArg a  -> TypeArg <$> typeAnnotations afb a
+    TypeArg a  -> TypeArg <$> (typeAnnotations isStatic) afb a
     AnyTypeArg -> pure AnyTypeArg
 
 -- | Even though TypeParameter have type annotations they are not
 -- accessable through a path. Use the other functions instead.
 instance HasTypeAnnotations TypeParameter where
-  typeAnnotations _ = pure
+  typeAnnotations _ _ = pure
 
 instance HasTypeAnnotations ThrowsType where
-  typeAnnotations afb = \case
-    ThrowsClass ct -> ThrowsClass <$> typeAnnotations afb ct
+  typeAnnotations isStatic afb = \case
+    ThrowsClass ct -> ThrowsClass <$> typeAnnotations isStatic afb ct
     a              -> pure a
 
 instance HasTypeAnnotations ReturnType where
-  typeAnnotations = returnType . _Just . typeAnnotations
+  typeAnnotations isStatic = returnType . _Just . typeAnnotations isStatic
 
 -- | These types here have simpler types
 class HasSimpleType a where
@@ -673,3 +692,24 @@ instance HasSimpleType ClassType where
   type SimpleType ClassType = ClassName
   simpleType = to classNameFromType
   {-# INLINE simpleType #-}
+
+
+-- instance ToJSON Annotations where
+--   toJSON Annotations {..} = object
+--     ["visible" .= _visibleAnnotations, "invisible" .= _invisibleAnnotations]
+
+-- instance ToJSON AnnotationValue where
+--   toJSON = \case
+--     AByte       a                 -> object ["byte" .= a]
+--     AChar       a                 -> object ["char" .= chr (fromIntegral a)]
+--     ADouble     a                 -> object ["double" .= a]
+--     AFloat      a                 -> object ["float" .= a]
+--     AInt        a                 -> object ["int" .= a]
+--     ALong       a                 -> object ["long" .= a]
+--     AShort      a                 -> object ["short" .= a]
+--     ABoolean    a                 -> object ["boolean" .= (a /= 0)]
+--     AString     a                 -> object ["string" .= a]
+--     AEnum       (B.EnumValue a b) -> object ["enum" .= b, "enum_class" .= a]
+--     AClass      a                 -> object ["class_info" .= a]
+--     AAnnotation (name, a) -> object ["annotation" .= name, "values" .= a]
+--     AArray      a                 -> object ["array" .= a]

@@ -7,6 +7,9 @@
 {-# LANGUAGE LambdaCase #-}
 module Jvmhs.Data.TypeSpec where
 
+-- text
+import qualified Data.Text                     as Text
+
 import           SpecHelper
 import           Data.Either
 
@@ -36,11 +39,14 @@ spec = do
       $ \cn -> classNameFromType (classTypeFromName cn) `shouldBe` cn
 
   describe "annotations" $ do
-    prop "getting and then setting should be id" $ \(a :: Type) -> do
-      setTypeAnnotations (getTypeAnnotations a) a === Right a
+    prop "getting and then setting should be id"
+      $ \(a :: Type, b :: Fun ClassName Bool) -> do
+          setTypeAnnotations (applyFun b) (getTypeAnnotations (applyFun b) a) a
+            === Right a
 
     it "getting should work on this" $ do
       getTypeAnnotations
+          (const False)
           (ReferenceType . RefClassType $ ClassType
             "Annotations"
             (Just (Annotated (ClassType "Annotated" Nothing []) []))
@@ -66,6 +72,7 @@ spec = do
 
     it "should work on this example" $ do
       setTypeAnnotations
+          (const False)
           [ ( [TypePathItem TPathTypeArgument 0, TypePathItem TPathInArray 0]
             , Annotation "Annotations$TestType"
                          False
@@ -160,6 +167,12 @@ genTypeVariable tp =
 instance Arbitrary ClassName where
   arbitrary =
     elements ["JustClass", "more/ClassName", "with/inner/Class$className"]
+
+instance Function ClassName where
+  function = functionMap (Text.unpack . classNameAsText) (B.strClsOrFail)
+
+instance CoArbitrary ClassName where
+  coarbitrary = coarbitraryShow
 
 instance Arbitrary JRefType where
   arbitrary = scale (`div` 2) genericArbitraryU

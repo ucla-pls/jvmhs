@@ -41,6 +41,7 @@ import qualified Data.Vector                   as V
 import qualified Data.Set                      as Set
 
 import qualified Language.JVM                  as B
+import qualified Language.JVM                  as B2
 import qualified Language.JVM.Attribute.Code   as B
 import qualified Language.JVM.Attribute.Annotations
                                                as B
@@ -83,7 +84,7 @@ spec_signature = describe "fromSignature conversions" $ do
 
   describe "classTypeFormat" $ do
     test_formatter (genClassType []) (flipDirection classTypeFormat)
-    test_isomorphism (removeAnnotations)
+    test_isomorphism (removeAnnotations (const False))
                      (genClassType [])
                      (flipDirection classTypeFormat)
 
@@ -104,7 +105,8 @@ spec_annotationsFormat = describe "annotationsFormat" $ do
 
 spec_fieldAttributes :: Spec
 spec_fieldAttributes = describe "fieldAttributeFormat" $ do
-  test_formatter genFieldAttributes (flipDirection fieldAttributesFormat)
+  test_formatter genFieldAttributes
+                 (flipDirection (fieldAttributesFormat (const False)))
 
  where
   genFieldAttributes = do
@@ -116,11 +118,12 @@ spec_fieldAttributes = describe "fieldAttributeFormat" $ do
 
 spec_fieldType :: Spec
 spec_fieldType = describe "fieldTypeFormat" $ do
-  test_formatter (genAnnotated (genType [])) (flipDirection fieldTypeFormat)
+  test_formatter (genAnnotated (genType []))
+                 (flipDirection (fieldTypeFormat (const False)))
 
 spec_field :: Spec
 spec_field = describe "fieldFormat" $ do
-  test_formatter genField (flipDirection fieldFormat)
+  test_formatter genField (flipDirection (fieldFormat (const False)))
 
  where
   genField = do
@@ -175,7 +178,8 @@ spec_parameterAnnotations = describe "parameterAnnotationsFormat" $ do
 
 spec_annotateMethodTypes :: Spec
 spec_annotateMethodTypes = describe "annotateMethodTypesFormat" $ do
-  test_formatter (genMethodTypes) (flipDirection annotateMethodTypesFormat)
+  test_formatter (genMethodTypes)
+                 (flipDirection (annotateMethodTypesFormat (const False)))
  where
   genMethodTypes = do
     tts <- listOf (genTypeParameter [])
@@ -187,7 +191,8 @@ spec_annotateMethodTypes = describe "annotateMethodTypesFormat" $ do
 
 spec_methodAttributes :: Spec
 spec_methodAttributes = describe "methodAttributesFormat" $ do
-  test_formatter genMethodAttributes (flipDirection methodAttributesFormat)
+  test_formatter genMethodAttributes
+                 (flipDirection (methodAttributesFormat (const False)))
 
  where
   clsparam            = [TypeParameter (TypeVariableName "V") Nothing []]
@@ -206,7 +211,7 @@ spec_methodAttributes = describe "methodAttributesFormat" $ do
 
 spec_method :: Spec
 spec_method = describe "methodFormat" $ do
-  test_formatter genMethod (flipDirection methodFormat)
+  test_formatter genMethod (flipDirection (methodFormat (const False)))
 
  where
   clsparam  = [TypeParameter (TypeVariableName "V") Nothing []]
@@ -308,6 +313,13 @@ spec_testclasses = do
                        (\a x -> a { B.caLineNumberTable = x })
                    )
                    []
+              &  cAttributesL
+              .  caOthersL
+              .~ []
+
+          Right readCls = fromClassFile cleaned
+          staticSet     = staticInnerClasses (_classInnerClasses readCls)
+          isStatic      = (`Set.member` staticSet)
 
         describe "fields" $ forM_ (B.cFields' cleaned) $ \f ->
           it
@@ -316,8 +328,15 @@ spec_testclasses = do
                 (Text.unpack $ B.serialize (B.fName f <:> B.fDescriptor f))
               )
             $ do
-                test_formatterOn f fieldFormat
-                test_limitedIsomorphism id f fieldFormat
+                test_formatterOn f (fieldFormat isStatic)
+                test_limitedIsomorphism
+                  (  fAttributesL
+                  %~ ( over faVisibleTypeAnnotationsL   (map List.sort)
+                     . over faInvisibleTypeAnnotationsL (map List.sort)
+                     )
+                  )
+                  f
+                  (fieldFormat isStatic)
 
         describe "methods" $ forM_ (B.cMethods' cleaned) $ \m ->
           it
@@ -326,7 +345,7 @@ spec_testclasses = do
                 (Text.unpack $ B.serialize (B.mName m <:> B.mDescriptor m))
               )
             $ do
-                test_formatterOn m methodFormat
+                test_formatterOn m (methodFormat isStatic)
                 test_limitedIsomorphism
                   (  mAttributesL
                   %~ ( over maVisibleTypeAnnotationsL   (map List.sort)
@@ -334,7 +353,7 @@ spec_testclasses = do
                      )
                   )
                   m
-                  methodFormat
+                  (methodFormat isStatic)
 
         it "everything" $ do
           test_formatterOn cleaned classFormat
@@ -350,8 +369,35 @@ spec_testclasses = do
   cFields :: Lens' (B.ClassFile B.High) [B.Field B.High]
   cFields = lens B.cFields' (\a x -> a { B.cFields' = x }) . coerced
 
+  cAttributesL :: Lens' (B.ClassFile B.High) (B.ClassAttributes B.High)
+  cAttributesL = lens B.cAttributes (\a x -> a { B.cAttributes = x })
+
+  caOthersL :: Lens' (B.ClassAttributes B.High) [B.Attribute B.High]
+  caOthersL = lens B2.caOthers (\a x -> a { B2.caOthers = x })
+
   mAttributesL :: Lens' (B.Method B.High) (B.MethodAttributes B.High)
   mAttributesL = lens B.mAttributes (\a x -> a { B.mAttributes = x })
+
+  fAttributesL :: Lens' (B.Field B.High) (B.FieldAttributes B.High)
+  fAttributesL = lens B.fAttributes (\a x -> a { B.fAttributes = x })
+
+  faInvisibleTypeAnnotationsL
+    :: Lens'
+         (B.FieldAttributes B.High)
+         [[B.TypeAnnotation B.FieldTypeAnnotation B.High]]
+  faInvisibleTypeAnnotationsL =
+    lens B.faInvisibleTypeAnnotations
+         (\a x -> a { B.faInvisibleTypeAnnotations = x })
+      . coerced
+
+  faVisibleTypeAnnotationsL
+    :: Lens'
+         (B.FieldAttributes B.High)
+         [[B.TypeAnnotation B.FieldTypeAnnotation B.High]]
+  faVisibleTypeAnnotationsL =
+    lens B.faVisibleTypeAnnotations
+         (\a x -> a { B.faVisibleTypeAnnotations = x })
+      . coerced
 
   maInvisibleTypeAnnotationsL
     :: Lens'

@@ -416,14 +416,12 @@ runtimeAnnotationsFormat =
 annotateType
   :: forall a
    . (Show a, HasTypeAnnotations a)
-  => Formatter ([(TypePath, Annotation)], a) (Annotated a)
-annotateType = PartIso anThere anBack where
-
-  anThere
-    :: ([(TypePath, Annotation)], a) -> Validation [FormatError] (Annotated a)
+  => (ClassName -> Bool)
+  -> Formatter ([(TypePath, Annotation)], a) (Annotated a)
+annotateType isStatic = PartIso anThere anBack where
   anThere (p, t) = validateEither
-    (first ((show t ++ ": ") ++) $ setTypeAnnotations p (withNoAnnotation t))
+    ( first ((show t ++ ": ") ++)
+    $ setTypeAnnotations isStatic p (withNoAnnotation t)
+    )
+  anBack a = Success (getTypeAnnotations isStatic a, view annotatedContent a)
 
-  anBack
-    :: Annotated a -> Validation [FormatError] ([(TypePath, Annotation)], a)
-  anBack a = Success (getTypeAnnotations a, view annotatedContent a)

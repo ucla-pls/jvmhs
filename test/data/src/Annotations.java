@@ -23,7 +23,8 @@ public class Annotations <O> {
   };
 
   @TestNotation(a = "hello", b = 2)
-  static class Annotated <@TestType(10) T> {
+  abstract static class Annotated <@TestType(10) T> extends @B(22) Object implements List<@B(23) T>{
+
   }
 
   Annotated<@TestType(0) int @TestType(1) []> x;

@@ -29,7 +29,6 @@ module Jvmhs.Data.Identifier
   , ClassName
   , HasClassName(..)
   , dotCls
-  , strCls
   , textCls
   , splitClassName
   , fullyQualifiedName

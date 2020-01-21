@@ -90,6 +90,9 @@ module Jvmhs.Data.Class
   , innerClassName
   , innerAccessFlags
 
+  -- ** accessors
+  , staticInnerClasses
+
   -- * BootstrapMethod 
   , BootstrapMethod(..)
   , bootstrapMethodHandle
@@ -120,6 +123,7 @@ import           Control.DeepSeq
 
 -- lens
 import           Control.Lens            hiding ( (.=) )
+import           Data.Set.Lens                  ( setOf )
 
 -- text
 import qualified Data.Text                     as Text
@@ -201,9 +205,16 @@ data Method = Method
 -- | A parameter
 data Parameter = Parameter
   { _parameterNameAndFlags :: ! (Maybe (Text.Text, Set.Set PAccessFlag))
+  -- ^ The name and access flags of the parameter as saved in the
+  -- MethodParameter attribute.
   , _parameterVisible :: Bool
+  -- ^ Some parameters are not visible, this means that they are displayed
+  -- in the Method Signature but is still visible in the MethodDescription.
   , _parameterType :: ! (Annotated Type)
+  -- ^ The type of the parameter, can have another (and the same)
+  -- annotations as the parameter itself.
   , _parameterAnnotations :: ! (Annotations)
+  -- ^ The anntoations of the parameter.
   } deriving (Eq, Show, Generic, NFData)
 
 -- | An inner class
@@ -270,6 +281,7 @@ classMethod mid = classMethods . to (find (\a -> a ^. methodId == mid))
 isInterface :: Class -> Bool
 isInterface cls = B.CInterface `Set.member` (cls ^. classAccessFlags)
 
+-- | The descriptor of a method
 methodDescriptor :: Getter Method MethodDescriptor
 methodDescriptor = to
   (\m -> MethodDescriptor
@@ -277,5 +289,13 @@ methodDescriptor = to
     (m ^. methodReturnType . simpleType . to ReturnDescriptor)
   )
 
+-- | The descriptor of a field
 fieldDescriptor :: Getter Field FieldDescriptor
 fieldDescriptor = fieldType . simpleType . to FieldDescriptor
+
+
+-- | The set of all static inner classes. This is important 
+-- for assinging annotations
+staticInnerClasses :: [InnerClass] -> Set.Set ClassName
+staticInnerClasses = setOf
+  (folded . filtered (view $ innerAccessFlags . contains ICStatic) . innerClass)
