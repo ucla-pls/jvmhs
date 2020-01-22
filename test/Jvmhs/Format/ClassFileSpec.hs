@@ -21,6 +21,9 @@ import           Data.Either
 import qualified Data.List                     as List
 import           Text.Printf
 
+-- containers
+import qualified Data.IntMap.Strict            as IntMap
+
 -- text
 import qualified Data.Text                     as Text
 
@@ -246,10 +249,11 @@ spec_class = do
     let _classFields  = []
     let _classMethods = []
     _classVersion          <- liftArbitrary (pure (52, 0))
-    _classBootstrapMethods <- listOf genBootstrapMethod
-    _classEnclosingMethod  <- arbitrary
-    _classInnerClasses     <- listOf genInnerClass
-    _classAnnotations      <- pure []
+    _classBootstrapMethods <-
+      IntMap.fromAscList . zip [0 ..] <$> listOf genBootstrapMethod
+    _classEnclosingMethod <- arbitrary
+    _classInnerClasses    <- listOf genInnerClass
+    _classAnnotations     <- pure []
     pure Class { .. }
 
   genInnerClass =

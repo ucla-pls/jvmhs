@@ -50,6 +50,7 @@ module Jvmhs.Data.Class
   , classMethod
   , classAbsFieldIds
   , classAbsMethodIds
+  , reindexBootstrapMethods
 
   -- * Field
   , Field(..)
@@ -122,14 +123,18 @@ import           GHC.Generics                   ( Generic )
 import           Control.DeepSeq
 
 -- lens
-import           Control.Lens            hiding ( (.=) )
+import           Control.Lens
 import           Data.Set.Lens                  ( setOf )
+
+-- mtl
+import           Control.Monad.State
 
 -- text
 import qualified Data.Text                     as Text
 
 -- containers
 import qualified Data.Set                      as Set
+import qualified Data.IntMap.Strict            as IntMap
 
 -- jvm-binary
 import qualified Language.JVM                  as B
@@ -155,8 +160,9 @@ data Class = Class
   -- ^ a list of fields
   , _classMethods          :: [ Method ]
   -- ^ a list of methods
-  , _classBootstrapMethods :: [ BootstrapMethod ]
-  -- ^ a list of bootstrap methods. #TODO more info here
+  , _classBootstrapMethods :: IntMap.IntMap BootstrapMethod
+  -- ^ a map of bootstrap methods. Essentially, this is a list but the
+  -- list might not be complete.
   , _classEnclosingMethod  :: Maybe (ClassName, Maybe MethodId)
   -- ^ maybe an enclosing class and method
   , _classInnerClasses     :: [ InnerClass ]
@@ -293,9 +299,40 @@ methodDescriptor = to
 fieldDescriptor :: Getter Field FieldDescriptor
 fieldDescriptor = fieldType . simpleType . to FieldDescriptor
 
-
 -- | The set of all static inner classes. This is important 
 -- for assinging annotations
 staticInnerClasses :: [InnerClass] -> Set.Set ClassName
 staticInnerClasses = setOf
   (folded . filtered (view $ innerAccessFlags . contains ICStatic) . innerClass)
+
+
+-- | BootstrapMethods are intented to be a list, but if some of the method
+-- are created or removed the indicies in the code might not match.
+-- This function takes a Class and reindex the bootstrapmethod list and
+-- update the indicies in the code.
+reindexBootstrapMethods :: Class -> ([BootstrapMethod], Class)
+reindexBootstrapMethods = runState $ do
+  (indicies, bootmethods) <-
+    fmap unzip . use $ classBootstrapMethods . to IntMap.toAscList
+  let reindexer = IntMap.fromAscList $ zip indicies [0 ..]
+
+  classBootstrapMethods .= IntMap.fromAscList (zip [0 ..] bootmethods)
+
+  classMethods
+    .  traverse
+    .  methodCode
+    .  _Just
+    .  codeByteCode
+    .  traverse
+    .  byteCodeOpcode
+    %= \case
+         B.Invoke (B.InvkDynamic (B.InvokeDynamic i m)) -> B.Invoke
+           (B.InvkDynamic
+             (B.InvokeDynamic
+               (IntMap.findWithDefault i (fromIntegral i) reindexer)
+               m
+             )
+           )
+         a -> a
+
+  return bootmethods

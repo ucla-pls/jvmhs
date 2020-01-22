@@ -30,12 +30,16 @@ module Jvmhs.Data.Code
   , ehHandler
   , ehCatchType
   , verificationTypeInfo
+  -- * ByteCodeInst
+  , ByteCodeInst
+  , byteCodeOffset
+  , byteCodeOpcode
+
   -- * Re-exports
   , B.StackMapTable(..)
   , B.StackMapFrame(..)
   , B.StackMapFrameType(..)
   , B.VerificationTypeInfo(..)
-  , ByteCodeInst
   )
 where
 
@@ -88,6 +92,13 @@ data ExceptionHandler = ExceptionHandler
 
 makeLenses ''Code
 makeLenses ''ExceptionHandler
+
+byteCodeOffset :: Lens' ByteCodeInst B.ByteCodeOffset
+byteCodeOffset = lens B.offset (\a b -> a { B.offset = b })
+
+byteCodeOpcode :: Lens' ByteCodeInst (B.ByteCodeOpr B.High)
+byteCodeOpcode = lens B.opcode (\a b -> a { B.opcode = b })
+
 
 verificationTypeInfo :: Traversal' StackMapTable VerificationTypeInfo
 verificationTypeInfo g (B.StackMapTable s) =

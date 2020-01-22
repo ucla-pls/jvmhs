@@ -50,6 +50,7 @@ import           Prelude                 hiding ( id
 -- containers
 import qualified Data.Set                      as Set
 import qualified Data.Map.Strict               as Map
+import qualified Data.IntMap.Strict            as IntMap
 
 -- lens
 import           Control.Lens
@@ -90,11 +91,13 @@ classFormat = PartIso
     let _className'       = cThisClass
     let _classVersion     = Just (cMajorVersion, cMinorVersion)
 
-    ((_classSuper', _classInterfaces, _classTypeParameters), (_classBootstrapMethods, _classEnclosingMethod, _classInnerClasses), _classAnnotations) <-
+    ((_classSuper', _classInterfaces, _classTypeParameters), (_classBootstrapMethods', _classEnclosingMethod, _classInnerClasses), _classAnnotations) <-
       there classAttributeFormat ((cSuperClass, cInterfaces), cAttributes)
 
     let staticSet = staticInnerClasses _classInnerClasses
         isStatic  = (`Set.member` staticSet)
+        _classBootstrapMethods =
+          IntMap.fromAscList $ zip [0 ..] _classBootstrapMethods'
 
     _classFields <- there (coerceFormat . isomap (fieldFormat isStatic))
                           cFields'
@@ -109,7 +112,7 @@ classFormat = PartIso
 
     pure Class { .. }
   )
-  (\Class {..} -> do
+  (\(reindexBootstrapMethods -> (bootstrapMethods, Class {..})) -> do
     let cMagicNumber                   = 0xCAFEBABE
     let cConstantPool                  = ()
     let cAccessFlags'                  = B.BitSet _classAccessFlags
@@ -130,7 +133,7 @@ classFormat = PartIso
         , _classInterfaces
         , _classTypeParameters
         )
-      , (_classBootstrapMethods, _classEnclosingMethod, _classInnerClasses)
+      , (bootstrapMethods, _classEnclosingMethod, _classInnerClasses)
       , _classAnnotations
       )
 
