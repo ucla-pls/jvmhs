@@ -210,7 +210,8 @@ spec_methodAttributes = describe "methodAttributesFormat" $ do
     excp <- listOf (genAnnotated (genThrowsType tparams))
     code <- pure Nothing
     anno <- genAnnotations
-    pure ((tp, parm, rt, excp), code, anno)
+    app  <- liftArbitrary genAnnotationValue
+    pure ((tp, parm, rt, excp), code, anno, app)
 
 spec_method :: Spec
 spec_method = describe "methodFormat" $ do
@@ -224,13 +225,14 @@ spec_method = describe "methodFormat" $ do
 
     let params = map (view annotatedContent) _methodTypeParameters ++ clsparam
 
-    _methodName        <- pure "method"
-    _methodParameters  <- listOf (genParameter params)
-    _methodReturnType  <- genAnnotated (genReturnType params)
-    _methodAccessFlags <- pure (Set.empty)
-    _methodCode        <- pure Nothing
-    _methodExceptions  <- listOf (genAnnotated $ genThrowsType params)
-    _methodAnnotations <- pure []
+    _methodName              <- pure "method"
+    _methodParameters        <- listOf (genParameter params)
+    _methodReturnType        <- genAnnotated (genReturnType params)
+    _methodAccessFlags       <- pure (Set.empty)
+    _methodCode              <- pure Nothing
+    _methodExceptions        <- listOf (genAnnotated $ genThrowsType params)
+    _methodAnnotations       <- pure []
+    _methodDefaultAnnotation <- pure Nothing
     pure Method { .. }
 
 spec_class :: Spec

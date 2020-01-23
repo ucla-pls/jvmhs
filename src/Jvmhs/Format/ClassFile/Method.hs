@@ -67,7 +67,7 @@ methodFormat isStatic = PartIso methodThere methodBack where
     let _methodName        = B.mName m
     let _methodAccessFlags = B.mAccessFlags m
 
-    ((_methodTypeParameters, _methodParameters, _methodReturnType, _methodExceptions), _methodCode, _methodAnnotations) <-
+    ((_methodTypeParameters, _methodParameters, _methodReturnType, _methodExceptions), _methodCode, _methodAnnotations, _methodDefaultAnnotation) <-
       there (methodAttributesFormat isStatic) (B.mDescriptor m, B.mAttributes m)
 
     pure Method { .. }
@@ -85,6 +85,7 @@ methodFormat isStatic = PartIso methodThere methodBack where
         )
       , m ^. methodCode
       , m ^. methodAnnotations
+      , m ^. methodDefaultAnnotation
       )
     pure B.Method { .. }
 
@@ -105,11 +106,14 @@ methodAttributesFormat
          )
        , Maybe Code
        , Annotations
+       , Maybe AnnotationValue
        )
 methodAttributesFormat isStatic =
-  triple (annotateMethodTypesFormat isStatic . inSecond typeAnnotationsFormat)
-         (isomap codeFormat . singletonList)
-         runtimeAnnotationsFormat
+  quadruple
+      (annotateMethodTypesFormat isStatic . inSecond typeAnnotationsFormat)
+      (isomap codeFormat . singletonList)
+      runtimeAnnotationsFormat
+      defaultAnnotationFormat
     . PartIso anThere anBack where
 
   anThere (desc, B.MethodAttributes {..}) = do
@@ -128,18 +132,17 @@ methodAttributesFormat isStatic =
         )
       , maCode
       , (maVisibleAnnotations, maInvisibleAnnotations)
+      , maAnnotationDefault
       )
 
-  anBack (((tps, params, rt, thrws), (maVisibleTypeAnnotations, maInvisibleTypeAnnotations)), maCode, (maVisibleAnnotations, maInvisibleAnnotations))
+  anBack (((tps, params, rt, thrws), (maVisibleTypeAnnotations, maInvisibleTypeAnnotations)), maCode, (maVisibleAnnotations, maInvisibleAnnotations), maAnnotationDefault)
     = do
       ((parmst, maMethodParameters), (maVisibleParameterAnnotations, maInvisibleParameterAnnotations)) <-
         back handleParameters params
       ((desc, maSignatures), maExceptions) <- back handleSignature
                                                    (tps, parmst, rt, thrws)
 
-
-      let maAnnotationDefault = []
-      let maOthers            = []
+      let maOthers = []
       return (desc, B.MethodAttributes { .. })
 
   handleSignature
@@ -420,6 +423,11 @@ annotateMethodTypesFormat isStatic = PartIso anThere anBack where
         ]
       ]
     )
+
+defaultAnnotationFormat
+  :: Formatter [B.AnnotationDefault B.High] (Maybe AnnotationValue)
+defaultAnnotationFormat =
+  isomap annotationValueFormat . coerceFormat . singletonList
 
 codeFormat :: Formatter (B.Code B.High) Code
 codeFormat = PartIso

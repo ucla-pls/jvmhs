@@ -73,6 +73,7 @@ module Jvmhs.Data.Class
   , methodCode
   , methodExceptions
   , methodAnnotations
+  , methodDefaultAnnotation
 
   -- ** Accessors
   , methodDescriptor
@@ -206,6 +207,9 @@ data Method = Method
   , _methodAnnotations     :: ! Annotations
   -- ^ the method can have annotations, these might be duplicated in the
   -- annotation for the return type.
+  , _methodDefaultAnnotation :: !(Maybe AnnotationValue)
+  -- ^ in case that this method is an attribute in an annotation it 
+  -- is possible to assign a default value.
   } deriving (Eq, Show, Generic, NFData)
 
 -- | A parameter
