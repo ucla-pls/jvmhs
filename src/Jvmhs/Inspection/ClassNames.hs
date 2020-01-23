@@ -104,6 +104,7 @@ classNamesOfMethod = fold
   , methodCode . _Just . classNamesOfCode
   , methodExceptions . folded . classNamesOfAnnotated classNamesOfThrowsType
   , methodAnnotations . folded . classNamesOfAnnotation
+  , methodDefaultAnnotation . _Just . classNamesOfAnnotationValue
   ]
 
 instance HasClassNames ReturnType where
