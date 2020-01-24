@@ -162,18 +162,6 @@ instance Arbitrary a => Arbitrary (B.SizedList w a) where
 instance Arbitrary (VerificationTypeInfo B.High) where
   arbitrary = genericArbitraryU
 
--- spec_methodSignature :: Spec
--- spec_methodSignature = describe "methodSignatureFormat" $ do
---   test_formatter genMethodAttributes (flipDirection methodSignatureFormat)
-
---  where
---   genMethodAttributes = do
---     tp   <- listOf (genAnnotated genTypeParameter)
---     parm <- listOf genParameter
---     rt   <- genAnnotated genReturnType
---     excp <- listOf (genAnnotated genThrowsType)
---     pure (tp, parm, rt, excp)
-
 spec_parameterAnnotations :: Spec
 spec_parameterAnnotations = describe "parameterAnnotationsFormat" $ do
   test_formatter (listOf (genParameter []))
@@ -279,7 +267,7 @@ spec_testclasses = do
 
       forM_ classes $ \(fn, c) -> testClass fn c
 
-  describe
+  fdescribe
     "extras"
     do
       classes <- runIO $ do
@@ -289,7 +277,8 @@ spec_testclasses = do
               (\fn -> (fn, ) <$> BL.readFile ("test/data/extras/" ++ fn))
           False -> return []
 
-      forM_ classes $ \(fn, c) -> testClass fn c
+      forM_ classes $ \(fn, c) -> do
+        testClass fn c
 
  where
   testClass fn c = describe fn $ do
@@ -366,6 +355,8 @@ spec_testclasses = do
           test_limitedIsomorphism (set cMethods [] . set cFields [])
                                   cleaned
                                   classFormat
+
+        runIO . putStrLn . nicify . show $ runValidation (there classFormat cleaned) ^?_Right.classInnerClasses
       Left _ -> return ()
 
 

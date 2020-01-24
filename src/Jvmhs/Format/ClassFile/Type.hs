@@ -212,11 +212,23 @@ classTypeFormat = PartIso
          (Text.Text, Maybe B.InnerClassType, [Maybe B.TypeArgument])
   go (ClassType n t ta) = do
     ta' <- mapM (back typeArgumentFromSignature . view annotatedContent) ta
-    traverse (go . view annotatedContent) t >>= \case
-      Nothing               -> pure (n, Nothing, ta')
-      Just (n'', t'', ta'') -> case ta' of
-        [] -> pure (n <> "$" <> n'', t'', ta'')
-        ts -> pure (n, Just $ B.InnerClassType n'' t'' ta'', ts)
+    case ta' of
+      [] -> 
+        traverse (go . view annotatedContent) t >>= \case
+          Nothing               -> pure (n, Nothing, [])
+          Just (n'', t'', ta'') -> pure (n <> "$" <> n'', t'', ta'')
+      _ -> 
+        (n,,ta') <$> traverse (goInner . view annotatedContent) t 
+  
+  goInner
+    :: ClassType
+    -> Validation
+         [FormatError]
+         B.InnerClassType
+  goInner (ClassType n t ta) = do
+    ta' <- mapM (back typeArgumentFromSignature . view annotatedContent) ta
+    traverse (goInner . view annotatedContent) t <&> \i -> 
+      B.InnerClassType n i ta'
 
   thereInnerClass (B.InnerClassType n ict ta) = do
     ta'  <- mapM (there typeArgumentFromSignature) ta
