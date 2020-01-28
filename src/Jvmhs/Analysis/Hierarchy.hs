@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE BlockArguments            #-}
 {-# LANGUAGE ApplicativeDo              #-}
 {-# LANGUAGE ViewPatterns               #-}
 {-# LANGUAGE LambdaCase               #-}
@@ -719,6 +720,18 @@ superDeclarationPaths m = views hierarchy
            | (y, edge)     <- item ^.. hryAnnotatedParents
            , (mx, a, path) <- go (y ^?! cixItem hry)
            ]
+
+-- | Checks if a method exist. If it exist it return whether it is abstract 
+-- or not
+methodExist :: AbsMethodId -> Hierarchy -> Maybe IsAbstract
+methodExist m = views hierarchy \hry -> 
+  m ^? className . cnStub hry .  stubMethods . ix (m^.methodId)
+
+-- | Check if a field exist.
+fieldExist :: AbsFieldId -> Hierarchy -> Bool
+fieldExist f = views hierarchy \hry -> 
+  has (className . cnStub hry .  stubFields . ix (f^.fieldId)) f
+
 
 
 -- -- | Finds all abstract declarations above the method, including itself.
