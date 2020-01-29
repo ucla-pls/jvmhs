@@ -155,20 +155,44 @@ import           Jvmhs.Data.Identifier
 -- | Just a boolean that tracks if the class or method is abstract.
 type IsAbstract = Bool
 
+data Access 
+  = Private
+  | Default
+  | Protected
+  | Public
+  deriving (Show, Ord, Eq, Enum, Generic)
+
+-- A Hierarchy Stub Method
+data HierarchyStubMethod = HierarchyStubMethod
+  { _stubMethodAbstract :: !Bool
+  , _stubMethodThrows   :: !(S.HashSet ClassName)
+  , _stubMethodAccess   :: !Access
+  } deriving (Show, Eq)
+
+
 -- | A hierarchy stub, is the only information needed to calculate the
 -- hierarchy. The benefit is that this can be loaded up front.
 data HierarchyStub = HierarchyStub
   { _stubIsAbstract :: !IsAbstract
   , _stubSuper      :: !(Maybe ClassName)
   , _stubInterfaces :: !(S.HashSet ClassName)
-  , _stubMethods    :: !(M.HashMap MethodId IsAbstract)
+  , _stubMethods    :: !(M.HashMap MethodId HierarchyStubMethod)
   , _stubFields     :: !(S.HashSet FieldId)
   } deriving (Show, Eq)
 
 makeLenses ''HierarchyStub
+makeLenses ''HierarchyStubMethod
+
+$(deriveJSON defaultOptions ''Access)
+
 $(deriveJSON
   defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5}
   ''HierarchyStub
+  )
+
+$(deriveJSON
+  defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 11}
+  ''HierarchyStubMethod
   )
 
 -- | Decompose takes a 'H.HashMap' and splits it into two parts. A lookup part
@@ -203,12 +227,24 @@ toStub = do
   _stubMethods <- view $ classMethods . folded . to
     (liftA2 M.singleton
             (view methodId)
-            (view (methodAccessFlags . contains MAbstract))
+            (toMethodStub)
     )
 
   _stubFields <- view $ classFields . folded . fieldId . to S.singleton
 
   pure $ HierarchyStub { .. }
+
+  where
+    toMethodStub = do 
+      _stubMethodAbstract <- view $ methodAccessFlags . contains MAbstract
+      _stubMethodThrows <- S.fromList <$> toListOf (methodExceptions . folded . simpleType)
+      _stubMethodAccess <- fromMaybe Default <$> preview 
+          (methodAccessFlags . 
+            (  ix MPublic . like Public 
+            <> ix MPrivate . like Private 
+            <> ix MProtected . like Protected
+            ))
+      pure $ HierarchyStubMethod {..}
 
 -- | 'HierarchyStubs' is a 'M.HashMap' of stubs.
 newtype HierarchyStubs = HierarchyStubs
@@ -221,12 +257,15 @@ toSingletonStubs c = HierarchyStubs $ M.singleton (c ^. className) (toStub c)
 compress :: HierarchyStubs -> CompressedStubs
 compress = do
   (clookup :: M.HashMap ClassName Int, TextVector -> chsClassNames) <-
-    fmap decomposeSet
-    .  view
-    $  to asStubMap
-    .  to fromMap'
-    <> folding asStubMap
-    .  (stubSuper . _Just . to S.singleton <> stubInterfaces)
+    decomposeSet <$> view
+    (  to asStubMap . to fromMap' 
+      <> folding asStubMap . 
+        ( stubSuper . _Just . to S.singleton 
+        <> stubInterfaces
+        <> stubMethods . folded . stubMethodThrows
+        )
+    )
+    
 
   (mlookup, TextVector -> chsMethodIds) <-
     fmap decomposeSet . view $ folding asStubMap . stubMethods . to fromMap'
@@ -242,12 +281,20 @@ compress = do
       chsInterfaces <- IS.fromList
         <$> toListOf (stubInterfaces . folded . to (clookup M.!))
       chsMethods <- IM.fromList . map (\(m, x) -> (mlookup M.! m, x)) <$> view
-        (stubMethods . to (M.toList))
+        (stubMethods . to (M.toList . fmap (compressMethod clookup)))
       chsFields <- IS.fromList . map (flookup M.!) <$> view
         (stubFields . to (S.toList))
       pure $ CompressedStub { .. }
 
   return $ CompressedStubs { .. }
+
+  where
+    compressMethod clookup = do
+      chsMAbstract <- view stubMethodAbstract
+      chsMThrows <- IS.fromList <$> toListOf (stubMethodThrows . folded . to (clookup M.!))
+      chsMAccess <- view stubMethodAccess
+      pure $ CompressedStubMethod {..}
+
 
 decompress :: CompressedStubs -> HierarchyStubs
 decompress (CompressedStubs {..}) = do
@@ -261,7 +308,7 @@ decompress (CompressedStubs {..}) = do
             S.fromList [ chsClassNames ! i | i <- IS.toList chsInterfaces ]
           , _stubMethods    =
             M.fromList
-              [ (chsMethodIds ! i, b) | (i, b) <- IM.toList chsMethods ]
+              [ (chsMethodIds ! i, decompressMethod b) | (i, b) <- IM.toList chsMethods ]
           , _stubFields     = S.fromList
                                 [ chsFieldIds ! i | i <- IS.toList chsFields ]
           }
@@ -272,14 +319,24 @@ decompress (CompressedStubs {..}) = do
  where
   (!) :: TextVector a -> Int -> a
   (!) (TextVector v) i = v V.! i
+  decompressMethod CompressedStubMethod {..} = HierarchyStubMethod 
+    { _stubMethodAbstract = chsMAbstract
+    , _stubMethodThrows = S.fromList [ chsClassNames ! i | i <- IS.toList chsMThrows ]
+    , _stubMethodAccess = chsMAccess
+    }
 
+data CompressedStubMethod = CompressedStubMethod
+  { chsMAbstract :: !Bool
+  , chsMThrows   :: !(IS.IntSet)
+  , chsMAccess   :: !Access
+  } deriving (Generic)
 
 data CompressedStub = CompressedStub
   { chsClassId    :: Int
   , chsIsAbstract :: IsAbstract
   , chsSuper      :: !(Maybe Int)
   , chsInterfaces :: !(IS.IntSet)
-  , chsMethods    :: !(IM.IntMap IsAbstract)
+  , chsMethods    :: !(IM.IntMap CompressedStubMethod)
   , chsFields     :: !(IS.IntSet)
   } deriving (Generic)
 
@@ -295,6 +352,8 @@ newtype TextVector a = TextVector (V.Vector a)
 
 instance Binary CompressedStub
 instance Binary CompressedStubs
+instance Binary CompressedStubMethod
+instance Binary Access
 
 instance TextSerializable a => Binary (TextVector a) where
   get = do
@@ -680,7 +739,7 @@ definitions mid = views hierarchy $ \hry ->
   | cn <- mid ^.. className . cnItem hry . hryChildren . cixItem hry . folding
     (go (mid ^. methodId) hry)
   ] where
-  go m hry = view (hryStub . stubMethods . at m) >>= \case
+  go m hry = preview (hryStub . stubMethods . ix m . stubMethodAbstract) >>= \case
     Just True  -> pure []
     Just False -> toListOf hryClassName
     Nothing    -> toListOf $ hryChildren . cixItem hry . folding (go m hry)
@@ -693,7 +752,7 @@ superDefinitionPaths m = views hierarchy
  where
   mid = m ^. methodId
   superDefs hry = go   where
-    go item = case item ^. hryStub . stubMethods . at mid of
+    go item = case item ^? hryStub . stubMethods . ix mid . stubMethodAbstract of
       Just isAbstract ->
         [ (m & className .~ item ^. hryClassName, Top $ item ^. hryClassName)
         | not isAbstract
@@ -714,7 +773,7 @@ superDeclarationPaths m = views hierarchy
   superDefs hry = go   where
     go item =
       [ (m & className .~ item ^. hryClassName, a, Top $ item ^. hryClassName)
-        | a <- item ^.. hryStub . stubMethods . ix mid
+        | a <- item ^.. hryStub . stubMethods . ix mid . stubMethodAbstract
         ]
         ++ [ (mx, a, SubclassOf (item ^. hryClassName) edge path)
            | (y, edge)     <- item ^.. hryAnnotatedParents
@@ -723,7 +782,7 @@ superDeclarationPaths m = views hierarchy
 
 -- | Checks if a method exist. If it exist it return whether it is abstract 
 -- or not
-methodExist :: AbsMethodId -> Hierarchy -> Maybe IsAbstract
+methodExist :: AbsMethodId -> Hierarchy -> Maybe HierarchyStubMethod
 methodExist m = views hierarchy \hry -> 
   m ^? className . cnStub hry .  stubMethods . ix (m^.methodId)
 
@@ -768,7 +827,7 @@ declarations mid = views hierarchy $ \hry ->
     .   folding
           (\x ->
             [ (mid & className .~ x ^. hryClassName, b)
-            | b <- x ^.. hryStub . stubMethods . ix (mid ^. methodId)
+            | b <- x ^.. hryStub . stubMethods . ix (mid ^. methodId) . stubMethodAbstract
             ]
           )
 
@@ -784,7 +843,7 @@ declaredMethods cn = views hierarchy $ \hry -> cn ^. cnItem hry . to (go hry)
     flip view i
       $  hryStub
       .  stubMethods
-      .  to (fmap (i ^. hryClassName, ))
+      .  to (fmap ((i ^. hryClassName,) . view stubMethodAbstract))
       <> hryParents
       .  cixItem hry
       .  to (go hry)
