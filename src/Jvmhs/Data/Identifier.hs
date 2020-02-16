@@ -103,6 +103,8 @@ import           Data.Hashable
 
 -- base
 import qualified Data.Text                     as Text
+import Data.Maybe
+import qualified Data.List.NonEmpty as NE
 
 -- jvm-binary
 import           Language.JVM.AccessFlag
@@ -131,9 +133,11 @@ fullyQualifiedName = _Wrapped
 {-# INLINABLE fullyQualifiedName #-}
 
 -- | Splits a ClassName in it's components
-splitClassName :: Iso' ClassName [Text.Text]
-splitClassName = fullyQualifiedName . split
-  where split = iso (Text.splitOn "/") (Text.intercalate "/")
+splitClassName :: Iso' ClassName (NE.NonEmpty Text.Text)
+splitClassName = fullyQualifiedName . split where 
+ split = iso 
+   (fromJust . NE.nonEmpty . Text.splitOn "/") 
+   (Text.intercalate "/" . NE.toList)
 {-# INLINABLE splitClassName #-}
 
 -- | Checks if an class is an Inner Class
@@ -143,13 +147,13 @@ isInnerClass = Text.any (== '$') . view fullyQualifiedName
 type Package = [Text.Text]
 
 -- | The package name of the class name
-package :: Traversal' ClassName Package
-package = splitClassName . _init
+package :: Lens' ClassName Package
+package = splitClassName . (lens NE.init (\a b -> NE.reverse (NE.last a NE.:| reverse b)))
 {-# INLINABLE package #-}
 
 -- | The shorthand name of the class name
-shorthand :: Traversal' ClassName Text.Text
-shorthand = splitClassName . _last
+shorthand :: Lens' ClassName Text.Text
+shorthand = splitClassName . (lens NE.last (\a b -> NE.reverse (b NE.<| NE.reverse a)))
 {-# INLINABLE shorthand #-}
 
 instance ToJSON ClassName where
