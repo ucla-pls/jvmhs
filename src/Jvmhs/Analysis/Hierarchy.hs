@@ -378,7 +378,7 @@ allStubs =
 expandStubs :: MonadClassPool m => HierarchyStubs -> m HierarchyStubs
 expandStubs old = do
   s <- allStubs
-  return $ s <> old
+  return $ old <> s
 
 -- Compute the stubs from a class reader.
 computeStubs :: (MonadIO m, ClassReader r) => r -> m HierarchyStubs
