@@ -1,31 +1,23 @@
-{ mkDerivation, aeson, attoparsec, base, binary, bytestring
-, cassava, containers, deepseq, directory, fgl, fgl-visualize
-, filepath, generic-random, hashable, hpack, hspec, hspec-discover
-, hspec-expectations-pretty-diff, jvm-binary, lens, lens-action
-, mtl, primitive, process, QuickCheck, stdenv, tasty, text
-, transformers, unordered-containers, vector, zip-archive
-}:
-mkDerivation {
-  pname = "jvmhs";
-  version = "0.0.1";
-  src = ./.;
-  libraryHaskellDepends = [
-    aeson attoparsec base binary bytestring cassava containers deepseq
-    directory fgl fgl-visualize filepath hashable jvm-binary lens
-    lens-action mtl primitive process text transformers
-    unordered-containers vector zip-archive
-  ];
-  libraryToolDepends = [ hpack ];
-  testHaskellDepends = [
-    aeson attoparsec base binary bytestring cassava containers deepseq
-    directory fgl fgl-visualize filepath generic-random hashable hspec
-    hspec-discover hspec-expectations-pretty-diff jvm-binary lens
-    lens-action mtl primitive process QuickCheck tasty text
-    transformers unordered-containers vector zip-archive
-  ];
-  testToolDepends = [ hspec-discover ];
-  preConfigure = "hpack";
-  homepage = "https://github.com/ucla-pls/jvmhs#readme";
-  description = "A library for reading Java class-files";
-  license = stdenv.lib.licenses.bsd3;
-}
+{ pkgs ? import ./nix/nixpkgs.nix {}
+, compiler ? "default"
+, jvm-binary ? import ./nix/jvm-binary.nix
+}: 
+let 
+  haskellPackages = 
+    if compiler == "default" 
+    then pkgs.haskellPackages 
+    else pkgs.haskell.packages."${compiler}";
+in
+  haskellPackages.developPackage {
+    root = bulitins.filterSource 
+      (path: type: baseNameOf path != ".nix")
+      ./.;
+    name = "jvmhs";
+    source-overrides = { inherit jvm-binary; };
+    overrides = hsuper: hself: {
+    };
+    modifier = drv:
+      with pkgs.haskell.lib;
+      addBuildTools drv (with haskellPackages; [ cabal-install ghcid ])
+    ;
+  }

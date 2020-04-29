@@ -1,5 +1,5 @@
 name: jvmhs
-version: '0.0.1'
+version: '0.1.0'
 author: Christian Gram Kalhauge
 maintainer: "Christian Gram Kalhauge <kalhauge@cs.ucla.edu>"
 synopsis: A library for reading Java class-files
@@ -23,10 +23,11 @@ extra-source-files:
   - package.yaml
   - README.md
   - test/stdlib-stubs.json
+  - test/data/classes/*.class
 
 dependencies:
   - base >= 4.10 && < 4.13
-  - jvm-binary >= 0.6.0 && < 0.9.0
+  - jvm-binary >= 0.6.0 && < 0.10.0
   - aeson
   - attoparsec
   - binary
@@ -68,3 +69,6 @@ tests:
       - generic-random
       - hspec-discover
       - hspec-expectations-pretty-diff
+      - generic-random
+      - HUnit >= 1.6.0.0 
+      - nicify-lib >= 1.0.1

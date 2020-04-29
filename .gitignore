@@ -1,18 +1,17 @@
 .stack-work/
 *.cabal
-jvmhs/test/data/classes
 .dir-locals.el
 *.prof
-jvmhs/test/output
-jvmhs/test/regression
+test/output
+test/data/extras
+test/regression
 .idea/
 cabal.config
 .DS_Store
 tags
-*.class
 dist-newstyle
 .ghc.*
 
 result
-/jvmhs/stdlib-stubs.json
-/jvmhs/failures.txt
+stdlib-stubs.json
+failures.txt
