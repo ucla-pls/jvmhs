@@ -9,7 +9,7 @@ let
     else pkgs.haskell.packages."${compiler}";
 in
   haskellPackages.developPackage {
-    root = bulitins.filterSource 
+    root = builtins.filterSource 
       (path: type: baseNameOf path != ".nix")
       ./.;
     name = "jvmhs";
