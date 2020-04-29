@@ -1,32 +1,27 @@
-{ mkDerivation, aeson, attoparsec, base, binary, bytestring
-, cassava, containers, deepseq, directory, fgl, fgl-visualize
-, filepath, generic-random, hashable, hpack, hspec, hspec-discover
-, hspec-expectations-pretty-diff, HUnit, jvm-binary, lens
-, lens-action, mtl, nicify-lib, primitive, process, QuickCheck
-, stdenv, tasty, text, transformers, unordered-containers, vector
-, zip-archive
-}:
-mkDerivation {
-  pname = "jvmhs";
-  version = "0.1.0";
-  src = ./.;
-  libraryHaskellDepends = [
-    aeson attoparsec base binary bytestring cassava containers deepseq
-    directory fgl fgl-visualize filepath hashable jvm-binary lens
-    lens-action mtl primitive process text transformers
-    unordered-containers vector zip-archive
-  ];
-  libraryToolDepends = [ hpack ];
-  testHaskellDepends = [
-    aeson attoparsec base binary bytestring cassava containers deepseq
-    directory fgl fgl-visualize filepath generic-random hashable hspec
-    hspec-discover hspec-expectations-pretty-diff HUnit jvm-binary lens
-    lens-action mtl nicify-lib primitive process QuickCheck tasty text
-    transformers unordered-containers vector zip-archive
-  ];
-  testToolDepends = [ hspec-discover ];
-  prePatch = "hpack";
-  homepage = "https://github.com/ucla-pls/jvmhs#readme";
-  description = "A library for reading Java class-files";
-  license = stdenv.lib.licenses.bsd3;
-}
+{ pkgs ? import ./nix/nixpkgs.nix {}
+, compiler ? "default"
+}: 
+let 
+  haskellPackages = 
+    if compiler == "default" 
+    then pkgs.haskellPackages 
+    else pkgs.haskell.packages."${compiler}";
+in
+  haskellPackages.developPackage {
+    root = ./.;
+    name = "jvmhs";
+    source-overrides = {
+      reduce = ../reduce;
+    };
+    overrides = hsuper: hself: {
+      dirtree = haskellPackages.callHackageDirect { 
+        pkg = "dirtree";
+        ver = "0.1.3";
+        sha256 = "sha256:0kl31l2ip856saq5lhfjr4wv04i2pyj6sf3lkzk9bj7w1m9v0klz";
+      } {};
+    };
+    modifier = drv:
+      with pkgs.haskell.lib;
+      addBuildTools drv (with haskellPackages; [ cabal-install ghcid ])
+    ;
+  }
