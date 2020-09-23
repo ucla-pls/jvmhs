@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.32.0.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 50742d56dd27288c658787e0c7646ac6290a029c3077d168f76c79e25c899212
+-- hash: 9c0f34ea97cf8aa3ab470f66934b554760097c1edc65a2783775c13b974160a9
 
 name:           jvmhs
 version:        0.1.0
@@ -23,17 +23,36 @@ extra-source-files:
     package.yaml
     README.md
     test/stdlib-stubs.json
+    test/data/classes/Access$1.class
+    test/data/classes/Access$A.class
+    test/data/classes/Access$B.class
+    test/data/classes/Access.class
+    test/data/classes/Access2.class
     test/data/classes/Annotations$Annotated.class
     test/data/classes/Annotations$B.class
     test/data/classes/Annotations$TestNotation.class
     test/data/classes/Annotations$TestType.class
     test/data/classes/Annotations$TestTypes.class
     test/data/classes/Annotations.class
+    test/data/classes/DeepSignature$Ann.class
+    test/data/classes/DeepSignature$C$D$E.class
+    test/data/classes/DeepSignature$C$D.class
+    test/data/classes/DeepSignature$C.class
+    test/data/classes/DeepSignature$F$G$H.class
+    test/data/classes/DeepSignature$F$G.class
+    test/data/classes/DeepSignature$F.class
+    test/data/classes/DeepSignature$Node.class
+    test/data/classes/DeepSignature.class
+    test/data/classes/DoubleToInt.class
     test/data/classes/EmptyClass.class
     test/data/classes/Extended.class
     test/data/classes/Gens$InternalGens$SuperInternalGens.class
     test/data/classes/Gens$InternalGens.class
     test/data/classes/Gens.class
+    test/data/classes/InnerClass$1.class
+    test/data/classes/InnerClass$A.class
+    test/data/classes/InnerClass$B.class
+    test/data/classes/InnerClass.class
     test/data/classes/Interface.class
     test/data/classes/Itfc.class
     test/data/classes/Itfc2.class
@@ -41,7 +60,18 @@ extra-source-files:
     test/data/classes/Lambda.class
     test/data/classes/Simple.class
     test/data/classes/SimpleI.class
+    test/data/classes/StaticFinal.class
     test/data/classes/Stub.class
+    test/data/classes/Wierd$Ann.class
+    test/data/classes/Wierd$C$D$E.class
+    test/data/classes/Wierd$C$D.class
+    test/data/classes/Wierd$C.class
+    test/data/classes/Wierd$F$G$H.class
+    test/data/classes/Wierd$F$G.class
+    test/data/classes/Wierd$F.class
+    test/data/classes/Wierd$X.class
+    test/data/classes/Wierd$Y.class
+    test/data/classes/Wierd.class
 
 source-repository head
   type: git
@@ -62,7 +92,11 @@ library
       Jvmhs.Data.Type
       Jvmhs.Format
       Jvmhs.Format.ClassFile
+      Jvmhs.Format.ClassFile.Method
+      Jvmhs.Format.ClassFile.Shared
+      Jvmhs.Format.ClassFile.Type
       Jvmhs.Format.Internal
+      Jvmhs.Format.Json
       Jvmhs.Inspection.ClassNames
       Jvmhs.Transform.Stub
       Jvmhs.TypeCheck
