@@ -1,5 +1,4 @@
 .stack-work/
-*.cabal
 .dir-locals.el
 *.prof
 test/output

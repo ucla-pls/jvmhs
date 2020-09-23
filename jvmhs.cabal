@@ -1,0 +1,151 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.32.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 50742d56dd27288c658787e0c7646ac6290a029c3077d168f76c79e25c899212
+
+name:           jvmhs
+version:        0.1.0
+synopsis:       A library for reading Java class-files
+description:    A library to sematically read a class from a file.
+category:       Language, Java, JVM
+homepage:       https://github.com/ucla-pls/jvmhs#readme
+bug-reports:    https://github.com/ucla-pls/jvmhs/issues
+author:         Christian Gram Kalhauge
+maintainer:     Christian Gram Kalhauge <kalhauge@cs.ucla.edu>
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    LICENSE
+    package.yaml
+    README.md
+    test/stdlib-stubs.json
+    test/data/classes/Annotations$Annotated.class
+    test/data/classes/Annotations$B.class
+    test/data/classes/Annotations$TestNotation.class
+    test/data/classes/Annotations$TestType.class
+    test/data/classes/Annotations$TestTypes.class
+    test/data/classes/Annotations.class
+    test/data/classes/EmptyClass.class
+    test/data/classes/Extended.class
+    test/data/classes/Gens$InternalGens$SuperInternalGens.class
+    test/data/classes/Gens$InternalGens.class
+    test/data/classes/Gens.class
+    test/data/classes/Interface.class
+    test/data/classes/Itfc.class
+    test/data/classes/Itfc2.class
+    test/data/classes/ItfcParent.class
+    test/data/classes/Lambda.class
+    test/data/classes/Simple.class
+    test/data/classes/SimpleI.class
+    test/data/classes/Stub.class
+
+source-repository head
+  type: git
+  location: https://github.com/ucla-pls/jvmhs
+
+library
+  exposed-modules:
+      Jvmhs
+      Jvmhs.Analysis.Closure
+      Jvmhs.Analysis.Hierarchy
+      Jvmhs.Analysis.Reduce
+      Jvmhs.ClassPool
+      Jvmhs.ClassReader
+      Jvmhs.Data.Class
+      Jvmhs.Data.Code
+      Jvmhs.Data.Graph
+      Jvmhs.Data.Identifier
+      Jvmhs.Data.Type
+      Jvmhs.Format
+      Jvmhs.Format.ClassFile
+      Jvmhs.Format.Internal
+      Jvmhs.Inspection.ClassNames
+      Jvmhs.Transform.Stub
+      Jvmhs.TypeCheck
+  other-modules:
+      Paths_jvmhs
+  hs-source-dirs:
+      src
+  ghc-options: -Wall
+  build-depends:
+      aeson
+    , attoparsec
+    , base >=4.10 && <4.13
+    , binary
+    , bytestring
+    , cassava
+    , containers
+    , deepseq
+    , directory
+    , fgl
+    , fgl-visualize
+    , filepath
+    , hashable
+    , jvm-binary >=0.6.0 && <0.10.0
+    , lens
+    , lens-action
+    , mtl
+    , primitive
+    , process
+    , text
+    , transformers
+    , unordered-containers
+    , vector
+    , zip-archive
+  default-language: Haskell2010
+
+test-suite jvmhs-test
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Jvmhs.Analysis.HierarchySpec
+      Jvmhs.Data.TypeSpec
+      Jvmhs.Format.ClassFileSpec
+      Jvmhs.Inspection.ClassNamesSpec
+      Jvmhs.Transform.StubSpec
+      Jvmhs.TypeCheckSpec
+      Spec
+      SpecHelper
+      Paths_jvmhs
+  hs-source-dirs:
+      test
+  ghc-options: -Wall
+  build-depends:
+      HUnit >=1.6.0.0
+    , QuickCheck
+    , aeson
+    , attoparsec
+    , base >=4.10 && <4.13
+    , binary
+    , bytestring
+    , cassava
+    , containers
+    , deepseq
+    , directory
+    , fgl
+    , fgl-visualize
+    , filepath
+    , generic-random
+    , hashable
+    , hspec
+    , hspec-discover
+    , hspec-expectations-pretty-diff
+    , jvm-binary >=0.6.0 && <0.10.0
+    , jvmhs
+    , lens
+    , lens-action
+    , mtl
+    , nicify-lib >=1.0.1
+    , primitive
+    , process
+    , tasty
+    , text
+    , transformers
+    , unordered-containers
+    , vector
+    , zip-archive
+  default-language: Haskell2010
