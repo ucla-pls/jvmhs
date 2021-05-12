@@ -234,6 +234,7 @@ data TypeCheckError
   | NotEqual String String
   | NoLocal B.LocalAddress
   | BadType TypeInfo
+  | UnexpectedTypeError String
   | NotSubtype TypeInfo TypeInfo
   | NotIntersect TypeInfo TypeInfo
   | InconsistentStates B.ByteCodeIndex TypeCheckState TypeCheckState
@@ -563,6 +564,9 @@ _Single = prism'
     _                             -> Nothing
   )
 
+unexpected :: MonadError TypeCheckError m => String -> m a
+unexpected = throwError . UnexpectedTypeError
+
 -- | Given a single `Instruction` lets typecheck it.
 typecheck
   :: forall m
@@ -780,18 +784,18 @@ typecheck = \case
   B.Pop size -> case size of
     B.One -> do
       a <- pop
-      when (typeSize a == 2) $ fail "Trying to pop a two sized value"
+      when (typeSize a == 2) $ unexpected "Trying to pop a two sized value"
     B.Two -> do
       a <- pop
       unless (typeSize a == 2) $ do
         b <- pop
         when (typeSize b == 2)
-          $ fail "Trying to pop a two sized value, as the second parameter"
+          $ unexpected "Trying to pop a two sized value, as the second parameter"
 
   B.Dup size -> case size of
     B.One -> do
       a <- pop
-      when (typeSize a == 2) $ fail "Trying to dup a two sized value"
+      when (typeSize a == 2) $ unexpected "Trying to dup a two sized value"
       push a
       push a
     B.Two -> do
@@ -810,9 +814,9 @@ typecheck = \case
   B.DupX1 size -> case size of
     B.One -> do
       a <- pop
-      when (typeSize a == 2) $ fail "Trying to dupX1 a two sized value"
+      when (typeSize a == 2) $ unexpected "Trying to dupX1 a two sized value"
       b <- pop
-      when (typeSize b == 2) $ fail "Trying to skip a two sized value (dupX1)"
+      when (typeSize b == 2) $ unexpected "Trying to skip a two sized value (dupX1)"
       push a
       push b
       push a
@@ -822,16 +826,16 @@ typecheck = \case
         then do
           b <- pop
           when (typeSize b == 2)
-            $ fail "Trying to skip a two sized value (dupX1)"
+            $ unexpected "Trying to skip a two sized value (dupX1)"
           push a
           push b
         else do
           b <- pop
-          when (typeSize b == 2) $ fail
+          when (typeSize b == 2) $ unexpected
             "Trying to dupX1 a two sized value, as the second parameter"
           c <- pop
           when (typeSize c == 2)
-            $ fail "Trying to skip a two sized value (dupX1)"
+            $ unexpected "Trying to skip a two sized value (dupX1)"
           push b
           push a
           push c
@@ -841,7 +845,7 @@ typecheck = \case
   B.DupX2 size -> case size of
     B.One -> do
       a <- pop
-      when (typeSize a == 2) $ fail "Trying to dupX2 a two sized value"
+      when (typeSize a == 2) $ unexpected "Trying to dupX2 a two sized value"
       b <- pop
       if (typeSize b == 2)
         then do
@@ -851,7 +855,7 @@ typecheck = \case
         else do
           c <- pop
           when (typeSize c == 2)
-            $ fail
+            $ unexpected
                 "Trying to skip a two sized value (dupX2), as the second parameter"
           push a
           push c
@@ -870,14 +874,14 @@ typecheck = \case
             else do
               c <- pop
               when (typeSize c == 2)
-                $ fail "Trying to skip a two sized value (dupX2)"
+                $ unexpected "Trying to skip a two sized value (dupX2)"
               push a
               push c
               push b
               push a
         else do
           b <- pop
-          when (typeSize b == 2) $ fail
+          when (typeSize b == 2) $ unexpected
             "Trying to copy a two sized value (dupX2) as the second parameter"
           c <- pop
           if (typeSize c == 2)
@@ -890,7 +894,7 @@ typecheck = \case
             else do
               d <- pop
               when (typeSize d == 2)
-                $ fail "Trying to skip a two sized value (dupX2)"
+                $ unexpected "Trying to skip a two sized value (dupX2)"
               push b
               push a
               push d
@@ -900,9 +904,9 @@ typecheck = \case
 
   B.Swap -> do
     a <- pop
-    when (typeSize a == 2) $ fail "Trying to swap a two sized value"
+    when (typeSize a == 2) $ unexpected "Trying to swap a two sized value"
     b <- pop
-    when (typeSize b == 2) $ fail "Trying to swap a two sized value"
+    when (typeSize b == 2) $ unexpected "Trying to swap a two sized value"
     push b
     push a
 

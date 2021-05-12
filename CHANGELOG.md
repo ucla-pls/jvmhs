@@ -1,5 +1,8 @@
 # Jvmhs
 
+# Version 0.1.1
+
+- Upgrade to GHC 8.10.4
 
 # Version 0.1.0
 
