@@ -287,8 +287,11 @@ noNext = tcNexts .= []
 -- |
 isSubtypeOf :: (MonadReader Hierarchy m) => TypeInfo -> TypeInfo -> m Bool
 isSubtypeOf = curry $ \case
-  (TRef as, TRef bs) -> asks
-    $ \r -> and [ (a `isSubReftypeOf` b) r | a <- toList as, b <- toList bs ]
+  (TRef as, TRef bs) 
+    | as == bs -> 
+      return True
+    | otherwise -> asks
+      $ \r -> and [ (a `isSubReftypeOf` b) r | a <- toList as, b <- toList bs ]
   (_, TTop) -> return True
   (a, b   ) -> return (a == b)
 
