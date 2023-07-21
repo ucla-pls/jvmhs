@@ -1,7 +1,7 @@
 name: jvmhs
-version: '0.1.1'
+version: '0.2.0'
 author: Christian Gram Kalhauge
-maintainer: "Christian Gram Kalhauge <kalhauge@cs.ucla.edu>"
+maintainer: "Christian Gram Kalhauge <chrg@dtu.dk>"
 synopsis: A library for reading Java class-files
 license: BSD3
 license-file: LICENSE
@@ -26,8 +26,8 @@ extra-source-files:
   - test/data/classes/*.class
 
 dependencies:
-  - base >= 4.10 && < 4.15
-  - jvm-binary >= 0.6.0 && < 0.11.0
+  - base >= 4.10 && < 4.18
+  - jvm-binary >= 0.6.0 && < 0.12.0
   - aeson
   - attoparsec
   - binary

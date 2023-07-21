@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell   #-}
-{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+
 {-
 Module      : Jvmhs.Analysis.Hierarchy
 Copyright   : (c) Christian Gram Kalhauge, 2017
@@ -9,8 +10,7 @@ Maintainer  : kalhuage@cs.ucla.edu
 
 This module defines the a class hierarchy analysis.
 -}
-module Jvmhs.Analysis.Reduce
-  where
+module Jvmhs.Analysis.Reduce where
 
 -- -- base
 -- import           Data.Functor
@@ -49,7 +49,6 @@ module Jvmhs.Analysis.Reduce
 --   -> S.HashSet a
 -- inlineKey m =
 --   foldMap (\i -> M.lookupDefault (S.singleton i) i m)
-
 
 -- inlineInterfaces ::
 --      IFMapping

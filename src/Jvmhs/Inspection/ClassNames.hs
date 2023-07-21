@@ -1,58 +1,59 @@
-{-# LANGUAGE ApplicativeDo         #-}
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE QuantifiedConstraints         #-}
-{-# LANGUAGE DerivingStrategies    #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE TypeApplications            #-}
+{-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE RecordWildCards       #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-|
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+
+{- |
 Module      : Jvmhs.Inspection.ClassNames
 Copyright   : (c) Christian Gram Kalhauge, 2019
 License     : BSD-3-Clause
 Maintainer  : kalhauge@cs.ucla.edu
-
 -}
 module Jvmhs.Inspection.ClassNames where
 
 -- base
-import           Data.Functor
-import           Data.Foldable
 
--- lens 
-import           Control.Lens
-import           Data.Set.Lens
+import Data.Foldable
+import Data.Functor
+
+-- lens
+import Control.Lens
+import Data.Set.Lens
 
 -- text
-import qualified Data.Text                     as Text
+import qualified Data.Text as Text
 
--- containers 
-import qualified Data.Set                      as Set
+-- containers
+import qualified Data.Set as Set
 
 -- jvm-binary
-import qualified Language.JVM                  as B
+import qualified Language.JVM as B
 
 -- jvmhs
-import           Jvmhs.Data.Class
-import           Jvmhs.Data.Type
-import           Jvmhs.Data.Code
-import           Jvmhs.Data.Identifier
+import Jvmhs.Data.Class
+import Jvmhs.Data.Code
+import Jvmhs.Data.Identifier
+import Jvmhs.Data.Type
 
-type ClassNamer a = forall r . Monoid r => Getting r a ClassName
+type ClassNamer a = forall r. Monoid r => Getting r a ClassName
 
 classNameSet :: HasClassNames a => a -> Set.Set ClassName
 classNameSet = setOf classNames
 
 class HasClassNames a where
-  classNames :: forall r . Monoid r => Getting r a ClassName
+  classNames :: forall r. Monoid r => Getting r a ClassName
 
 instance HasClassNames ClassName where
   classNames = id
@@ -64,48 +65,51 @@ instance HasClassNames Class where
 
 -- | A fold over all classnames mentioned in a class.
 classNamesOfClass :: ClassNamer Class
-classNamesOfClass = fold
-  [ className
-  , classTypeParameters
-  . folded
-  . classNamesOfAnnotated classNamesOfTypeParameter
-  , classSuper . _Just . classNamesOfAnnotated classNamesOfClassType
-  , classInterfaces . folded . classNamesOfAnnotated classNamesOfClassType
-  , classFields . folded . classNamesOfField
-  , classMethods . folded . classNamesOfMethod
-  , classBootstrapMethods . folded . classNamesOfBootstrapMethod
-  , classEnclosingMethod . _Just . (_1 <> _2 . _Just . classNamesOfMethodId)
-  , classInnerClasses . folded . classNamesOfInnerClass
-  , classAnnotations . folded . classNamesOfAnnotation
-  ]
+classNamesOfClass =
+  fold
+    [ className
+    , classTypeParameters
+        . folded
+        . classNamesOfAnnotated classNamesOfTypeParameter
+    , classSuper . _Just . classNamesOfAnnotated classNamesOfClassType
+    , classInterfaces . folded . classNamesOfAnnotated classNamesOfClassType
+    , classFields . folded . classNamesOfField
+    , classMethods . folded . classNamesOfMethod
+    , classBootstrapMethods . folded . classNamesOfBootstrapMethod
+    , classEnclosingMethod . _Just . (_1 <> _2 . _Just . classNamesOfMethodId)
+    , classInnerClasses . folded . classNamesOfInnerClass
+    , classAnnotations . folded . classNamesOfAnnotation
+    ]
 
 instance HasClassNames Field where
   classNames = classNamesOfField
   {-# INLINE classNames #-}
 
 classNamesOfField :: ClassNamer Field
-classNamesOfField = fold
-  [ fieldType . classNamesOfAnnotated classNamesOfType
-  , fieldValue . _Just . classNamesOfJValue
-  , fieldAnnotations . folded . classNamesOfAnnotation
-  ]
+classNamesOfField =
+  fold
+    [ fieldType . classNamesOfAnnotated classNamesOfType
+    , fieldValue . _Just . classNamesOfJValue
+    , fieldAnnotations . folded . classNamesOfAnnotation
+    ]
 
 instance HasClassNames Method where
   classNames = classNamesOfMethod
   {-# INLINE classNames #-}
 
 classNamesOfMethod :: ClassNamer Method
-classNamesOfMethod = fold
-  [ methodTypeParameters
-  . folded
-  . classNamesOfAnnotated classNamesOfTypeParameter
-  , methodParameters . folded . classNamesOfParameter
-  , methodReturnType . classNamesOfAnnotated classNamesOfReturnType
-  , methodCode . _Just . classNamesOfCode
-  , methodExceptions . folded . classNamesOfAnnotated classNamesOfThrowsType
-  , methodAnnotations . folded . classNamesOfAnnotation
-  , methodDefaultAnnotation . _Just . classNamesOfAnnotationValue
-  ]
+classNamesOfMethod =
+  fold
+    [ methodTypeParameters
+        . folded
+        . classNamesOfAnnotated classNamesOfTypeParameter
+    , methodParameters . folded . classNamesOfParameter
+    , methodReturnType . classNamesOfAnnotated classNamesOfReturnType
+    , methodCode . _Just . classNamesOfCode
+    , methodExceptions . folded . classNamesOfAnnotated classNamesOfThrowsType
+    , methodAnnotations . folded . classNamesOfAnnotation
+    , methodDefaultAnnotation . _Just . classNamesOfAnnotationValue
+    ]
 
 instance HasClassNames ReturnType where
   classNames = classNamesOfReturnType
@@ -119,10 +123,11 @@ instance HasClassNames Parameter where
   {-# INLINE classNames #-}
 
 classNamesOfParameter :: ClassNamer Parameter
-classNamesOfParameter = fold
-  [ parameterType . classNamesOfAnnotated classNamesOfType
-  , parameterAnnotations . folded . classNamesOfAnnotation
-  ]
+classNamesOfParameter =
+  fold
+    [ parameterType . classNamesOfAnnotated classNamesOfType
+    , parameterAnnotations . folded . classNamesOfAnnotation
+    ]
 
 instance HasClassNames InnerClass where
   classNames = classNamesOfInnerClass
@@ -136,10 +141,11 @@ instance HasClassNames BootstrapMethod where
   {-# INLINE classNames #-}
 
 classNamesOfBootstrapMethod :: ClassNamer BootstrapMethod
-classNamesOfBootstrapMethod = fold
-  [ bootstrapMethodHandle . classNamesOfMethodHandle
-  , bootstrapMethodArguments . folded . classNamesOfJValue
-  ]
+classNamesOfBootstrapMethod =
+  fold
+    [ bootstrapMethodHandle . classNamesOfMethodHandle
+    , bootstrapMethodArguments . folded . classNamesOfJValue
+    ]
 
 instance HasClassNames (B.MethodHandle B.High) where
   classNames = classNamesOfMethodHandle
@@ -147,20 +153,20 @@ instance HasClassNames (B.MethodHandle B.High) where
 
 classNamesOfMethodHandle :: ClassNamer (B.MethodHandle B.High)
 classNamesOfMethodHandle f x = case x of
-  MHField  (B.MethodHandleField _ r) -> classNamesOfAbsFieldId f r $> x
-  MHMethod a                         -> case a of
+  MHField (B.MethodHandleField _ r) -> classNamesOfAbsFieldId f r $> x
+  MHMethod a -> case a of
     B.MHInvokeVirtual r ->
       (classNamesOfInRefType classNamesOfMethodId) f r $> x
-    B.MHInvokeStatic  r -> classNamesOfAbsVariableMethodId f r $> x
+    B.MHInvokeStatic r -> classNamesOfAbsVariableMethodId f r $> x
     B.MHInvokeSpecial r -> classNamesOfAbsVariableMethodId f r $> x
     B.MHNewInvokeSpecial r ->
       (classNamesOfInRefType classNamesOfMethodId) f r $> x
   MHInterface a ->
-    (coerced @(B.MethodHandleInterface B.High) @(B.MethodHandleInterface B.High)
-      . classNamesOfInRefType classNamesOfMethodId
-      )
-        f
-        a
+    ( coerced @(B.MethodHandleInterface B.High) @(B.MethodHandleInterface B.High)
+        . classNamesOfInRefType classNamesOfMethodId
+    )
+      f
+      a
       $> x
 
 instance HasClassNames a => HasClassNames (InClass a) where
@@ -216,11 +222,12 @@ instance HasClassNames Code where
   {-# INLINE classNames #-}
 
 classNamesOfCode :: ClassNamer Code
-classNamesOfCode = fold
-  [ codeByteCode . folded . classNamesOfByteCodeInst
-  , codeExceptionTable . folded . classNamesOfExceptionHandler
-  , codeStackMap . _Just . classNamesOfStackMapTable
-  ]
+classNamesOfCode =
+  fold
+    [ codeByteCode . folded . classNamesOfByteCodeInst
+    , codeExceptionTable . folded . classNamesOfExceptionHandler
+    , codeStackMap . _Just . classNamesOfStackMapTable
+    ]
 
 instance HasClassNames ExceptionHandler where
   classNames = classNamesOfExceptionHandler
@@ -242,22 +249,22 @@ instance HasClassNames (B.ByteCodeOpr B.High) where
 
 classNamesOfByteCodeOpr :: ClassNamer (B.ByteCodeOpr B.High)
 classNamesOfByteCodeOpr f a = case a of
-  B.Push c  -> classNamesOfBConstant f c $> a
+  B.Push c -> classNamesOfBConstant f c $> a
   B.Get _ r -> classNamesOfAbsFieldId f r $> a
   B.Put _ r -> classNamesOfAbsFieldId f r $> a
   B.Invoke r -> classNamesOfInvocation f r $> a
-  B.New r   -> f r $> a
+  B.New r -> f r $> a
   B.NewArray (B.NewArrayType _ r) -> classNamesOfJType f r $> a
   B.CheckCast r -> classNamesOfJRefType f r $> a
   B.InstanceOf r -> classNamesOfJRefType f r $> a
-  _         -> pure a
+  _ -> pure a
  where
   classNamesOfBConstant = _Just . classNamesOfJValue
 
   classNamesOfInvocation f' a' = case a' of
-    B.InvkSpecial r     -> classNamesOfAbsVariableMethodId f' r $> a
+    B.InvkSpecial r -> classNamesOfAbsVariableMethodId f' r $> a
     B.InvkVirtual r -> (classNamesOfInRefType classNamesOfMethodId) f' r $> a
-    B.InvkStatic  r     -> classNamesOfAbsVariableMethodId f' r $> a
+    B.InvkStatic r -> classNamesOfAbsVariableMethodId f' r $> a
     B.InvkInterface _ r -> classNamesOfAbsInterfaceMethodId f' r $> a
     B.InvkDynamic r ->
       (to B.invokeDynamicMethod . classNamesOfMethodId) f' r $> a
@@ -269,11 +276,10 @@ instance HasClassNames (B.StackMapTable B.High) where
 classNamesOfStackMapTable :: ClassNamer (B.StackMapTable B.High)
 classNamesOfStackMapTable =
   verificationTypeInfo
-    . (\f c -> case c of
-        VTObject n -> classNamesOfJRefType f n $> c
-        _          -> pure c
+    . ( \f c -> case c of
+          VTObject n -> classNamesOfJRefType f n $> c
+          _ -> pure c
       )
-
 
 instance HasClassNames MethodId where
   classNames = classNamesOfMethodId
@@ -295,34 +301,36 @@ instance HasClassNames JValue where
 
 classNamesOfJValue :: ClassNamer JValue
 classNamesOfJValue f a = case a of
-  VClass        r -> classNamesOfJRefType f r $> a
-  VMethodType   r -> classNamesOfMethodDescriptor f r $> a
+  VClass r -> classNamesOfJRefType f r $> a
+  VMethodType r -> classNamesOfMethodDescriptor f r $> a
   VMethodHandle r -> classNamesOfMethodHandle f r $> a
-  _               -> pure a
+  _ -> pure a
 
 instance HasClassNames a => HasClassNames (Annotated a) where
   classNames = classNamesOfAnnotated classNames
   {-# INLINE classNames #-}
 
 classNamesOfAnnotated :: ClassNamer a -> ClassNamer (Annotated a)
-classNamesOfAnnotated fld = fold
-  [ annotatedAnnotations . folded . classNamesOfAnnotation
-  , annotatedContent . fld
-  ]
+classNamesOfAnnotated fld =
+  fold
+    [ annotatedAnnotations . folded . classNamesOfAnnotation
+    , annotatedContent . fld
+    ]
 
 instance HasClassNames TypeParameter where
   classNames = classNamesOfTypeParameter
   {-# INLINE classNames #-}
 
 classNamesOfTypeParameter :: ClassNamer TypeParameter
-classNamesOfTypeParameter = fold
-  [ typeParameterClassBound
-  . _Just
-  . classNamesOfAnnotated classNamesOfThrowsType
-  , typeParameterInterfaceBound
-  . folded
-  . classNamesOfAnnotated classNamesOfThrowsType
-  ]
+classNamesOfTypeParameter =
+  fold
+    [ typeParameterClassBound
+        . _Just
+        . classNamesOfAnnotated classNamesOfThrowsType
+    , typeParameterInterfaceBound
+        . folded
+        . classNamesOfAnnotated classNamesOfThrowsType
+    ]
 
 instance HasClassNames Annotation where
   classNames = classNamesOfAnnotation
@@ -337,12 +345,13 @@ instance HasClassNames AnnotationValue where
   {-# INLINE classNames #-}
 
 classNamesOfAnnotationValue :: ClassNamer AnnotationValue
-classNamesOfAnnotationValue = fold
-  [ _AAnnotation . (_1 <> _2 . folded . classNamesOfAnnotationValue)
-  , _AArray . folded . classNamesOfAnnotationValue
-  , _AClass . coerced . _Just . classNamesOfJType
-  , _AEnum . to enumTypeName . coerced . classNamesOfJType
-  ]
+classNamesOfAnnotationValue =
+  fold
+    [ _AAnnotation . (_1 <> _2 . folded . classNamesOfAnnotationValue)
+    , _AArray . folded . classNamesOfAnnotationValue
+    , _AClass . coerced . _Just . classNamesOfJType
+    , _AEnum . to enumTypeName . coerced . classNamesOfJType
+    ]
 
 instance HasClassNames FieldDescriptor where
   classNames = classNamesOfFieldDescriptor
@@ -358,21 +367,22 @@ instance HasClassNames MethodDescriptor where
 classNamesOfMethodDescriptor :: ClassNamer MethodDescriptor
 classNamesOfMethodDescriptor =
   methodDArguments
-    .  folded
-    .  classNamesOfJType
+    . folded
+    . classNamesOfJType
     <> methodDReturnType
-    .  _Just
-    .  classNamesOfJType
+      . _Just
+      . classNamesOfJType
 
 instance HasClassNames ThrowsType where
   classNames = classNamesOfThrowsType
   {-# INLINE classNames #-}
 
 classNamesOfThrowsType :: ClassNamer ThrowsType
-classNamesOfThrowsType = fold
-  [ _ThrowsClass . classNamesOfClassType
-  , _ThrowsTypeVariable . classNamesOfTypeVariable
-  ]
+classNamesOfThrowsType =
+  fold
+    [ _ThrowsClass . classNamesOfClassType
+    , _ThrowsTypeVariable . classNamesOfTypeVariable
+    ]
 
 instance HasClassNames ClassType where
   classNames = classNamesOfClassType
@@ -384,17 +394,16 @@ classNamesOfClassType = go ""
   go :: Text.Text -> ClassNamer ClassType
   go n f ct =
     let n' = n <> ct ^. classTypeName
-    in
-      fold
-        [ _Right f (textCls n') $> ct
-        , ( classTypeArguments
-          . folded
-          . classNamesOfAnnotated classNamesOfTypeArgument
-          )
-          f
-          ct
-        , (classTypeInner . _Just . classNamesOfAnnotated (go (n' <> "$"))) f ct
-        ]
+     in fold
+          [ _Right f (textCls n') $> ct
+          , ( classTypeArguments
+                . folded
+                . classNamesOfAnnotated classNamesOfTypeArgument
+            )
+              f
+              ct
+          , (classTypeInner . _Just . classNamesOfAnnotated (go (n' <> "$"))) f ct
+          ]
 
 instance HasClassNames Type where
   classNames = classNamesOfType
@@ -422,11 +431,12 @@ instance HasClassNames ReferenceType where
   {-# INLINE classNames #-}
 
 classNamesOfReferenceType :: ClassNamer ReferenceType
-classNamesOfReferenceType = fold
-  [ _RefClassType . classNamesOfClassType
-  , _RefTypeVariable . classNamesOfTypeVariable
-  , _RefArrayType . classNamesOfArrayType
-  ]
+classNamesOfReferenceType =
+  fold
+    [ _RefClassType . classNamesOfClassType
+    , _RefTypeVariable . classNamesOfTypeVariable
+    , _RefArrayType . classNamesOfArrayType
+    ]
 
 instance HasClassNames TypeVariable where
   classNames = classNamesOfTypeVariable
@@ -442,14 +452,14 @@ instance HasClassNames ArrayType where
 classNamesOfArrayType :: ClassNamer ArrayType
 classNamesOfArrayType = arrayType . classNamesOfAnnotated classNamesOfType
 
-
 instance HasClassNames TypeArgument where
   classNames = classNamesOfTypeArgument
   {-# INLINE classNames #-}
 
 classNamesOfTypeArgument :: ClassNamer TypeArgument
-classNamesOfTypeArgument = fold
-  [ _ExtendedTypeArg . classNamesOfAnnotated classNamesOfReferenceType
-  , _ImplementedTypeArg . classNamesOfAnnotated classNamesOfReferenceType
-  , _TypeArg . classNamesOfReferenceType
-  ]
+classNamesOfTypeArgument =
+  fold
+    [ _ExtendedTypeArg . classNamesOfAnnotated classNamesOfReferenceType
+    , _ImplementedTypeArg . classNamesOfAnnotated classNamesOfReferenceType
+    , _TypeArg . classNamesOfReferenceType
+    ]

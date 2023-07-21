@@ -1,10 +1,11 @@
-{-# LANGUAGE BangPatterns         #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TupleSections        #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-|
+
+{- |
 Module      : Jvmhs.Analysis.Closure
 Copyright   : (c) Christian Gram Kalhauge, 2018
 License     : BSD3
@@ -14,36 +15,36 @@ The purpose of this module is to compute closures over some items. Closures
 should be seen as contrast to reductions, that where reductions remove items,
 closures adds items until everything that needs to be added have been added.
 -}
-
 module Jvmhs.Analysis.Closure where
+
 --   ( computeClassClosure
 --   , computeClassClosureM
 --   -- , computeMethodClosure
--- 
+--
 --   , ClassGraph
 --   , mkClassGraph
--- 
+--
 --   -- , CallGraph
 --   -- , mkCallGraph
--- 
+--
 --   ) where
--- 
+--
 -- import           Data.Either              (partitionEithers)
--- 
+--
 -- import           Control.Lens
 -- import           Control.Lens.Action
--- 
+--
 -- -- unordered-collections
 -- import qualified Data.HashSet                 as S
--- 
+--
 -- import           Jvmhs.ClassPool
 -- import           Jvmhs.Data.Class
 -- import           Jvmhs.Data.Graph
 -- import           Jvmhs.Data.Type
 -- import           Jvmhs.Inspection
--- 
+--
 -- type ClassGraph = Graph ClassName ()
--- 
+--
 -- -- | Given a foldable structure over 'ClassName's compute a ClassGraph.
 -- mkClassGraph ::
 --   MonadClassPool m
@@ -55,7 +56,7 @@ module Jvmhs.Analysis.Closure where
 --     outEdges cls =
 --       let cn = cls^.className
 --       in cls^.classNames.to (S.singleton.(cn,,()))
--- 
+--
 -- -- | Computes the class closure in the current space.
 -- -- It will only include classes known to the 'MonadClassPool'.
 -- computeClassClosure ::
@@ -64,7 +65,7 @@ module Jvmhs.Analysis.Closure where
 --   -> m (S.HashSet ClassName, S.HashSet ClassName)
 -- computeClassClosure =
 --   flip computeClassClosureM (const $ return ())
--- 
+--
 -- -- | Computes the class closure in the current space.
 -- -- It will only include classes known to the 'MonadClassPool'.
 -- computeClassClosureM ::
@@ -89,9 +90,9 @@ module Jvmhs.Analysis.Closure where
 --           unknown' = unknown `S.union` missed
 --           front = S.fromList $ toListOf (folded.classNames) exists
 --         go (known', unknown') (front `S.difference` known')
--- 
+--
 -- -- type CallGraph = Graph AbsMethodName ()
--- 
+--
 -- -- -- | Given a foldable structure over 'AbsMethodName's compute a CallGraph.
 -- -- mkCallGraph ::
 -- --   forall m. (MonadClassPool m)
@@ -115,8 +116,8 @@ module Jvmhs.Analysis.Closure where
 -- --       case declaration hry mid of
 -- --         Just x  -> Right x
 -- --         Nothing -> Left mid
--- 
--- 
+--
+--
 -- -- -- | Computes the method closure
 -- -- computeMethodClosure ::
 -- --   forall m. MonadClassPool m

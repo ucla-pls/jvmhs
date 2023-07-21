@@ -1,18 +1,19 @@
-{-# LANGUAGE DeriveAnyClass             #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE FunctionalDependencies     #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-|
+
+{- |
 Module : Jvmhs.Data.Identifier
 Copyright : (c) Christian Gram Kalhauge, 2018-2019
 License  : BSD3
@@ -20,103 +21,109 @@ Maintainer : kalhauge@cs.ucla.edu
 
 This module reexports the identifies from the `jvm-binary` packages, and
 creates lenses and toJSON instances for them.
-
 -}
-module Jvmhs.Data.Identifier
-  ( FromJVMBinary(..)
+module Jvmhs.Data.Identifier (
+  FromJVMBinary (..),
 
   -- * ClassName
-  , ClassName
-  , HasClassName(..)
-  , dotCls
-  , textCls
-  , splitClassName
-  , fullyQualifiedName
-  , isInnerClass
-  , package
-  , shorthand
+  ClassName,
+  HasClassName (..),
+  dotCls,
+  textCls,
+  splitClassName,
+  fullyQualifiedName,
+  isInnerClass,
+  package,
+  shorthand,
 
   -- * MethodId
-  , MethodId(..)
-  , mkMethodId
-  , HasMethodId(..)
-  , MethodDescriptor(..)
-  , methodDArguments
-  , methodDReturnType
-  , ReturnDescriptor(..)
+  MethodId (..),
+  mkMethodId,
+  HasMethodId (..),
+  MethodDescriptor (..),
+  methodDArguments,
+  methodDReturnType,
+  ReturnDescriptor (..),
 
   -- * FieldId
-  , FieldId(..)
-  , mkFieldId
-  , HasFieldId(..)
-  , FieldDescriptor(..)
+  FieldId (..),
+  mkFieldId,
+  HasFieldId (..),
+  FieldDescriptor (..),
 
   -- * InClass and InRefType
-  , InClass(..)
-  , inClassNameL
-  , inClassIdL
-  , InRefType(..)
-  , inRefTypeL
-  , inRefTypeIdL
-  , asInClass
-  , AbsMethodId(..)
-  , mkAbsMethodId
-  , AbsFieldId(..)
-  , mkAbsFieldId
+  InClass (..),
+  inClassNameL,
+  inClassIdL,
+  InRefType (..),
+  inRefTypeL,
+  inRefTypeIdL,
+  asInClass,
+  AbsMethodId (..),
+  mkAbsMethodId,
+  AbsFieldId (..),
+  mkAbsFieldId,
 
   -- * Access Flags
-  , MAccessFlag(..)
-  , FAccessFlag(..)
-  , CAccessFlag(..)
-  , ICAccessFlag(..)
-  , PAccessFlag(..)
+  MAccessFlag (..),
+  FAccessFlag (..),
+  CAccessFlag (..),
+  ICAccessFlag (..),
+  PAccessFlag (..),
 
   -- * Re-exports
+
   -- , B.JValue(..)
   -- , JType(..)
   -- , JBaseType(..)
   -- , JRefType(..)
-  , AsNameAndType(..)
-  , WithName(..)
-  , module Language.JVM.TextSerializable
-  )
-where
+  AsNameAndType (..),
+  WithName (..),
+  module Language.JVM.TextSerializable,
+) where
 
 -- lens
-import           Control.Lens
+import Control.Lens
 
 -- aeson
-import           Data.Aeson
-import           Data.Aeson.Encoding            ( text )
-import           Data.Aeson.TH
-import           Data.Aeson.Types               ( Parser )
+import Data.Aeson
+import Data.Aeson.Encoding (text)
+import qualified Data.Aeson.Key as Key
+import Data.Aeson.TH
+import Data.Aeson.Types (Parser)
 
 -- cassava
-import qualified Data.Csv                      as Csv
+import qualified Data.Csv as Csv
 
 -- bytestring
-import qualified Data.ByteString               as BS
-import qualified Data.ByteString.Char8         as C
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as C
 
 -- hashable
-import           Data.Hashable
+import Data.Hashable
 
 -- base
-import qualified Data.Text                     as Text
-import Data.Maybe
+
 import qualified Data.List.NonEmpty as NE
+import Data.Maybe
+import qualified Data.Text as Text
 
 -- jvm-binary
-import           Language.JVM.AccessFlag
-import           Language.JVM.TextSerializable
-import qualified Language.JVM.Constant         as B
-import           Language.JVM.Type
+import Language.JVM.AccessFlag
+import qualified Language.JVM.Constant as B
+import Language.JVM.TextSerializable
+import Language.JVM.Type
+
+makeWrapped ''FieldId
+makeWrapped ''MethodId
+makeWrapped ''ReturnDescriptor
+makeWrapped ''AbsFieldId
+makeWrapped ''AbsMethodId
+makeWrapped ''ClassName
 
 -- * Wrap
 class FromJVMBinary b n | n -> b where
   _Binary :: Iso' n b
-
-makeWrapped ''ClassName
 
 class HasClassName a where
   className :: Lens' a ClassName
@@ -130,15 +137,17 @@ instance Hashable ClassName where
 
 fullyQualifiedName :: Iso' ClassName Text.Text
 fullyQualifiedName = _Wrapped
-{-# INLINABLE fullyQualifiedName #-}
+{-# INLINEABLE fullyQualifiedName #-}
 
 -- | Splits a ClassName in it's components
 splitClassName :: Iso' ClassName (NE.NonEmpty Text.Text)
-splitClassName = fullyQualifiedName . split where 
- split = iso 
-   (fromJust . NE.nonEmpty . Text.splitOn "/") 
-   (Text.intercalate "/" . NE.toList)
-{-# INLINABLE splitClassName #-}
+splitClassName = fullyQualifiedName . split
+ where
+  split =
+    iso
+      (fromJust . NE.nonEmpty . Text.splitOn "/")
+      (Text.intercalate "/" . NE.toList)
+{-# INLINEABLE splitClassName #-}
 
 -- | Checks if an class is an Inner Class
 isInnerClass :: ClassName -> Bool
@@ -148,19 +157,19 @@ type Package = [Text.Text]
 
 -- | The package name of the class name
 package :: Lens' ClassName Package
-package = splitClassName . (lens NE.init (\a b -> NE.reverse (NE.last a NE.:| reverse b)))
-{-# INLINABLE package #-}
+package = splitClassName . lens NE.init (\a b -> NE.reverse (NE.last a NE.:| reverse b))
+{-# INLINEABLE package #-}
 
 -- | The shorthand name of the class name
 shorthand :: Lens' ClassName Text.Text
-shorthand = splitClassName . (lens NE.last (\a b -> NE.reverse (b NE.<| NE.reverse a)))
-{-# INLINABLE shorthand #-}
+shorthand = splitClassName . lens NE.last (\a b -> NE.reverse (b NE.<| NE.reverse a))
+{-# INLINEABLE shorthand #-}
 
 instance ToJSON ClassName where
   toJSON = String . view fullyQualifiedName
 
 instance ToJSONKey ClassName where
-  toJSONKey = ToJSONKeyText f (text . f) where f = view fullyQualifiedName
+  toJSONKey = ToJSONKeyText (Key.fromText . f) (text . f) where f = view fullyQualifiedName
 
 -- * NameAndType
 
@@ -175,23 +184,21 @@ ntDescriptorL = lens ntDescriptor (\(NameAndType a _) b -> NameAndType a b)
 
 -- * MethodId
 
-makeWrapped ''MethodId
-makeWrapped ''ReturnDescriptor
-
 mkMethodId :: Text.Text -> MethodDescriptor -> MethodId
 mkMethodId = (<:>)
 
 -- | Get a the argument types from a method descriptor
 methodDArguments :: Lens' MethodDescriptor [JType]
 methodDArguments =
-  lens methodDescriptorArguments (\md a -> md { methodDescriptorArguments = a })
+  lens methodDescriptorArguments (\md a -> md{methodDescriptorArguments = a})
 {-# INLINE methodDArguments #-}
 
 -- | Get a the return type from a method descriptor
 methodDReturnType :: Lens' MethodDescriptor (Maybe JType)
 methodDReturnType =
-  lens methodDescriptorReturnType
-       (\md a -> md { methodDescriptorReturnType = a })
+  lens
+    methodDescriptorReturnType
+    (\md a -> md{methodDescriptorReturnType = a})
     . _Wrapped
 {-# INLINE methodDReturnType #-}
 
@@ -231,11 +238,9 @@ instance HasMethodId MethodId where
   methodId = id
 
 instance Hashable MethodId where
-  hashWithSalt i a = i `hashWithSalt` (view _Wrapped a)
+  hashWithSalt i a = i `hashWithSalt` view _Wrapped a
 
 -- * FieldId
-
-makeWrapped ''FieldId
 
 -- | Get the type from a field descriptor
 fieldDType :: Iso' FieldDescriptor JType
@@ -287,16 +292,15 @@ instance Hashable JRefType where
 instance Hashable JType where
   hashWithSalt i = \case
     JTBase b -> i `hashWithSalt` b
-    JTRef  b -> i `hashWithSalt` b
-
+    JTRef b -> i `hashWithSalt` b
 
 -- * InClass
 
 inClassNameL :: Lens' (InClass a) ClassName
-inClassNameL = lens inClassName (\a b -> a { inClassName = b })
+inClassNameL = lens inClassName (\a b -> a{inClassName = b})
 
 inClassIdL :: Lens (InClass a) (InClass b) a b
-inClassIdL = lens inClassId (\a b -> a { inClassId = b })
+inClassIdL = lens inClassId (\a b -> a{inClassId = b})
 
 instance HasClassName (InClass a) where
   className = inClassNameL
@@ -304,20 +308,17 @@ instance HasClassName (InClass a) where
 -- * InRefType
 
 inRefTypeL :: Lens' (InRefType a) JRefType
-inRefTypeL = lens inRefType (\a b -> a { inRefType = b })
+inRefTypeL = lens inRefType (\a b -> a{inRefType = b})
 
 inRefTypeIdL :: Lens (InRefType a) (InRefType b) a b
-inRefTypeIdL = lens inRefTypeId (\a b -> a { inRefTypeId = b })
+inRefTypeIdL = lens inRefTypeId (\a b -> a{inRefTypeId = b})
 
 asInClass
   :: (Profunctor p, Contravariant f) => Optic' p f (InRefType a) (InClass a)
 asInClass = to inRefTypeAsInClass
 
-
 mkAbsFieldId :: (HasClassName b, HasFieldId a) => b -> a -> AbsFieldId
 mkAbsFieldId cn a = AbsFieldId $ InClass (cn ^. className) (a ^. fieldId)
-
-makeWrapped ''AbsFieldId
 
 instance HasFieldId AbsFieldId where
   fieldId = _Wrapped . inClassIdL
@@ -330,8 +331,6 @@ instance HasFieldId (InRefType FieldId) where
 
 mkAbsMethodId :: (HasClassName b, HasMethodId a) => b -> a -> AbsMethodId
 mkAbsMethodId cn a = AbsMethodId $ InClass (cn ^. className) (a ^. methodId)
-
-makeWrapped ''AbsMethodId
 
 instance HasMethodId AbsMethodId where
   methodId = _Wrapped . inClassIdL
@@ -384,13 +383,13 @@ instance FromJSON MethodId where
   parseJSON = withText "MethodId" (parserFromEither . deserialize)
 
 instance ToJSONKey FieldId where
-  toJSONKey = ToJSONKeyText serialize (text . serialize)
+  toJSONKey = ToJSONKeyText (Key.fromText . serialize) (text . serialize)
 
 instance FromJSONKey FieldId where
   fromJSONKey = FromJSONKeyTextParser (parserFromEither . deserialize)
 
 instance ToJSONKey MethodId where
-  toJSONKey = ToJSONKeyText serialize (text . serialize)
+  toJSONKey = ToJSONKeyText (Key.fromText . serialize) (text . serialize)
 
 instance FromJSONKey MethodId where
   fromJSONKey = FromJSONKeyTextParser (parserFromEither . deserialize)
@@ -416,12 +415,15 @@ instance ToJSON ReturnDescriptor where
 instance ToJSON (B.MethodHandle B.High) where
   toJSON _ = String "MethodHandle"
 
-$(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''CAccessFlag)
-$(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''FAccessFlag)
-$(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''MAccessFlag)
-$(deriveToJSON (defaultOptions { constructorTagModifier = drop 1 }) ''ICAccessFlag)
-$(deriveToJSON (defaultOptions
-                 { sumEncoding             = ObjectWithSingleField
-                 , constructorTagModifier  = camelTo2 '_' . drop 1
-                 }
-               ) ''B.JValue)
+$(deriveToJSON (defaultOptions{constructorTagModifier = drop 1}) ''CAccessFlag)
+$(deriveToJSON (defaultOptions{constructorTagModifier = drop 1}) ''FAccessFlag)
+$(deriveToJSON (defaultOptions{constructorTagModifier = drop 1}) ''MAccessFlag)
+$(deriveToJSON (defaultOptions{constructorTagModifier = drop 1}) ''ICAccessFlag)
+$( deriveToJSON
+    ( defaultOptions
+        { sumEncoding = ObjectWithSingleField
+        , constructorTagModifier = camelTo2 '_' . drop 1
+        }
+    )
+    ''B.JValue
+ )

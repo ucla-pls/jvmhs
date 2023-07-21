@@ -1,94 +1,106 @@
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Jvmhs.Data.TypeSpec where
 
 -- text
-import qualified Data.Text                     as Text
+import qualified Data.Text as Text
 
-import           SpecHelper
-import           Data.Either
+import Data.Either
+import SpecHelper
 
-import           Test.QuickCheck
+import Test.QuickCheck
 
-import qualified Data.HashMap.Strict           as HashMap
+import qualified Data.HashMap.Strict as HashMap
 
-import qualified Language.JVM                  as B
+import qualified Language.JVM as B
 
-import           Jvmhs.Data.Type
-
+import Jvmhs.Data.Type
 
 spec :: Spec
 spec = do
   describe "ClassType" $ do
-    let ct = ClassType
-          "package/Name"
-          (Just (withNoAnnotation $ ClassType "Inner" Nothing []))
-          []
+    let ct =
+          ClassType
+            "package/Name"
+            (Just (withNoAnnotation $ ClassType "Inner" Nothing []))
+            []
     it "an inner class should be inner" $ do
       classNameFromType ct `shouldBe` "package/Name$Inner"
 
     it "should produce a classname" $ do
       classTypeFromName "package/Name$Inner" `shouldBe` ct
 
-    prop "a classtype should always produce the same ClassName"
-      $ \cn -> classNameFromType (classTypeFromName cn) `shouldBe` cn
+    prop "a classtype should always produce the same ClassName" $
+      \cn -> classNameFromType (classTypeFromName cn) `shouldBe` cn
 
   describe "annotations" $ do
-    prop "getting and then setting should be id"
-      $ \(a :: Type, b :: Fun ClassName Bool) -> do
-          setTypeAnnotations (applyFun b) (getTypeAnnotations (applyFun b) a) a
-            === Right a
+    prop "getting and then setting should be id" $
+      \(a :: Type, b :: Fun ClassName Bool) -> do
+        setTypeAnnotations (applyFun b) (getTypeAnnotations (applyFun b) a) a
+          === Right a
 
     it "getting should work on this" $ do
       getTypeAnnotations
-          (const False)
-          (ReferenceType . RefClassType $ ClassType
-            "Annotations"
-            (Just (Annotated (ClassType "Annotated" Nothing []) []))
-            [ Annotated
-                (TypeArg . RefArrayType . ArrayType $ Annotated
-                  (BaseType "I")
-                  [ Annotation "Annotations$TestType"
-                               False
-                               (HashMap.fromList [("value", AInt 0)])
-                  ]
-                )
-                []
-            ]
-          )
-        `shouldBe` [ ( [ TypePathItem TPathTypeArgument 0
-                       , TypePathItem TPathInArray      0
+        (const False)
+        ( ReferenceType . RefClassType $
+            ClassType
+              "Annotations"
+              (Just (Annotated (ClassType "Annotated" Nothing []) []))
+              [ Annotated
+                  ( TypeArg . RefArrayType . ArrayType $
+                      Annotated
+                        (BaseType "I")
+                        [ Annotation
+                            "Annotations$TestType"
+                            False
+                            (HashMap.fromList [("value", AInt 0)])
+                        ]
+                  )
+                  []
+              ]
+        )
+        `shouldBe` [
+                     (
+                       [ TypePathItem TPathTypeArgument 0
+                       , TypePathItem TPathInArray 0
                        ]
-                     , Annotation "Annotations$TestType"
-                                  False
-                                  (HashMap.fromList [("value", AInt 0)])
+                     , Annotation
+                        "Annotations$TestType"
+                        False
+                        (HashMap.fromList [("value", AInt 0)])
                      )
                    ]
 
     it "should work on this example" $ do
       setTypeAnnotations
-          (const False)
-          [ ( [TypePathItem TPathTypeArgument 0, TypePathItem TPathInArray 0]
-            , Annotation "Annotations$TestType"
-                         False
-                         (HashMap.fromList [("value", AInt 0)])
-            )
-          ]
-          (ReferenceType . RefClassType $ ClassType
-            "Annotations"
-            (Just (Annotated (ClassType "Annotated" Nothing []) []))
-            [ Annotated
-                (TypeArg . RefArrayType . ArrayType $ Annotated (BaseType "I")
-                                                                []
-                )
-                []
-            ]
+        (const False)
+        [
+          ( [TypePathItem TPathTypeArgument 0, TypePathItem TPathInArray 0]
+          , Annotation
+              "Annotations$TestType"
+              False
+              (HashMap.fromList [("value", AInt 0)])
           )
+        ]
+        ( ReferenceType . RefClassType $
+            ClassType
+              "Annotations"
+              (Just (Annotated (ClassType "Annotated" Nothing []) []))
+              [ Annotated
+                  ( TypeArg . RefArrayType . ArrayType $
+                      Annotated
+                        (BaseType "I")
+                        []
+                  )
+                  []
+              ]
+        )
         `shouldSatisfy` isRight
 
 -- * Generators
@@ -98,9 +110,9 @@ genBaseType = genericArbitraryU
 
 genReferenceType :: [TypeParameter] -> Gen ReferenceType
 genReferenceType tp =
-  oneof
-    $  [RefClassType <$> genClassType tp, RefArrayType <$> genArrayType tp]
-    ++ [ RefTypeVariable <$> genTypeVariable tp | not (null tp) ]
+  oneof $
+    [RefClassType <$> genClassType tp, RefArrayType <$> genArrayType tp]
+      ++ [RefTypeVariable <$> genTypeVariable tp | not (null tp)]
 
 genReturnType :: [TypeParameter] -> Gen ReturnType
 genReturnType tp = ReturnType <$> liftArbitrary (genType tp)
@@ -108,47 +120,49 @@ genReturnType tp = ReturnType <$> liftArbitrary (genType tp)
 genThrowsType :: [TypeParameter] -> Gen ThrowsType
 genThrowsType tp =
   scale (`div` 2)
-    .  oneof
-    $  [ThrowsClass <$> genClassType tp]
-    ++ [ ThrowsTypeVariable <$> genTypeVariable tp | not (null tp) ]
+    . oneof
+    $ [ThrowsClass <$> genClassType tp]
+      ++ [ThrowsTypeVariable <$> genTypeVariable tp | not (null tp)]
 
 genClassType :: [TypeParameter] -> Gen ClassType
 genClassType tp =
-  scale (`div` 2)
-    $   ClassType
-    <$> elements ["A", "pkg/A", "a/B"]
-    <*> genInnerClassType
-    <*> listOf (genAnnotated (genTypeArgument tp))
+  scale (`div` 2) $
+    ClassType
+      <$> elements ["A", "pkg/A", "a/B"]
+      <*> genInnerClassType
+      <*> listOf (genAnnotated (genTypeArgument tp))
  where
   genInnerClassType = sized \case
     0 -> pure Nothing
     n ->
       resize (n `div` 2)
-        .   fmap Just
-        .   genAnnotated
-        $   ClassType
-        <$> elements ["In1", "In2"]
-        <*> genInnerClassType
-        <*> listOf (genAnnotated (genTypeArgument tp))
+        . fmap Just
+        . genAnnotated
+        $ ClassType
+          <$> elements ["In1", "In2"]
+          <*> genInnerClassType
+          <*> listOf (genAnnotated (genTypeArgument tp))
 
 genAnnotated :: Gen a -> Gen (Annotated a)
 genAnnotated f = scale (`div` 2) $ Annotated <$> f <*> genAnnotations
 
 genTypeArgument :: [TypeParameter] -> Gen TypeArgument
-genTypeArgument tp = scale (`div` 2) $ oneof
-  [ pure AnyTypeArg
-  , TypeArg <$> genReferenceType tp
-  , ExtendedTypeArg <$> genAnnotated (genReferenceType tp)
-  , ImplementedTypeArg <$> genAnnotated (genReferenceType tp)
-  ]
+genTypeArgument tp =
+  scale (`div` 2) $
+    oneof
+      [ pure AnyTypeArg
+      , TypeArg <$> genReferenceType tp
+      , ExtendedTypeArg <$> genAnnotated (genReferenceType tp)
+      , ImplementedTypeArg <$> genAnnotated (genReferenceType tp)
+      ]
 
 genTypeParameter :: [TypeParameter] -> Gen TypeParameter
 genTypeParameter tp =
-  scale (`div` 2)
-    $   TypeParameter
-    <$> (TypeVariableName <$> elements ["A", "B", "T"])
-    <*> liftArbitrary (genAnnotated $ genThrowsType tp)
-    <*> listOf (genAnnotated $ genThrowsType tp)
+  scale (`div` 2) $
+    TypeParameter
+      <$> (TypeVariableName <$> elements ["A", "B", "T"])
+      <*> liftArbitrary (genAnnotated $ genThrowsType tp)
+      <*> listOf (genAnnotated $ genThrowsType tp)
 
 genType :: [TypeParameter] -> Gen Type
 genType tp =
@@ -221,73 +235,74 @@ instance Arbitrary B.AbsVariableMethodId where
 instance Arbitrary B.AbsInterfaceMethodId where
   arbitrary = genericArbitraryU
 
-
 genJValue :: Gen JValue
-genJValue = oneof
-  [ VInteger <$> arbitrary
-  , VLong <$> arbitrary
-  , VFloat <$> arbitrary
-  , VDouble <$> arbitrary
-  , VString <$> elements ["", "string", "with spaces"]
-  , VMethodType <$> arbitrary
-  , VMethodHandle <$> genMethodHandle
-  ]
+genJValue =
+  oneof
+    [ VInteger <$> arbitrary
+    , VLong <$> arbitrary
+    , VFloat <$> arbitrary
+    , VDouble <$> arbitrary
+    , VString <$> elements ["", "string", "with spaces"]
+    , VMethodType <$> arbitrary
+    --    , VMethodHandle <$> genMethodHandle
+    ]
 
+-- genMethodHandle :: Gen (B.MethodHandle B.High)
+-- genMethodHandle = scale (`div` 2) $ oneof
+--   [ B.MHField <$> genericArbitraryU
+--   , B.MHMethod <$> genericArbitraryU
+--   , B.MHInterface <$> genericArbitraryU
+--   ]
 
-genMethodHandle :: Gen (B.MethodHandle B.High)
-genMethodHandle = scale (`div` 2) $ oneof
-  [ B.MHField <$> genericArbitraryU
-  , B.MHMethod <$> genericArbitraryU
-  , B.MHInterface <$> genericArbitraryU
-  ]
-
-instance Arbitrary (B.MethodHandle B.High) where
-  arbitrary = genMethodHandle
-
+-- instance Arbitrary (B.MethodHandle B.High) where
+--   arbitrary = genMethodHandle
 
 genAnnotation :: Gen Annotation
 genAnnotation =
-  scale (`div` 2)
-    $   Annotation
-    <$> elements ["an/annotations/Ano"]
-    <*> arbitrary
-    <*> genAnnotationMap
+  scale (`div` 2) $
+    Annotation
+      <$> elements ["an/annotations/Ano"]
+      <*> arbitrary
+      <*> genAnnotationMap
 
 genAnnotationWithVisibility :: Bool -> Gen Annotation
 genAnnotationWithVisibility visible =
-  scale (`div` 2)
-    $   Annotation
-    <$> elements ["an/annotations/Ano"]
-    <*> pure visible
-    <*> genAnnotationMap
+  scale (`div` 2) $
+    Annotation
+      <$> elements ["an/annotations/Ano"]
+      <*> pure visible
+      <*> genAnnotationMap
 
 genAnnotationMap :: Gen AnnotationMap
-genAnnotationMap = HashMap.fromList
-  <$> listOf ((,) <$> elements ["value", "item", "x"] <*> genAnnotationValue)
+genAnnotationMap =
+  HashMap.fromList
+    <$> listOf ((,) <$> elements ["value", "item", "x"] <*> genAnnotationValue)
 
 genAnnotations :: Gen Annotations
 genAnnotations =
-  scale (`div` 2)
-    $   (++)
-    <$> listOf (genAnnotationWithVisibility True)
-    <*> listOf (genAnnotationWithVisibility False)
+  scale (`div` 2) $
+    (++)
+      <$> listOf (genAnnotationWithVisibility True)
+      <*> listOf (genAnnotationWithVisibility False)
 
 genAnnotationValue :: Gen AnnotationValue
-genAnnotationValue = scale (`div` 2) $ oneof
-  [ AByte <$> arbitrary
-  , AChar <$> arbitrary
-  , ADouble <$> arbitrary
-  , AFloat <$> arbitrary
-  , AInt <$> arbitrary
-  , ALong <$> arbitrary
-  , AShort <$> arbitrary
-  , ABoolean <$> arbitrary
-  , AString <$> elements ["some", "wierd", "strings"]
-  , AEnum <$> arbitrary
-  , AClass <$> genericArbitraryU
-  , AAnnotation <$> ((,) <$> elements ["a", "b", "c"] <*> genAnnotationMap)
-  , AArray <$> arbitrary
-  ]
+genAnnotationValue =
+  scale (`div` 2) $
+    oneof
+      [ AByte <$> arbitrary
+      , AChar <$> arbitrary
+      , ADouble <$> arbitrary
+      , AFloat <$> arbitrary
+      , AInt <$> arbitrary
+      , ALong <$> arbitrary
+      , AShort <$> arbitrary
+      , ABoolean <$> arbitrary
+      , AString <$> elements ["some", "wierd", "strings"]
+      , AEnum <$> arbitrary
+      , AClass <$> genericArbitraryU
+      , AAnnotation <$> ((,) <$> elements ["a", "b", "c"] <*> genAnnotationMap)
+      , AArray <$> arbitrary
+      ]
 
 instance Arbitrary Annotation where
   arbitrary = genAnnotation

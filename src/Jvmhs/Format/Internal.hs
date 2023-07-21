@@ -1,38 +1,39 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 module Jvmhs.Format.Internal where
 
-import           Prelude                 hiding ( id
-                                                , (.)
-                                                )
-import           Control.Category
-import qualified Data.List                     as List
-import           Data.Maybe
-import           Data.Coerce
-import           Control.Monad
+import Control.Category
+import Control.Monad
+import Data.Coerce
+import qualified Data.List as List
+import Data.Maybe
+import Prelude hiding (
+  id,
+  (.),
+ )
 
 -- hashable
-import           Data.Hashable
+import Data.Hashable
 
 -- unordered-containers
-import qualified Data.HashMap.Strict           as HashMap
+import qualified Data.HashMap.Strict as HashMap
 
-import           Control.Lens
-
+import Control.Lens
 
 -- | Glass is a partial isomorphism it might be partial in both direction.
-type Glass s t a b
-  = forall p f . (Profunctor p, Functor f) => p a (f b) -> p s (f t)
+type Glass s t a b =
+  forall p f. (Profunctor p, Functor f) => p a (f b) -> p s (f t)
 
 type Glass' s a = Glass s s a a
 
 type AnGlass s t a b = Parts a b a (Identity b) -> Parts a b s (Identity t)
 
-data Parts a b s t =
-  Parts (s -> Validation [String] a) (b -> Validation [String] t)
+data Parts a b s t
+  = Parts (s -> Validation [String] a) (b -> Validation [String] t)
 
 instance Profunctor (Parts a b) where
   dimap f g (Parts sa bt) = Parts (sa . f) (fmap g . bt)
@@ -42,9 +43,9 @@ instance Profunctor (Parts a b) where
   rmap f (Parts sa bt) = Parts sa (fmap f . bt)
   {-# INLINE rmap #-}
 
-
--- | Validation is an Either which can collect it's faliures. This
--- is usefull when presenting this information to the user later.
+{- | Validation is an Either which can collect it's faliures. This
+ is usefull when presenting this information to the user later.
+-}
 data Validation e a
   = Success !a
   | Failure !e
@@ -55,7 +56,7 @@ makePrisms ''Validation
 -- | An either can be turned into a validation
 validateEither :: Either e a -> Validation [e] a
 validateEither = \case
-  Left  e -> Failure [e]
+  Left e -> Failure [e]
   Right a -> Success a
 
 -- | Convert a 'Validation' to an 'Either'
@@ -69,8 +70,8 @@ instance Semigroup e => Applicative (Validation e) where
   {-# INLINE pure #-}
   fa <*> a = case fa of
     Success fn -> fn <$> a
-    Failure e  -> case a of
-      Success _  -> Failure e
+    Failure e -> case a of
+      Success _ -> Failure e
       Failure e' -> Failure (e <> e')
   {-# INLINE (<*>) #-}
 
@@ -82,14 +83,15 @@ instance Semigroup e => Monad (Validation e) where
     Failure e -> Failure e
   {-# INLINE (>>=) #-}
 
--- | A Partial Isomorphism, we use them here allow convertion between the
--- two formats, while still perserving bugs. Every partial isomorphism
--- should be a valid adjunction.
--- This means that
--- >> there p . back p . there p == there p
+{- | A Partial Isomorphism, we use them here allow convertion between the
+ two formats, while still perserving bugs. Every partial isomorphism
+ should be a valid adjunction.
+ This means that
+ >> there p . back p . there p == there p
+-}
 data PartIso e a b = PartIso
   { there :: a -> Validation e b
-  , back  :: b -> Validation e a
+  , back :: b -> Validation e a
   }
 
 instance Semigroup e => Category (PartIso e) where
@@ -99,8 +101,8 @@ instance Semigroup e => Category (PartIso e) where
   {-# INLINE (.) #-}
 
 infixr 3 ***
-(***)
-  :: Semigroup e => PartIso e a c -> PartIso e b d -> PartIso e (a, b) (c, d)
+(***) ::
+  Semigroup e => PartIso e a c -> PartIso e b d -> PartIso e (a, b) (c, d)
 (***) (PartIso f1 t1) (PartIso f2 t2) =
   PartIso (\(a, b) -> (,) <$> f1 a <*> f2 b) (\(c, d) -> (,) <$> t1 c <*> t2 d)
 {-# INLINE (***) #-}
@@ -113,47 +115,48 @@ inFirst :: Semigroup e => PartIso e a c -> PartIso e (a, b) (c, b)
 inFirst f = f *** id
 {-# INLINE inFirst #-}
 
-triple
-  :: Semigroup e
-  => PartIso e a a'
-  -> PartIso e b b'
-  -> PartIso e c c'
-  -> PartIso e (a, b, c) (a', b', c')
-triple (PartIso f1 t1) (PartIso f2 t2) (PartIso f3 t3) = PartIso
-  (\(a, b, c) -> (,,) <$> f1 a <*> f2 b <*> f3 c)
-  (\(a, b, c) -> (,,) <$> t1 a <*> t2 b <*> t3 c)
+triple ::
+  Semigroup e =>
+  PartIso e a a' ->
+  PartIso e b b' ->
+  PartIso e c c' ->
+  PartIso e (a, b, c) (a', b', c')
+triple (PartIso f1 t1) (PartIso f2 t2) (PartIso f3 t3) =
+  PartIso
+    (\(a, b, c) -> (,,) <$> f1 a <*> f2 b <*> f3 c)
+    (\(a, b, c) -> (,,) <$> t1 a <*> t2 b <*> t3 c)
 
-quadruple
-  :: Semigroup e
-  => PartIso e a a'
-  -> PartIso e b b'
-  -> PartIso e c c'
-  -> PartIso e d d'
-  -> PartIso e (a, b, c, d) (a', b', c', d')
+quadruple ::
+  Semigroup e =>
+  PartIso e a a' ->
+  PartIso e b b' ->
+  PartIso e c c' ->
+  PartIso e d d' ->
+  PartIso e (a, b, c, d) (a', b', c', d')
 quadruple (PartIso f1 t1) (PartIso f2 t2) (PartIso f3 t3) (PartIso f4 t4) =
-  PartIso (\(a, b, c, d) -> (,,,) <$> f1 a <*> f2 b <*> f3 c <*> f4 d)
-          (\(a, b, c, d) -> (,,,) <$> t1 a <*> t2 b <*> t3 c <*> t4 d)
+  PartIso
+    (\(a, b, c, d) -> (,,,) <$> f1 a <*> f2 b <*> f3 c <*> f4 d)
+    (\(a, b, c, d) -> (,,,) <$> t1 a <*> t2 b <*> t3 c <*> t4 d)
 
-quintuple
-  :: Semigroup e
-  => PartIso e a a'
-  -> PartIso e b b'
-  -> PartIso e c c'
-  -> PartIso e d d'
-  -> PartIso e f f'
-  -> PartIso e (a, b, c, d, f) (a', b', c', d', f')
-quintuple (PartIso f1 t1) (PartIso f2 t2) (PartIso f3 t3) (PartIso f4 t4) (PartIso f5 t5)
-  = PartIso
+quintuple ::
+  Semigroup e =>
+  PartIso e a a' ->
+  PartIso e b b' ->
+  PartIso e c c' ->
+  PartIso e d d' ->
+  PartIso e f f' ->
+  PartIso e (a, b, c, d, f) (a', b', c', d', f')
+quintuple (PartIso f1 t1) (PartIso f2 t2) (PartIso f3 t3) (PartIso f4 t4) (PartIso f5 t5) =
+  PartIso
     (\(a, b, c, d, f) -> (,,,,) <$> f1 a <*> f2 b <*> f3 c <*> f4 d <*> f5 f)
     (\(a, b, c, d, f) -> (,,,,) <$> t1 a <*> t2 b <*> t3 c <*> t4 d <*> t5 f)
 
-
-
 introItem :: Eq x => x -> PartIso [String] () x
-introItem x = PartIso
-  (\() -> Success x)
-  (\x' -> if x' == x then Success () else Failure ["Const item is not returned"]
-  )
+introItem x =
+  PartIso
+    (\() -> Success x)
+    ( \x' -> if x' == x then Success () else Failure ["Const item is not returned"]
+    )
 {-# INLINE introItem #-}
 
 introFirst :: Semigroup e => PartIso e a ((), a)
@@ -172,7 +175,6 @@ constSecond :: Eq x => x -> PartIso [String] a (a, x)
 constSecond x = inSecond (introItem x) . introSecond
 {-# INLINE constSecond #-}
 
-
 -- | Change the direction of the partial isomorphism
 flipDirection :: PartIso e a b -> PartIso e b a
 flipDirection (PartIso t b) = PartIso b t
@@ -183,15 +185,16 @@ fromIso f t = PartIso (Success . f) (Success . t)
 
 -- | Create a partial isomorphism from an isomorphism
 fromPrism :: Prism' a b -> PartIso e (Maybe a) (Maybe b)
-fromPrism _P = fromIso
-  (\case
-    Nothing -> Nothing
-    Just a  -> preview _P a
-  )
-  (\case
-    Nothing -> Nothing
-    Just a  -> Just (review _P a)
-  )
+fromPrism _P =
+  fromIso
+    ( \case
+        Nothing -> Nothing
+        Just a -> preview _P a
+    )
+    ( \case
+        Nothing -> Nothing
+        Just a -> Just (review _P a)
+    )
 
 -- | Create a partial isomorphism from an isomorphism
 fromPrism' :: (a -> Validation e b) -> Prism' a b -> PartIso e a b
@@ -209,59 +212,64 @@ coerceFormat = fromIso coerce coerce
 isomap :: (Traversable t, Semigroup e) => PartIso e a b -> PartIso e (t a) (t b)
 isomap (PartIso f t) = PartIso (traverse f) (traverse t)
 
-
-
-
--- | Given an isomorphism from a to list of b's, then create 
--- a compression that create a 
+{- | Given an isomorphism from a to list of b's, then create
+ a compression that create a
+-}
 compressList :: Semigroup e => PartIso e a [b] -> PartIso e [a] [b]
-compressList (PartIso f t) = PartIso
-  (fmap concat . mapM f)
-  (\case
-    [] -> pure []
-    bs -> (: []) <$> t bs
-  )
+compressList (PartIso f t) =
+  PartIso
+    (fmap concat . mapM f)
+    ( \case
+        [] -> pure []
+        bs -> (: []) <$> t bs
+    )
 
--- | If a list contains no more than one element then we can convert it 
--- into a maybe. This is not checked.
+{- | If a list contains no more than one element then we can convert it
+ into a maybe. This is not checked.
+-}
 singletonList :: Semigroup e => PartIso e [a] (Maybe a)
 singletonList = fromIso listToMaybe maybeToList
 {-# INLINE singletonList #-}
 
--- | zip two lists with a function, 
+-- | zip two lists with a function,
 zipPadList :: Semigroup e => PartIso e (a, a) a -> PartIso e ([a], [a]) [a]
-zipPadList (PartIso th bk) = PartIso (\(as, bs) -> zipPad as bs)
-                                     (\xs -> List.unzip <$> mapM bk xs)
-
+zipPadList (PartIso th bk) =
+  PartIso
+    (\(as, bs) -> zipPad as bs)
+    (\xs -> List.unzip <$> mapM bk xs)
  where
-  zipPad []       []       = pure []
-  zipPad (a : as) []       = (a :) <$> zipPad as []
-  zipPad []       (b : bs) = (b :) <$> zipPad bs []
+  zipPad [] [] = pure []
+  zipPad (a : as) [] = (a :) <$> zipPad as []
+  zipPad [] (b : bs) = (b :) <$> zipPad bs []
   zipPad (a : as) (b : bs) = (:) <$> th (a, b) <*> zipPad as bs
 {-# INLINE zipPadList #-}
 
 -- | zip two lists. This requires that the lists are of equal lenght
 zipList :: Monoid e => PartIso e ([a], [b]) [(a, b)]
-zipList = PartIso
-  (\(as, bs) ->
-    if length as == length bs then pure $ List.zip as bs else Failure mempty
-  )
-  (pure . List.unzip)
+zipList =
+  PartIso
+    ( \(as, bs) ->
+        if length as == length bs then pure $ List.zip as bs else Failure mempty
+    )
+    (pure . List.unzip)
 {-# INLINE zipList #-}
 
--- | A partial isomorphism that picks the lefthand side if the 
--- right hand size is Nothing, and prints Nothing if the function 
--- is False.
+{- | A partial isomorphism that picks the lefthand side if the
+ right hand size is Nothing, and prints Nothing if the function
+ is False.
+-}
 withDefaultF :: (a -> Bool) -> PartIso e (a, Maybe a) a
-withDefaultF fn = fromIso (\(a, ma) -> fromMaybe a ma)
-                          (\a -> (a, if fn a then Just a else Nothing))
+withDefaultF fn =
+  fromIso
+    (\(a, ma) -> fromMaybe a ma)
+    (\a -> (a, if fn a then Just a else Nothing))
 
 -- | Merge formatter.
 mergeF :: (a -> Bool) -> (a -> a -> a) -> PartIso e (a, Maybe a) a
-mergeF fn t = fromIso (\(a, ma) -> maybe a (t a) ma)
-                      (\a -> (a, if fn a then Just a else Nothing))
-
-
+mergeF fn t =
+  fromIso
+    (\(a, ma) -> maybe a (t a) ma)
+    (\a -> (a, if fn a then Just a else Nothing))
 
 partitionList :: (a -> Bool) -> PartIso e [a] ([a], [a])
 partitionList p = fromIso (List.partition p) (uncurry (++))
