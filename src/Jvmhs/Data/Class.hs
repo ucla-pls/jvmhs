@@ -83,7 +83,7 @@ module Jvmhs.Data.Class (
   parameterNameAndFlags,
   parameterType,
   parameterVisible,
-  parameterAnnotations,
+  -- parameterAnnotations,
 
   -- * InnerClass
   InnerClass (..),
@@ -147,100 +147,98 @@ import Jvmhs.Data.Type
 
 -- | This is the class
 data Class = Class
-  { -- | the description of the class
-    _className' :: ClassName
-  , -- | access flags of the class
-    _classAccessFlags :: Set.Set CAccessFlag
-  , -- | the type parameters of the class
-    _classTypeParameters :: [Annotated TypeParameter]
-  , -- | the superclass of the class
-    _classSuper :: Maybe (Annotated ClassType)
-  , -- | a list of interfaces implemented by the class
-    _classInterfaces :: [Annotated ClassType]
-  , -- | a list of fields
-    _classFields :: [Field]
-  , -- | a list of methods
-    _classMethods :: [Method]
-  , -- | a map of bootstrap methods. Essentially, this is a list but the
-    -- list might not be complete.
-    _classBootstrapMethods :: IntMap.IntMap BootstrapMethod
-  , -- | maybe an enclosing class and method
-    _classEnclosingMethod :: Maybe (ClassName, Maybe MethodId)
-  , -- | a list of inner classes
-    _classInnerClasses :: [InnerClass]
-  , -- | the annotations of the class
-    _classAnnotations :: Annotations
-  , -- | the version of the class file
-    _classVersion :: Maybe (Word16, Word16)
+  { _className' :: ClassName
+  -- ^ the description of the class
+  , _classAccessFlags :: Set.Set CAccessFlag
+  -- ^ access flags of the class
+  , _classTypeParameters :: [Annotated TypeParameter]
+  -- ^ the type parameters of the class
+  , _classSuper :: Maybe (Annotated ClassType)
+  -- ^ the superclass of the class
+  , _classInterfaces :: [Annotated ClassType]
+  -- ^ a list of interfaces implemented by the class
+  , _classFields :: [Field]
+  -- ^ a list of fields
+  , _classMethods :: [Method]
+  -- ^ a list of methods
+  , _classBootstrapMethods :: IntMap.IntMap BootstrapMethod
+  -- ^ a map of bootstrap methods. Essentially, this is a list but the
+  -- list might not be complete.
+  , _classEnclosingMethod :: Maybe (ClassName, Maybe MethodId)
+  -- ^ maybe an enclosing class and method
+  , _classInnerClasses :: [InnerClass]
+  -- ^ a list of inner classes
+  , _classAnnotations :: Annotations
+  -- ^ the annotations of the class
+  , _classVersion :: Maybe (Word16, Word16)
+  -- ^ the version of the class file
   }
   deriving (Eq, Show, Generic, NFData)
 
 -- | This is the field
 data Field = Field
-  { -- | the name of the field
-    _fieldName :: !Text.Text
-  , -- | the type of the field
-    _fieldType :: !(Annotated Type)
-  , -- | the set of access flags
-    _fieldAccessFlags :: !(Set.Set FAccessFlag)
-  , -- | an optional value
-    _fieldValue :: !(Maybe JValue)
-  , -- | the annotations of the feild
-    _fieldAnnotations :: Annotations
+  { _fieldName :: !Text.Text
+  -- ^ the name of the field
+  , _fieldType :: !(Annotated Type)
+  -- ^ the type of the field
+  , _fieldAccessFlags :: !(Set.Set FAccessFlag)
+  -- ^ the set of access flags
+  , _fieldValue :: !(Maybe JValue)
+  -- ^ an optional value
+  , _fieldAnnotations :: Annotations
+  -- ^ the annotations of the feild
   }
   deriving (Eq, Show, Generic, NFData)
 
 -- | This is the method
 data Method = Method
-  { -- | the name of the method
-    _methodName :: !Text.Text
-  , -- | a method can have specific type parameters
-    _methodTypeParameters :: ![Annotated TypeParameter]
-  , -- | the method parameters
-    _methodParameters :: ![Parameter]
-  , -- | the method return type
-    _methodReturnType :: !(Annotated ReturnType)
-  , -- | the set of access flags
-    _methodAccessFlags :: !(Set.Set MAccessFlag)
-  , -- | optionally the method can contain code
-    _methodCode :: !(Maybe Code)
-  , -- | the method can have one or more exceptions
-    _methodExceptions :: ![Annotated ThrowsType]
-  , -- | the method can have annotations, these might be duplicated in the
-    -- annotation for the return type.
-    _methodAnnotations :: !Annotations
-  , -- | in case that this method is an attribute in an annotation it
-    -- is possible to assign a default value.
-    _methodDefaultAnnotation :: !(Maybe AnnotationValue)
+  { _methodName :: !Text.Text
+  -- ^ the name of the method
+  , _methodTypeParameters :: ![Annotated TypeParameter]
+  -- ^ a method can have specific type parameters
+  , _methodParameters :: ![Annotated Parameter]
+  -- ^ the method parameters
+  , _methodReturnType :: !(Annotated ReturnType)
+  -- ^ the method return type
+  , _methodAccessFlags :: !(Set.Set MAccessFlag)
+  -- ^ the set of access flags
+  , _methodCode :: !(Maybe Code)
+  -- ^ optionally the method can contain code
+  , _methodExceptions :: ![Annotated ThrowsType]
+  -- ^ the method can have one or more exceptions
+  , _methodAnnotations :: !Annotations
+  -- ^ the method can have annotations, these might be duplicated in the
+  -- annotation for the return type.
+  , _methodDefaultAnnotation :: !(Maybe AnnotationValue)
+  -- ^ in case that this method is an attribute in an annotation it
+  -- is possible to assign a default value.
   }
   deriving (Eq, Show, Generic, NFData)
 
 -- | A parameter
 data Parameter = Parameter
-  { -- | The name and access flags of the parameter as saved in the
-    -- MethodParameter attribute.
-    _parameterNameAndFlags :: !(Maybe (Text.Text, Set.Set PAccessFlag))
-  , -- | Some parameters are not visible, this means that they are displayed
-    -- in the Method Signature but is still visible in the MethodDescription.
-    _parameterVisible :: Bool
-  , -- | The type of the parameter, can have another (and the same)
-    -- annotations as the parameter itself.
-    _parameterType :: !(Annotated Type)
-  , -- | The anntoations of the parameter.
-    _parameterAnnotations :: !(Annotations)
+  { _parameterNameAndFlags :: !(Maybe (Text.Text, Set.Set PAccessFlag))
+  -- ^ The name and access flags of the parameter as saved in the
+  -- MethodParameter attribute.
+  , _parameterVisible :: Bool
+  -- ^ Some parameters are not visible, this means that they are displayed
+  -- in the Method Signature but is still visible in the MethodDescription.
+  , _parameterType :: !(Annotated Type)
+  -- ^ The type of the parameter, can have another (and the same)
+  -- annotations as the parameter itself.
   }
   deriving (Eq, Show, Generic, NFData)
 
 -- | An inner class
 data InnerClass = InnerClass
-  { -- | The name of the inner class
-    _innerClass :: ClassName
-  , -- | The name of the other class.
-    _innerOuterClass :: Maybe ClassName
-  , -- | The name of the inner class, as to be prependend to the outer class.
-    _innerClassName :: Maybe Text.Text
-  , -- | The access flags of the inner class.
-    _innerAccessFlags :: Set.Set ICAccessFlag
+  { _innerClass :: ClassName
+  -- ^ The name of the inner class
+  , _innerOuterClass :: Maybe ClassName
+  -- ^ The name of the other class.
+  , _innerClassName :: Maybe Text.Text
+  -- ^ The name of the inner class, as to be prependend to the outer class.
+  , _innerAccessFlags :: Set.Set ICAccessFlag
+  -- ^ The access flags of the inner class.
   }
   deriving (Eq, Show, Generic, NFData)
 
@@ -303,7 +301,7 @@ methodDescriptor =
   to
     ( \m ->
         MethodDescriptor
-          (m ^.. methodParameters . folded . parameterType . simpleType)
+          (m ^.. methodParameters . folded . annotatedContent . parameterType . simpleType)
           (m ^. methodReturnType . simpleType . to ReturnDescriptor)
     )
 

@@ -1,6 +1,4 @@
 {-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
@@ -64,7 +62,11 @@ methodFormat isStatic = PartIso methodThere methodBack
     let _methodName = B.mName m
     let _methodAccessFlags = B.mAccessFlags m
 
-    ((_methodTypeParameters, _methodParameters, _methodReturnType, _methodExceptions), _methodCode, _methodAnnotations, _methodDefaultAnnotation) <-
+    ( (_methodTypeParameters, _methodParameters, _methodReturnType, _methodExceptions)
+      , _methodCode
+      , _methodAnnotations
+      , _methodDefaultAnnotation
+      ) <-
       there (methodAttributesFormat isStatic) (B.mDescriptor m, B.mAttributes m)
 
     pure Method{..}
@@ -88,24 +90,24 @@ methodFormat isStatic = PartIso methodThere methodBack
         )
     pure B.Method{..}
 
-methodParametersFormat ::
-  Formatter (B.MethodParameters B.High) [B.MethodParameter B.High]
+methodParametersFormat
+  :: Formatter (B.MethodParameters B.High) [B.MethodParameter B.High]
 methodParametersFormat = coerceFormat
 {-# INLINE methodParametersFormat #-}
 
-methodAttributesFormat ::
-  (ClassName -> Bool) ->
-  Formatter
-    (B.MethodDescriptor, B.MethodAttributes B.High)
-    ( ( [Annotated TypeParameter]
-      , [Parameter]
-      , Annotated ReturnType
-      , [Annotated ThrowsType]
+methodAttributesFormat
+  :: (ClassName -> Bool)
+  -> Formatter
+      (B.MethodDescriptor, B.MethodAttributes B.High)
+      ( ( [Annotated TypeParameter]
+        , [Annotated Parameter]
+        , Annotated ReturnType
+        , [Annotated ThrowsType]
+        )
+      , Maybe Code
+      , Annotations
+      , Maybe AnnotationValue
       )
-    , Maybe Code
-    , Annotations
-    , Maybe AnnotationValue
-    )
 methodAttributesFormat isStatic =
   quadruple
     (annotateMethodTypesFormat isStatic . inSecond typeAnnotationsFormat)
@@ -149,10 +151,10 @@ methodAttributesFormat isStatic =
       let maOthers = []
       return (desc, B.MethodAttributes{..})
 
-  handleSignature ::
-    Formatter
-      ((B.MethodDescriptor, [B.Signature B.High]), [B.Exceptions B.High])
-      ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
+  handleSignature
+    :: Formatter
+        ((B.MethodDescriptor, [B.Signature B.High]), [B.Exceptions B.High])
+        ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
   handleSignature =
     methodSignatureFormat
       . ( inSecond
@@ -167,8 +169,8 @@ methodAttributesFormat isStatic =
       . inFirst
         (parameterFormat . inSecond (isomap methodParametersFormat . singletonList))
 
-  parameterFormat ::
-    Formatter ([(Bool, Type)], Maybe [B.MethodParameter B.High]) [Parameter]
+  parameterFormat
+    :: Formatter ([(Bool, Type)], Maybe [B.MethodParameter B.High]) [Parameter]
   parameterFormat =
     isomap
       ( fromIso
@@ -177,9 +179,8 @@ methodAttributesFormat isStatic =
                 (m <&> \(B.MethodParameter n a) -> (n, B.toSet a))
                 b
                 (withNoAnnotation tp)
-                []
           )
-          ( \(Parameter nt b tp _) ->
+          ( \(Parameter nt b tp) ->
               ( (b, view annotatedContent tp)
               , nt <&> \(n, a) -> B.MethodParameter n (B.BitSet a)
               )
@@ -194,8 +195,8 @@ allOrNothing :: Formatter ([a], Maybe [b]) [(a, Maybe b)]
 allOrNothing =
   PartIso
     ( \(as, bs) -> pure $ case bs of
-        Nothing -> map (,Nothing) as
-        Just bs' -> zip as (map Just bs')
+        Nothing -> fmap (,Nothing) as
+        Just bs' -> zip as (fmap Just bs')
     )
     ( \items -> do
         let (as, catMaybes -> bs) = unzip items
@@ -207,31 +208,29 @@ allOrNothing =
               else Failure ["Both Just's and Nothing's exists in list"]
     )
 
-methodSignatureFormat ::
-  Formatter
-    ((B.MethodDescriptor, Maybe B.MethodSignature), [ClassName])
-    ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
+methodSignatureFormat
+  :: Formatter
+      ((B.MethodDescriptor, Maybe B.MethodSignature), [ClassName])
+      ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
 methodSignatureFormat =
   addThrows
     . inFirst (joinem . inSecond (isomap unwrapMethodSignature))
  where
-  joinem ::
-    Formatter
-      ( B.MethodDescriptor
-      , Maybe ([TypeParameter], [Type], ReturnType, [ThrowsType])
-      )
-      ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
+  joinem
+    :: Formatter
+        ( B.MethodDescriptor
+        , Maybe ([TypeParameter], [Type], ReturnType, [ThrowsType])
+        )
+        ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
   joinem = PartIso maThere maBack
    where
     maThere (B.MethodDescriptor{..}, sig) = case sig of
       Just (tpm, tps, rt, thrws) -> do
         tps' <-
-          case sequence
-            ( zipWith
-                bindType
-                (reverse methodDescriptorArguments)
-                (reverse tps)
-            ) of
+          case zipWithM
+            bindType
+            (reverse methodDescriptorArguments)
+            (reverse tps) of
             Just tps' ->
               Success
                 ( [ (False, fromJType t)
@@ -240,7 +239,7 @@ methodSignatureFormat =
                         (length methodDescriptorArguments - length tps)
                         methodDescriptorArguments
                   ]
-                    ++ (map (True,) $ reverse tps')
+                    <> fmap (True,) (reverse tps')
                 )
             Nothing -> Failure ["Signature and parameters does not match"]
         rt' <-
@@ -249,23 +248,23 @@ methodSignatureFormat =
             Nothing ->
               Failure
                 [ "Signature and return type does not match: "
-                    ++ show methodDescriptorReturnType
-                    ++ " =/= "
-                    ++ show rt
+                    <> show methodDescriptorReturnType
+                    <> " =/= "
+                    <> show rt
                 ]
 
         pure (tpm, tps', rt', thrws)
       Nothing ->
         pure
           ( []
-          , map ((True,) . fromJType) methodDescriptorArguments
+          , fmap ((True,) . fromJType) methodDescriptorArguments
           , ReturnType
               (fmap fromJType (B.asMaybeJType methodDescriptorReturnType))
           , []
           )
 
     maBack (tpm, tps, rt, thrws) = do
-      let methodDescriptorArguments = map (toBoundJType . snd) tps
+      let methodDescriptorArguments = fmap (toBoundJType . snd) tps
       let methodDescriptorReturnType =
             B.ReturnDescriptor (fmap toBoundJType . view returnType $ rt)
       pure
@@ -276,25 +275,25 @@ methodSignatureFormat =
             && returnTypeIsSimple rt
             && all throwsTypeIsSimple thrws
             then Nothing
-            else Just (tpm, map snd (filter fst tps), rt, thrws)
+            else Just (tpm, fmap snd (filter fst tps), rt, thrws)
         )
 
-  addThrows ::
-    Formatter
-      ( ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
-      , [ClassName]
-      )
-      ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
+  addThrows
+    :: Formatter
+        ( ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
+        , [ClassName]
+        )
+        ([TypeParameter], [(Bool, Type)], ReturnType, [ThrowsType])
   addThrows = PartIso aThere aBack
    where
     aThere (a, c) =
       _4
         ( \case
-            [] -> pure $ map (ThrowsClass . classTypeFromName) c
+            [] -> pure $ fmap (ThrowsClass . classTypeFromName) c
             as ->
               if length as /= length c
                 then Failure ["Incompatable lenghts of exceptions"]
-                else case sequence $ zipWith (\cn x' -> bindThrowsType cn x') c as of
+                else case zipWithM bindThrowsType c as of
                   Just r -> Success r
                   Nothing -> Failure ["Signature and exception list does not match"]
         )
@@ -303,14 +302,14 @@ methodSignatureFormat =
       pure
         ( a
             & _4
-            %~ (\z -> if andOf (folded . to throwsTypeIsSimple) z then [] else z)
-        , map boundClassNameFromThrowsType (a ^. _4)
+              %~ (\z -> if andOf (folded . to throwsTypeIsSimple) z then [] else z)
+        , fmap boundClassNameFromThrowsType (a ^. _4)
         )
 
-  unwrapMethodSignature ::
-    Formatter
-      B.MethodSignature
-      ([TypeParameter], [Type], ReturnType, [ThrowsType])
+  unwrapMethodSignature
+    :: Formatter
+        B.MethodSignature
+        ([TypeParameter], [Type], ReturnType, [ThrowsType])
   unwrapMethodSignature = PartIso mThere mBack
    where
     mThere B.MethodSignature{..} = do
@@ -329,14 +328,14 @@ methodSignatureFormat =
 
       pure B.MethodSignature{..}
 
-parameterAnnotationsFormat ::
-  Formatter
-    ( [Parameter]
-    , ( [B.RuntimeVisibleParameterAnnotations B.High]
-      , [B.RuntimeInvisibleParameterAnnotations B.High]
+parameterAnnotationsFormat
+  :: Formatter
+      ( [Parameter]
+      , ( [B.RuntimeVisibleParameterAnnotations B.High]
+        , [B.RuntimeInvisibleParameterAnnotations B.High]
+        )
       )
-    )
-    [Parameter]
+      [Annotated Parameter]
 parameterAnnotationsFormat =
   joinParameters
     . inSecond
@@ -346,36 +345,37 @@ parameterAnnotationsFormat =
             )
       )
  where
-  joinParameters :: Formatter ([Parameter], [Annotations]) [Parameter]
+  joinParameters :: Formatter ([Parameter], [Annotations]) [Annotated Parameter]
   joinParameters =
     PartIso
       ( \(ps, an) -> case an of
-          [] -> pure ps
           _
             | length an <= length ps ->
-              pure . reverse $
-                zipWith
-                  (\p a -> p & parameterAnnotations .~ a)
-                  (reverse ps)
-                  (reverse an ++ repeat [])
+                pure . reverse $
+                  zipWith
+                    Annotated
+                    (reverse ps)
+                    (reverse an <> repeat [])
             | otherwise ->
-              Failure
-                [ "Annotation length must be smaller or equal to the number of parameters"
-                ]
+                Failure
+                  [ "Annotation length must be smaller or equal to the number of parameters"
+                  ]
       )
       ( \p ->
           let x =
-                map (view parameterAnnotations) . filter (view parameterVisible) $ p
-           in pure (p, x)
+                fmap (view annotatedAnnotations)
+                  . filter (view (annotatedContent . parameterVisible))
+                  $ p
+           in pure (fmap (^. annotatedContent) p, x)
       )
 
-  runtimeVisibleParameterAnnotationsFormat ::
-    Formatter [B.RuntimeVisibleParameterAnnotations B.High] [Annotations]
+  runtimeVisibleParameterAnnotationsFormat
+    :: Formatter [B.RuntimeVisibleParameterAnnotations B.High] [Annotations]
   runtimeVisibleParameterAnnotationsFormat =
     isomap (annotationsFormat True) . compressDeepList coerceFormat
 
-  runtimeInvisibleParameterAnnotationsFormat ::
-    Formatter [B.RuntimeInvisibleParameterAnnotations B.High] [Annotations]
+  runtimeInvisibleParameterAnnotationsFormat
+    :: Formatter [B.RuntimeInvisibleParameterAnnotations B.High] [Annotations]
   runtimeInvisibleParameterAnnotationsFormat =
     isomap (annotationsFormat False) . compressDeepList coerceFormat
 
@@ -389,21 +389,21 @@ parameterAnnotationsFormat =
             | otherwise -> (: []) <$> t bs
       )
 
-annotateMethodTypesFormat ::
-  (ClassName -> Bool) ->
-  Formatter
-    ( ([TypeParameter], [Parameter], ReturnType, [ThrowsType])
-    , [(B.MethodTypeAnnotation B.High, (TypePath, Annotation))]
-    )
-    ( [Annotated TypeParameter]
-    , [Parameter]
-    , Annotated ReturnType
-    , [Annotated ThrowsType]
-    )
+annotateMethodTypesFormat
+  :: (ClassName -> Bool)
+  -> Formatter
+      ( ([TypeParameter], [Annotated Parameter], ReturnType, [ThrowsType])
+      , [(B.MethodTypeAnnotation B.High, (TypePath, Annotation))]
+      )
+      ( [Annotated TypeParameter]
+      , [Annotated Parameter]
+      , Annotated ReturnType
+      , [Annotated ThrowsType]
+      )
 annotateMethodTypesFormat isStatic = PartIso anThere anBack
  where
   anThere ((tp, p, r, tt), mt) = do
-    let ann = fmap reverse $ Map.fromListWith (++) (map (over _2 (: [])) mt)
+    let ann = reverse <$> Map.fromListWith (++) (fmap (over _2 (: [])) mt)
 
     tpa <- validateEither . forM (zip tp [0 ..]) $ \(t, i) ->
       setTypeAnnotations
@@ -412,10 +412,11 @@ annotateMethodTypesFormat isStatic = PartIso anThere anBack
         (withNoAnnotation t)
 
     pa <- validateEither . forM (zip p [0 ..]) $ \(p', i) ->
-      p' & parameterType
-        %%~ setTypeAnnotations
-          isStatic
-          (Map.findWithDefault [] (MethodFormalParameter i) ann)
+      p'
+        & annotatedContent . parameterType
+          %%~ setTypeAnnotations
+            isStatic
+            (Map.findWithDefault [] (MethodFormalParameter i) ann)
 
     ra <-
       validateEither $
@@ -442,27 +443,27 @@ annotateMethodTypesFormat isStatic = PartIso anThere anBack
         )
       , concat
           [ concat
-              [ map (MethodThrowsClause i,) (getTypeAnnotations isStatic t)
+              [ fmap (MethodThrowsClause i,) (getTypeAnnotations isStatic t)
               | (i, t) <- zip [0 ..] tta
               ]
           , concat
-              [ map
+              [ fmap
                 (MethodTypeParameterDeclaration i,)
                 (getTypeAnnotations isStatic t)
               | (i, t) <- zip [0 ..] tpa
               ]
-          , map (MethodReturnType,) (getTypeAnnotations isStatic ra)
+          , fmap (MethodReturnType,) (getTypeAnnotations isStatic ra)
           , concat
-              [ map
+              [ fmap
                 (MethodFormalParameter i,)
-                (getTypeAnnotations isStatic . view parameterType $ t)
+                (getTypeAnnotations isStatic . view (annotatedContent . parameterType) $ t)
               | (i, t) <- zip [0 ..] pa
               ]
           ]
       )
 
-defaultAnnotationFormat ::
-  Formatter [B.AnnotationDefault B.High] (Maybe AnnotationValue)
+defaultAnnotationFormat
+  :: Formatter [B.AnnotationDefault B.High] (Maybe AnnotationValue)
 defaultAnnotationFormat =
   isomap annotationValueFormat . coerceFormat . singletonList
 
@@ -482,8 +483,8 @@ codeFormat =
     )
     ( \Code{..} -> do
         codeExceptionTable' <-
-          fmap coerce $
-            mapM (back exceptionHandlerFormat) _codeExceptionTable
+          coerce
+            <$> mapM (back exceptionHandlerFormat) _codeExceptionTable
         codeAttributes' <- back codeAttributesFormat _codeStackMap
         pure
           B.Code
@@ -495,8 +496,8 @@ codeFormat =
             }
     )
 
-codeAttributesFormat ::
-  Formatter (B.CodeAttributes B.High) (Maybe (B.StackMapTable B.High))
+codeAttributesFormat
+  :: Formatter (B.CodeAttributes B.High) (Maybe (B.StackMapTable B.High))
 codeAttributesFormat =
   PartIso
     (\B.CodeAttributes{..} -> there singletonList caStackMapTable)

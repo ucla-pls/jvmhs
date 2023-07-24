@@ -1,0 +1,39 @@
+{
+  "access": [
+    "public",
+    "interface",
+    "abstract"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [
+    {
+      "access": [
+        "public",
+        "static",
+        "final"
+      ],
+      "annotations": [],
+      "name": "a",
+      "type": "I",
+      "value": {
+        "integer": 0
+      }
+    }
+  ],
+  "inner_classes": [],
+  "interfaces": [],
+  "methods": [],
+  "name": "StaticFinal",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

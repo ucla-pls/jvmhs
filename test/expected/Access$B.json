@@ -1,0 +1,103 @@
+{
+  "access": [
+    "public",
+    "super"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [],
+  "inner_classes": [
+    {
+      "access": [
+        "cpublic",
+        "cstatic"
+      ],
+      "inner": "B",
+      "name": "Access$B",
+      "outer": "Access"
+    },
+    {
+      "access": [
+        "cpublic",
+        "cstatic"
+      ],
+      "inner": "A",
+      "name": "Access$A",
+      "outer": "Access"
+    },
+    {
+      "access": [
+        "cstatic",
+        "csynthetic"
+      ],
+      "inner": null,
+      "name": "Access$1",
+      "outer": null
+    }
+  ],
+  "interfaces": [],
+  "methods": [
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "addr": 0,
+            "off": 0,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "class": "java/lang/Object",
+            "off": 1,
+            "opc": "push",
+            "type": "R",
+            "value": null
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:(LAccess$1;)V",
+            "off": 2,
+            "opc": "invoke",
+            "reftype": "LAccess$A;"
+          },
+          {
+            "off": 5,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 1,
+        "max_stack": 2,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "<init>",
+      "parameters": [],
+      "returns": null,
+      "type_parameters": []
+    }
+  ],
+  "name": "Access$B",
+  "super": {
+    "arguments": [],
+    "inner": {
+      "arguments": [],
+      "inner": null,
+      "name": "A"
+    },
+    "name": "Access"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

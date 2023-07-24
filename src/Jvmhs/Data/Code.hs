@@ -1,4 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
+{-# HLINT ignore "Use record patterns" #-}
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -7,6 +9,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 {- |
@@ -111,6 +114,9 @@ verificationTypeInfo g (B.StackMapTable s) =
       B.AppendFrame v -> B.AppendFrame <$> traverse f v
       B.FullFrame v1 v2 -> B.FullFrame <$> traverse f v1 <*> traverse f v2
       _ -> pure ft
+
+instance FromJSON ByteCodeInst where
+  parseJSON v = fail "Not yet implemented"
 
 instance ToJSON ByteCodeInst where
   toJSON bopr =
@@ -222,9 +228,17 @@ instance ToJSON B.FieldAccess where
 instance ToJSON (B.StackMapTable B.High) where
   toJSON (B.StackMapTable a) = object ["table" .= a]
 
+instance FromJSON (B.StackMapTable B.High) where
+  parseJSON = withObject "StackMapTable" \o ->
+    B.StackMapTable <$> o .: "table"
+
 instance ToJSON (B.StackMapFrame B.High) where
   toJSON (B.StackMapFrame deltaoffset frametype) =
     object (("offset" .= deltaoffset) : getFrameDetails frametype)
+
+instance FromJSON (B.StackMapFrame B.High) where
+  parseJSON = withObject "StackMapFrame" \o ->
+    B.StackMapFrame <$> o .: "offset" <*> fail "not-yet-implemented"
 
 instance ToJSON (B.VerificationTypeInfo B.High) where
   toJSON = object . getTypeInfo
@@ -312,8 +326,7 @@ getInvocationAttributes = \case
   B.InvkStatic (B.AbsVariableMethodId b avmi) ->
     ("kind" .= String "static") : ("interface" .= b) : getInRefTypeMethod avmi
   B.InvkInterface count avmi ->
-    ["kind" .= String "interface", "count" .= count]
-      ++ getAbsInterfaceMethodId avmi
+    (["kind" .= String "interface", "count" .= count] <> getAbsInterfaceMethodId avmi)
   B.InvkDynamic invokeDynamicMethod ->
     ("kind" .= String "dynamic") : getInvokeDynamicMethod invokeDynamicMethod
 
@@ -420,5 +433,6 @@ getFrameDetails = \case
   B.FullFrame (B.SizedList a) (B.SizedList b) ->
     ["kind" .= String "full_frame", "type_list1" .= a, "type_list2" .= b]
 
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
-$(deriveToJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code)
+-- $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
+
+-- $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code)

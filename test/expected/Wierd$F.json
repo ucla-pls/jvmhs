@@ -1,0 +1,83 @@
+{
+  "access": [
+    "public",
+    "super"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [],
+  "inner_classes": [
+    {
+      "access": [
+        "cpublic",
+        "cstatic"
+      ],
+      "inner": "F",
+      "name": "Wierd$F",
+      "outer": "Wierd"
+    },
+    {
+      "access": [
+        "cpublic",
+        "cstatic"
+      ],
+      "inner": "G",
+      "name": "Wierd$F$G",
+      "outer": "Wierd$F"
+    }
+  ],
+  "interfaces": [],
+  "methods": [
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "addr": 0,
+            "off": 0,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 1,
+            "opc": "invoke",
+            "reftype": "Ljava/lang/Object;"
+          },
+          {
+            "off": 4,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 1,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "<init>",
+      "parameters": [],
+      "returns": null,
+      "type_parameters": []
+    }
+  ],
+  "name": "Wierd$F",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

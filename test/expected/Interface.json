@@ -1,0 +1,40 @@
+{
+  "access": [
+    "public",
+    "interface",
+    "abstract"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [],
+  "inner_classes": [],
+  "interfaces": [],
+  "methods": [
+    {
+      "access": [
+        "public",
+        "abstract"
+      ],
+      "annotations": [],
+      "code": null,
+      "default": null,
+      "exceptions": [],
+      "name": "method4",
+      "parameters": [],
+      "returns": null,
+      "type_parameters": []
+    }
+  ],
+  "name": "Interface",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

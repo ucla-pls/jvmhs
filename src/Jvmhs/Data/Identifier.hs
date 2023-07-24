@@ -97,18 +97,19 @@ import qualified Data.Csv as Csv
 
 -- bytestring
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as C
 
 -- hashable
 import Data.Hashable
 
 -- base
-
+import Data.Char (toLower)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe
 import qualified Data.Text as Text
 
 -- jvm-binary
+
+import qualified Data.Text.Encoding as Text
 import Language.JVM.AccessFlag
 import qualified Language.JVM.Constant as B
 import Language.JVM.TextSerializable
@@ -403,23 +404,40 @@ instance FromJSONKey ClassName where
 instance ToJSON FieldDescriptor where
   toJSON = String . serialize
 
+instance FromJSON FieldDescriptor where
+  parseJSON = withText "FieldDescriptor" (parserFromEither . deserialize)
+
 instance ToJSON MethodDescriptor where
   toJSON = String . serialize
 
+instance FromJSON MethodDescriptor where
+  parseJSON = withText "MethodDescriptor" (parserFromEither . deserialize)
+
+-- | TODO we should not be deriving these classes.
 instance ToJSON BS.ByteString where
-  toJSON = String . Text.pack . C.unpack
+  toJSON = String . Text.decodeUtf8
+
+instance FromJSON BS.ByteString where
+  parseJSON = withText "VString" (pure . Text.encodeUtf8)
 
 instance ToJSON ReturnDescriptor where
   toJSON = String . serialize
 
+instance FromJSON ReturnDescriptor where
+  parseJSON = withText "ReturnDescriptor" (parserFromEither . deserialize)
+
 instance ToJSON (B.MethodHandle B.High) where
   toJSON _ = String "MethodHandle"
 
-$(deriveToJSON (defaultOptions{constructorTagModifier = drop 1}) ''CAccessFlag)
-$(deriveToJSON (defaultOptions{constructorTagModifier = drop 1}) ''FAccessFlag)
-$(deriveToJSON (defaultOptions{constructorTagModifier = drop 1}) ''MAccessFlag)
-$(deriveToJSON (defaultOptions{constructorTagModifier = drop 1}) ''ICAccessFlag)
-$( deriveToJSON
+instance FromJSON (B.MethodHandle B.High) where
+  parseJSON _ = fail "Not Yet Implemented"
+
+$(deriveJSON (defaultOptions{constructorTagModifier = fmap toLower . drop 1}) ''CAccessFlag)
+$(deriveJSON (defaultOptions{constructorTagModifier = fmap toLower . drop 1}) ''FAccessFlag)
+$(deriveJSON (defaultOptions{constructorTagModifier = fmap toLower . drop 1}) ''MAccessFlag)
+$(deriveJSON (defaultOptions{constructorTagModifier = fmap toLower . drop 1}) ''PAccessFlag)
+$(deriveJSON (defaultOptions{constructorTagModifier = fmap toLower . drop 1}) ''ICAccessFlag)
+$( deriveJSON
     ( defaultOptions
         { sumEncoding = ObjectWithSingleField
         , constructorTagModifier = camelTo2 '_' . drop 1

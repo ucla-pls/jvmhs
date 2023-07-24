@@ -1,0 +1,92 @@
+{
+  "access": [
+    "public",
+    "super"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [],
+  "inner_classes": [
+    {
+      "access": [
+        "cpublic",
+        "cstatic"
+      ],
+      "inner": "C",
+      "name": "DeepSignature$C",
+      "outer": "DeepSignature"
+    },
+    {
+      "access": [
+        "cpublic"
+      ],
+      "inner": "D",
+      "name": "DeepSignature$C$D",
+      "outer": "DeepSignature$C"
+    }
+  ],
+  "interfaces": [],
+  "methods": [
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "addr": 0,
+            "off": 0,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 1,
+            "opc": "invoke",
+            "reftype": "Ljava/lang/Object;"
+          },
+          {
+            "off": 4,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 1,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "<init>",
+      "parameters": [],
+      "returns": null,
+      "type_parameters": []
+    }
+  ],
+  "name": "DeepSignature$C",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [
+    {
+      "class_bound": {
+        "arguments": [],
+        "inner": null,
+        "name": "java/lang/Object"
+      },
+      "interface_bound": [],
+      "name": "T"
+    }
+  ],
+  "version": [
+    52,
+    0
+  ]
+}

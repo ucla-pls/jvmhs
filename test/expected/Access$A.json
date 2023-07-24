@@ -1,0 +1,136 @@
+{
+  "access": [
+    "public",
+    "super"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [],
+  "inner_classes": [
+    {
+      "access": [
+        "cstatic",
+        "csynthetic"
+      ],
+      "inner": null,
+      "name": "Access$1",
+      "outer": null
+    },
+    {
+      "access": [
+        "cpublic",
+        "cstatic"
+      ],
+      "inner": "A",
+      "name": "Access$A",
+      "outer": "Access"
+    }
+  ],
+  "interfaces": [],
+  "methods": [
+    {
+      "access": [
+        "private"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "addr": 0,
+            "off": 0,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 1,
+            "opc": "invoke",
+            "reftype": "Ljava/lang/Object;"
+          },
+          {
+            "off": 4,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 1,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "<init>",
+      "parameters": [],
+      "returns": null,
+      "type_parameters": []
+    },
+    {
+      "access": [
+        "synthetic"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "addr": 0,
+            "off": 0,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 1,
+            "opc": "invoke",
+            "reftype": "LAccess$A;"
+          },
+          {
+            "off": 4,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 2,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "<init>",
+      "parameters": [
+        {
+          "name": null,
+          "type": {
+            "arguments": [],
+            "inner": {
+              "arguments": [],
+              "inner": null,
+              "name": "1"
+            },
+            "name": "Access"
+          },
+          "visible": true
+        }
+      ],
+      "returns": null,
+      "type_parameters": []
+    }
+  ],
+  "name": "Access$A",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

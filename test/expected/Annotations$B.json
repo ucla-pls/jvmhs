@@ -1,0 +1,100 @@
+{
+  "access": [
+    "public",
+    "interface",
+    "abstract",
+    "annotation"
+  ],
+  "annotations": [
+    {
+      "runtime_visible": true,
+      "type": "java/lang/annotation/Target",
+      "values": {
+        "value": {
+          "contents": [
+            {
+              "contents": {
+                "const": "FIELD",
+                "type": "Ljava/lang/annotation/ElementType;"
+              },
+              "tag": "AEnum"
+            },
+            {
+              "contents": {
+                "const": "TYPE",
+                "type": "Ljava/lang/annotation/ElementType;"
+              },
+              "tag": "AEnum"
+            },
+            {
+              "contents": {
+                "const": "PARAMETER",
+                "type": "Ljava/lang/annotation/ElementType;"
+              },
+              "tag": "AEnum"
+            },
+            {
+              "contents": {
+                "const": "TYPE_USE",
+                "type": "Ljava/lang/annotation/ElementType;"
+              },
+              "tag": "AEnum"
+            }
+          ],
+          "tag": "AArray"
+        }
+      }
+    }
+  ],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [],
+  "inner_classes": [
+    {
+      "access": [
+        "cpublic",
+        "cstatic",
+        "cinterface",
+        "cabstract",
+        "cannotation"
+      ],
+      "inner": "B",
+      "name": "Annotations$B",
+      "outer": "Annotations"
+    }
+  ],
+  "interfaces": [
+    {
+      "arguments": [],
+      "inner": null,
+      "name": "java/lang/annotation/Annotation"
+    }
+  ],
+  "methods": [
+    {
+      "access": [
+        "public",
+        "abstract"
+      ],
+      "annotations": [],
+      "code": null,
+      "default": null,
+      "exceptions": [],
+      "name": "value",
+      "parameters": [],
+      "returns": "I",
+      "type_parameters": []
+    }
+  ],
+  "name": "Annotations$B",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

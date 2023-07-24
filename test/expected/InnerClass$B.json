@@ -1,0 +1,123 @@
+{
+  "access": [
+    "public",
+    "super"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [
+    {
+      "access": [
+        "final",
+        "synthetic"
+      ],
+      "annotations": [],
+      "name": "this$0",
+      "type": {
+        "arguments": [],
+        "inner": null,
+        "name": "InnerClass"
+      },
+      "value": null
+    }
+  ],
+  "inner_classes": [
+    {
+      "access": [
+        "cpublic"
+      ],
+      "inner": "B",
+      "name": "InnerClass$B",
+      "outer": "InnerClass"
+    }
+  ],
+  "interfaces": [],
+  "methods": [
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "addr": 0,
+            "off": 0,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "addr": 1,
+            "off": 1,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "class": "InnerClass$B",
+            "field": "this$0:LInnerClass;",
+            "off": 2,
+            "opc": "put",
+            "static": false
+          },
+          {
+            "addr": 0,
+            "off": 5,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 6,
+            "opc": "invoke",
+            "reftype": "Ljava/lang/Object;"
+          },
+          {
+            "off": 9,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 2,
+        "max_stack": 2,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "<init>",
+      "parameters": [
+        {
+          "name": [
+            "this$0",
+            [
+              "final",
+              "mandated"
+            ]
+          ],
+          "type": {
+            "arguments": [],
+            "inner": null,
+            "name": "InnerClass"
+          },
+          "visible": true
+        }
+      ],
+      "returns": null,
+      "type_parameters": []
+    }
+  ],
+  "name": "InnerClass$B",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "access": [
+    "public",
+    "interface",
+    "abstract"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [],
+  "inner_classes": [],
+  "interfaces": [],
+  "methods": [
+    {
+      "access": [
+        "public",
+        "abstract"
+      ],
+      "annotations": [],
+      "code": null,
+      "default": null,
+      "exceptions": [],
+      "name": "calculate0",
+      "parameters": [
+        {
+          "name": [
+            "a",
+            []
+          ],
+          "type": "Z",
+          "visible": true
+        }
+      ],
+      "returns": "I",
+      "type_parameters": []
+    }
+  ],
+  "name": "ItfcParent",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

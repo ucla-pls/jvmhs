@@ -28,7 +28,7 @@ extra-source-files:
 dependencies:
   - base >= 4.10 && < 4.18
   - jvm-binary >= 0.6.0 && < 0.12.0
-  - aeson
+  - aeson 
   - attoparsec
   - binary
   - bytestring
@@ -50,6 +50,7 @@ dependencies:
   - unordered-containers
   - vector
   - zip-archive
+  - template-haskell
 
 library:
   source-dirs: src
@@ -70,5 +71,6 @@ tests:
       - hspec-discover
       - hspec-expectations-pretty-diff
       - generic-random
+      - typed-process
       - HUnit >= 1.6.0.0 
       - nicify-lib >= 1.0.1

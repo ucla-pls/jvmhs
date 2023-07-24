@@ -1,13 +1,13 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -18,6 +18,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {- |
 Module : Jvmhs.Data.Type
@@ -215,6 +216,11 @@ import qualified Data.Text as Text
 import Control.Lens hiding ((.=))
 
 -- jvm-binary
+
+import Data.Aeson
+import qualified Data.ByteString as BS
+import Data.String (IsString)
+import qualified Data.Text.Encoding as Text
 import qualified Language.JVM as B
 import qualified Language.JVM.Attribute.Annotations as B
 import Language.JVM.Type
@@ -256,13 +262,15 @@ data ClassType = ClassType
 newtype ArrayType = ArrayType
   { _arrayType :: Annotated Type
   }
-  deriving (Show, Eq, Generic, NFData)
+  deriving (Show, Eq, Generic)
+  deriving newtype (NFData)
 
 -- | A Return type is a type or void.
 newtype ReturnType = ReturnType
   { _returnType :: Maybe Type
   }
-  deriving (Show, Eq, Generic, NFData)
+  deriving (Show, Eq, Generic)
+  deriving newtype (NFData)
 
 data Type
   = ReferenceType !ReferenceType
@@ -297,7 +305,8 @@ unboundTypeVariable = flip TypeVariable "java/lang/Object"
 newtype TypeVariableName = TypeVariableName
   { _unTypeVariableName :: Text.Text
   }
-  deriving (Show, Eq, Generic, NFData)
+  deriving (Show, Eq, Generic)
+  deriving newtype (NFData, ToJSON, FromJSON)
 
 -- | An annotation is a map of names to values.
 data Annotation = Annotation
@@ -366,14 +375,13 @@ makeLenses ''Annotated
 -}
 classNameFromType :: ClassType -> ClassName
 classNameFromType ct =
-  fromRight (error $ "Unexpected behaviour, please report a bug: " ++ show ct) $
+  fromRight (error ("Unexpected behaviour, please report a bug: " <> show ct)) $
     B.textCls (Text.intercalate "$" $ nameOf ct)
  where
   nameOf t =
     t
       ^. classTypeName
-      : maybe
-        []
+      : foldMap
         nameOf
         (t ^? classTypeInner . _Just . annotatedContent)
 
@@ -390,7 +398,7 @@ boundClassNameFromThrowsType =
   either (view typeVariableBound) id . classNameFromThrowsType
 
 -- | Extend a ClassType with an inner classType.
-extendClassType :: (Annotated ClassType) -> ClassType -> ClassType
+extendClassType :: Annotated ClassType -> ClassType -> ClassType
 extendClassType ct =
   classTypeInner
     %~ ( Just . \case
@@ -572,13 +580,12 @@ setTypeAnnotations isStatic items a =
    in case Map.toList $
         m
           Map.\\ Map.fromList
-            ( fmap (view (_1 . to (,()))) $
-                itoListOf (typeAnnotations isStatic) a
+            ( view (_1 . to (,())) <$> itoListOf (typeAnnotations isStatic) a
             ) of
         [] ->
           Right $
             a
-              & (typeAnnotations isStatic)
+              & typeAnnotations isStatic
                 .@~ (\k -> reverse $ Map.findWithDefault [] k m)
         as -> Left $ "The type does not have the paths " <> show as
 
@@ -630,7 +637,7 @@ instance HasTypeAnnotations ClassType where
       Just ict
         | isStatic (B.unsafeTextCls icn) -> do
             nested <- (annotatedContent . go icn) afb ict
-            pure $ ClassType _classTypeName (Just nested) (_classTypeArguments)
+            pure $ ClassType _classTypeName (Just nested) _classTypeArguments
         | otherwise -> do
             nested <-
               reindexed

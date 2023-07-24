@@ -4,17 +4,17 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 39bdc0e0101ea730e7498a38877cf4d9a55dd89826e3c23968f2fc78534d5890
+-- hash: 5343e24eb2e4dd824e6700ff13edfae9f4026b3a443f66c95e675ca2d9123f4f
 
 name:           jvmhs
-version:        0.1.1
+version:        0.2.0
 synopsis:       A library for reading Java class-files
 description:    A library to sematically read a class from a file.
 category:       Language, Java, JVM
 homepage:       https://github.com/ucla-pls/jvmhs#readme
 bug-reports:    https://github.com/ucla-pls/jvmhs/issues
 author:         Christian Gram Kalhauge
-maintainer:     Christian Gram Kalhauge <kalhauge@cs.ucla.edu>
+maintainer:     Christian Gram Kalhauge <chrg@dtu.dk>
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -97,6 +97,7 @@ library
       Jvmhs.Format.ClassFile.Type
       Jvmhs.Format.Internal
       Jvmhs.Format.Json
+      Jvmhs.Format.JsonTH
       Jvmhs.Inspection.ClassNames
       Jvmhs.Transform.Stub
       Jvmhs.TypeCheck
@@ -125,6 +126,7 @@ library
     , mtl
     , primitive
     , process
+    , template-haskell
     , text
     , transformers
     , unordered-containers
@@ -139,6 +141,7 @@ test-suite jvmhs-test
       Jvmhs.Analysis.HierarchySpec
       Jvmhs.Data.TypeSpec
       Jvmhs.Format.ClassFileSpec
+      Jvmhs.Format.JsonSpec
       Jvmhs.Inspection.ClassNamesSpec
       Jvmhs.Transform.StubSpec
       Jvmhs.TypeCheckSpec
@@ -177,8 +180,10 @@ test-suite jvmhs-test
     , primitive
     , process
     , tasty
+    , template-haskell
     , text
     , transformers
+    , typed-process
     , unordered-containers
     , vector
     , zip-archive

@@ -1,0 +1,473 @@
+{
+  "access": [
+    "public",
+    "super"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [
+    {
+      "access": [
+        "static"
+      ],
+      "annotations": [],
+      "name": "x",
+      "type": "I",
+      "value": null
+    },
+    {
+      "access": [
+        "static"
+      ],
+      "annotations": [],
+      "name": "y",
+      "type": "I",
+      "value": null
+    }
+  ],
+  "inner_classes": [],
+  "interfaces": [
+    {
+      "arguments": [],
+      "inner": null,
+      "name": "Itfc"
+    },
+    {
+      "arguments": [],
+      "inner": null,
+      "name": "Itfc2"
+    }
+  ],
+  "methods": [
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "addr": 0,
+            "off": 0,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 1,
+            "opc": "invoke",
+            "reftype": "Ljava/lang/Object;"
+          },
+          {
+            "off": 4,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 1,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "<init>",
+      "parameters": [],
+      "returns": null,
+      "type_parameters": []
+    },
+    {
+      "access": [
+        "public",
+        "static"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "off": 0,
+            "opc": "new",
+            "type": "SimpleI"
+          },
+          {
+            "off": 3,
+            "opc": "dup",
+            "size": 1
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 4,
+            "opc": "invoke",
+            "reftype": "LSimpleI;"
+          },
+          {
+            "kind": "virtual",
+            "method": "useX:()I",
+            "off": 7,
+            "opc": "invoke",
+            "reftype": "LSimpleI;"
+          },
+          {
+            "off": 10,
+            "opc": "pop",
+            "size": 1
+          },
+          {
+            "off": 11,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 1,
+        "max_stack": 2,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "main",
+      "parameters": [
+        {
+          "name": [
+            "argv",
+            []
+          ],
+          "type": {
+            "arguments": [],
+            "inner": null,
+            "name": "java/lang/String"
+          },
+          "visible": true
+        }
+      ],
+      "returns": null,
+      "type_parameters": []
+    },
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "class": "java/lang/System",
+            "field": "out:Ljava/io/PrintStream;",
+            "off": 0,
+            "opc": "get",
+            "static": true
+          },
+          {
+            "class": "SimpleI",
+            "field": "x:I",
+            "off": 3,
+            "opc": "get",
+            "static": true
+          },
+          {
+            "kind": "virtual",
+            "method": "println:(I)V",
+            "off": 6,
+            "opc": "invoke",
+            "reftype": "Ljava/io/PrintStream;"
+          },
+          {
+            "off": 9,
+            "opc": "new",
+            "type": "SimpleI"
+          },
+          {
+            "off": 12,
+            "opc": "dup",
+            "size": 1
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 13,
+            "opc": "invoke",
+            "reftype": "LSimpleI;"
+          },
+          {
+            "addr": 1,
+            "off": 16,
+            "opc": "store",
+            "type": "R"
+          },
+          {
+            "off": 17,
+            "opc": "new",
+            "type": "SimpleI"
+          },
+          {
+            "off": 20,
+            "opc": "dup",
+            "size": 1
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 21,
+            "opc": "invoke",
+            "reftype": "LSimpleI;"
+          },
+          {
+            "addr": 2,
+            "off": 24,
+            "opc": "store",
+            "type": "R"
+          },
+          {
+            "addr": 2,
+            "off": 25,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "off": 26,
+            "opc": "push",
+            "type": "I",
+            "value": 0
+          },
+          {
+            "count": 2,
+            "kind": "interface",
+            "method": "calculate0:(Z)I",
+            "off": 27,
+            "opc": "invoke",
+            "reftype": "LItfcParent;"
+          },
+          {
+            "off": 32,
+            "opc": "pop",
+            "size": 1
+          },
+          {
+            "addr": 1,
+            "off": 33,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "off": 34,
+            "opc": "push",
+            "type": "I",
+            "value": 1
+          },
+          {
+            "count": 2,
+            "kind": "interface",
+            "method": "calculate:(Z)I",
+            "off": 35,
+            "opc": "invoke",
+            "reftype": "LItfc;"
+          },
+          {
+            "off": 40,
+            "opc": "return",
+            "type": "I"
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 3,
+        "max_stack": 2,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "useX",
+      "parameters": [],
+      "returns": "I",
+      "type_parameters": []
+    },
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "off": 0,
+            "opc": "push",
+            "type": "I",
+            "value": 2
+          },
+          {
+            "off": 1,
+            "opc": "return",
+            "type": "I"
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 2,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "calculate0",
+      "parameters": [
+        {
+          "name": [
+            "a",
+            []
+          ],
+          "type": "Z",
+          "visible": true
+        }
+      ],
+      "returns": "I",
+      "type_parameters": []
+    },
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "off": 0,
+            "opc": "push",
+            "type": "I",
+            "value": 2
+          },
+          {
+            "off": 1,
+            "opc": "return",
+            "type": "I"
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 2,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "calculate",
+      "parameters": [
+        {
+          "name": [
+            "a",
+            []
+          ],
+          "type": "Z",
+          "visible": true
+        }
+      ],
+      "returns": "I",
+      "type_parameters": []
+    },
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "off": 0,
+            "opc": "push",
+            "type": "I",
+            "value": 2
+          },
+          {
+            "off": 1,
+            "opc": "return",
+            "type": "I"
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 2,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "calculate2",
+      "parameters": [
+        {
+          "name": [
+            "a",
+            []
+          ],
+          "type": "Z",
+          "visible": true
+        }
+      ],
+      "returns": "I",
+      "type_parameters": []
+    },
+    {
+      "access": [
+        "static"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "off": 0,
+            "opc": "push",
+            "type": "I",
+            "value": 0
+          },
+          {
+            "class": "SimpleI",
+            "field": "x:I",
+            "off": 1,
+            "opc": "put",
+            "static": true
+          },
+          {
+            "off": 4,
+            "opc": "push",
+            "type": "I",
+            "value": 0
+          },
+          {
+            "class": "SimpleI",
+            "field": "y:I",
+            "off": 5,
+            "opc": "put",
+            "static": true
+          },
+          {
+            "off": 8,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 0,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "<clinit>",
+      "parameters": [],
+      "returns": null,
+      "type_parameters": []
+    }
+  ],
+  "name": "SimpleI",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

@@ -1,17 +1,12 @@
 {-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -103,7 +98,7 @@ classNamesOfMethod =
     [ methodTypeParameters
         . folded
         . classNamesOfAnnotated classNamesOfTypeParameter
-    , methodParameters . folded . classNamesOfParameter
+    , methodParameters . folded . classNamesOfAnnotated classNamesOfParameter
     , methodReturnType . classNamesOfAnnotated classNamesOfReturnType
     , methodCode . _Just . classNamesOfCode
     , methodExceptions . folded . classNamesOfAnnotated classNamesOfThrowsType
@@ -126,7 +121,6 @@ classNamesOfParameter :: ClassNamer Parameter
 classNamesOfParameter =
   fold
     [ parameterType . classNamesOfAnnotated classNamesOfType
-    , parameterAnnotations . folded . classNamesOfAnnotation
     ]
 
 instance HasClassNames InnerClass where

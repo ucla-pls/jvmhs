@@ -1,0 +1,347 @@
+{
+  "access": [
+    "public",
+    "super"
+  ],
+  "annotations": [],
+  "bootstrap_methods": [],
+  "enclosing_method": null,
+  "fields": [
+    {
+      "access": [
+        "public",
+        "static"
+      ],
+      "annotations": [],
+      "name": "x",
+      "type": {
+        "arguments": [],
+        "inner": {
+          "arguments": [],
+          "inner": {
+            "arguments": [],
+            "inner": {
+              "annotations": [
+                {
+                  "runtime_visible": false,
+                  "type": "Wierd$Ann",
+                  "values": {}
+                }
+              ],
+              "arguments": [
+                null
+              ],
+              "inner": null,
+              "name": "E"
+            },
+            "name": "D"
+          },
+          "name": "C"
+        },
+        "name": "Wierd"
+      },
+      "value": null
+    },
+    {
+      "access": [
+        "public",
+        "static"
+      ],
+      "annotations": [],
+      "name": "y",
+      "type": {
+        "annotations": [
+          {
+            "runtime_visible": false,
+            "type": "Wierd$Ann",
+            "values": {}
+          }
+        ],
+        "arguments": [],
+        "inner": {
+          "arguments": [],
+          "inner": {
+            "arguments": [],
+            "inner": {
+              "arguments": [
+                null
+              ],
+              "inner": null,
+              "name": "H"
+            },
+            "name": "G"
+          },
+          "name": "F"
+        },
+        "name": "Wierd"
+      },
+      "value": null
+    }
+  ],
+  "inner_classes": [
+    {
+      "access": [
+        "cpublic",
+        "cstatic"
+      ],
+      "inner": "F",
+      "name": "Wierd$F",
+      "outer": "Wierd"
+    },
+    {
+      "access": [
+        "cpublic"
+      ],
+      "inner": "C",
+      "name": "Wierd$C",
+      "outer": "Wierd"
+    },
+    {
+      "access": [
+        "cpublic"
+      ],
+      "inner": "Y",
+      "name": "Wierd$Y",
+      "outer": "Wierd"
+    },
+    {
+      "access": [
+        "cpublic"
+      ],
+      "inner": "X",
+      "name": "Wierd$X",
+      "outer": "Wierd"
+    },
+    {
+      "access": [
+        "cpublic",
+        "cstatic",
+        "cinterface",
+        "cabstract",
+        "cannotation"
+      ],
+      "inner": "Ann",
+      "name": "Wierd$Ann",
+      "outer": "Wierd"
+    },
+    {
+      "access": [
+        "cpublic"
+      ],
+      "inner": "D",
+      "name": "Wierd$C$D",
+      "outer": "Wierd$C"
+    },
+    {
+      "access": [
+        "cpublic"
+      ],
+      "inner": "E",
+      "name": "Wierd$C$D$E",
+      "outer": "Wierd$C$D"
+    },
+    {
+      "access": [
+        "cpublic",
+        "cstatic"
+      ],
+      "inner": "G",
+      "name": "Wierd$F$G",
+      "outer": "Wierd$F"
+    },
+    {
+      "access": [
+        "cpublic",
+        "cstatic",
+        "cinterface",
+        "cabstract"
+      ],
+      "inner": "H",
+      "name": "Wierd$F$G$H",
+      "outer": "Wierd$F$G"
+    }
+  ],
+  "interfaces": [],
+  "methods": [
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "addr": 0,
+            "off": 0,
+            "opc": "load",
+            "type": "R"
+          },
+          {
+            "interface": false,
+            "kind": "special",
+            "method": "<init>:()V",
+            "off": 1,
+            "opc": "invoke",
+            "reftype": "Ljava/lang/Object;"
+          },
+          {
+            "off": 4,
+            "opc": "return",
+            "type": null
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 1,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "<init>",
+      "parameters": [],
+      "returns": null,
+      "type_parameters": []
+    },
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "class": "java/lang/Object",
+            "off": 0,
+            "opc": "push",
+            "type": "R",
+            "value": null
+          },
+          {
+            "off": 1,
+            "opc": "return",
+            "type": "R"
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 1,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "m",
+      "parameters": [],
+      "returns": {
+        "arguments": [],
+        "inner": {
+          "arguments": [],
+          "inner": {
+            "arguments": [],
+            "inner": {
+              "annotations": [
+                {
+                  "runtime_visible": false,
+                  "type": "Wierd$Ann",
+                  "values": {}
+                }
+              ],
+              "arguments": [],
+              "inner": null,
+              "name": "E"
+            },
+            "name": "D"
+          },
+          "name": "C"
+        },
+        "name": "Wierd"
+      },
+      "type_parameters": [
+        {
+          "class_bound": {
+            "arguments": [],
+            "inner": null,
+            "name": "java/lang/Object"
+          },
+          "interface_bound": [],
+          "name": "T"
+        }
+      ]
+    },
+    {
+      "access": [
+        "public"
+      ],
+      "annotations": [],
+      "code": {
+        "byte_code": [
+          {
+            "class": "java/lang/Object",
+            "off": 0,
+            "opc": "push",
+            "type": "R",
+            "value": null
+          },
+          {
+            "off": 1,
+            "opc": "return",
+            "type": "R"
+          }
+        ],
+        "exceptions": [],
+        "max_locals": 1,
+        "max_stack": 1,
+        "stack_map": null
+      },
+      "default": null,
+      "exceptions": [],
+      "name": "n",
+      "parameters": [],
+      "returns": {
+        "annotations": [
+          {
+            "runtime_visible": false,
+            "type": "Wierd$Ann",
+            "values": {}
+          }
+        ],
+        "arguments": [],
+        "inner": {
+          "arguments": [],
+          "inner": {
+            "arguments": [],
+            "inner": {
+              "arguments": [],
+              "inner": null,
+              "name": "H"
+            },
+            "name": "G"
+          },
+          "name": "F"
+        },
+        "name": "Wierd"
+      },
+      "type_parameters": [
+        {
+          "class_bound": {
+            "arguments": [],
+            "inner": null,
+            "name": "java/lang/Object"
+          },
+          "interface_bound": [],
+          "name": "T"
+        }
+      ]
+    }
+  ],
+  "name": "Wierd",
+  "super": {
+    "arguments": [],
+    "inner": null,
+    "name": "java/lang/Object"
+  },
+  "type_params": [],
+  "version": [
+    52,
+    0
+  ]
+}

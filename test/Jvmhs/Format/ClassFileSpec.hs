@@ -6,7 +6,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -134,7 +133,7 @@ spec_field = describe "fieldFormat" $ do
   genField = do
     _fieldName <- pure "field"
     _fieldType <- genAnnotated (genType [])
-    _fieldAccessFlags <- pure (Set.empty)
+    _fieldAccessFlags <- pure Set.empty
     _fieldValue <- pure Nothing
     _fieldAnnotations <- genAnnotations
     pure Field{..}
@@ -147,7 +146,7 @@ spec_code = describe "codeFormat" $ do
     _codeMaxStack <- arbitrary
     _codeMaxLocals <- arbitrary
     _codeExceptionTable <- listOf genExceptionHandler
-    _codeByteCode <- V.fromList <$> pure []
+    _codeByteCode <- pure (V.fromList [])
     _codeStackMap <- liftArbitrary genStackMap
     pure Code{..}
 
@@ -166,7 +165,7 @@ instance Arbitrary (VerificationTypeInfo B.High) where
 spec_parameterAnnotations :: Spec
 spec_parameterAnnotations = describe "parameterAnnotationsFormat" $ do
   test_formatter
-    (listOf (genParameter []))
+    (listOf (genAnnotatedParameter []))
     (flipDirection parameterAnnotationsFormat)
 
 spec_annotateMethodTypes :: Spec
@@ -178,7 +177,7 @@ spec_annotateMethodTypes = describe "annotateMethodTypesFormat" $ do
   genMethodTypes = do
     tts <- listOf (genTypeParameter [])
     tpa <- listOf (genAnnotated $ genTypeParameter tts)
-    pa <- listOf (genParameter tts)
+    pa <- listOf (genAnnotatedParameter tts)
     ra <- genAnnotated (genReturnType tts)
     tta <- listOf (genAnnotated (genThrowsType tts))
     pure (tpa, pa, ra, tta)
@@ -196,7 +195,7 @@ spec_methodAttributes = describe "methodAttributesFormat" $ do
 
     let tparams = (map (view annotatedContent) tp ++ clsparam)
 
-    parm <- listOf (genParameter tparams)
+    parm <- listOf (genAnnotatedParameter tparams)
     rt <- genAnnotated (genReturnType tparams)
     excp <- listOf (genAnnotated (genThrowsType tparams))
     code <- pure Nothing
@@ -216,7 +215,7 @@ spec_method = describe "methodFormat" $ do
     let params = map (view annotatedContent) _methodTypeParameters ++ clsparam
 
     _methodName <- pure "method"
-    _methodParameters <- listOf (genParameter params)
+    _methodParameters <- listOf (genAnnotatedParameter params)
     _methodReturnType <- genAnnotated (genReturnType params)
     _methodAccessFlags <- pure (Set.empty)
     _methodCode <- pure Nothing
@@ -422,6 +421,15 @@ spec_testclasses = do
       (\a x -> a{B.maVisibleTypeAnnotations = x})
       . coerced
 
+genAnnotatedParameter :: [TypeParameter] -> Gen (Annotated Parameter)
+genAnnotatedParameter tps =
+  scale (`div` 2) $
+    Annotated
+      <$> ( Parameter Nothing True
+              <$> genAnnotated (genType tps)
+          )
+      <*> genAnnotations
+
 genParameter :: [TypeParameter] -> Gen Parameter
 genParameter tps =
   scale (`div` 2) $
@@ -430,7 +438,6 @@ genParameter tps =
       -- TODO: Not yet supported.
       <*> pure True
       <*> genAnnotated (genType tps)
-      <*> genAnnotations
 
 -- genBootstrapMethod :: Gen BootstrapMethod
 -- genBootstrapMethod = BootstrapMethod <$> genMethodHandle <*> listOf genJValue

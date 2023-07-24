@@ -12,8 +12,8 @@
     { self
     , nixpkgs
     , flake-utils
-    , jvm-binary
-    }:
+    , ...
+    }@inputs:
     flake-utils.lib.eachSystem [ "x86_64-darwin" ] (system:
     let
       pkgs = (import nixpkgs { inherit system; });
@@ -24,7 +24,7 @@
           root = self;
           name = "jvmhs";
           source-overrides = {
-            inherit jvm-binary;
+            inherit (inputs) jvm-binary;
           };
           overrides = hsuper: hself: { };
           modifier = drv:
