@@ -26,3 +26,4 @@ spec = do
     BL.writeFile file s
     x :: Either String Value <- eitherDecodeFileStrict' file
     x `shouldSatisfy` isRight
+    (parseEither parseJSONClass =<< x) `shouldBe` Right c

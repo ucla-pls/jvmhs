@@ -6,6 +6,7 @@
       nixpkgs.url = "github:NixOS/nixpkgs/23.05";
       flake-utils.url = "github:numtide/flake-utils";
       jvm-binary.url = "github:ucla-pls/jvm-binary";
+      # autodocodec.url = "github:NorfairKing/autodocodec";
     };
 
   outputs =

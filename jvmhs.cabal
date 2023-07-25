@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5343e24eb2e4dd824e6700ff13edfae9f4026b3a443f66c95e675ca2d9123f4f
+-- hash: 163ee6ffe570bf2d2d74fd9bab928955f2016f72c66c080f5a29f21be82af107
 
 name:           jvmhs
 version:        0.2.0
@@ -109,6 +109,7 @@ library
   build-depends:
       aeson
     , attoparsec
+    , autodocodec
     , base >=4.10 && <4.18
     , binary
     , bytestring
@@ -156,6 +157,7 @@ test-suite jvmhs-test
     , QuickCheck
     , aeson
     , attoparsec
+    , autodocodec
     , base >=4.10 && <4.18
     , binary
     , bytestring

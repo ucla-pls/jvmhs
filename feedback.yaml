@@ -1,0 +1,5 @@
+loops:
+  test: 
+    command: "cabal test --test-show-details=streaming --test-options='--failure-report=failures.txt --rerun --fail-fast'"
+    filter:
+      find: src test -name '*.hs'

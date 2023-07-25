@@ -38,7 +38,9 @@ import Jvmhs.Data.Identifier
 import Jvmhs.Data.Type
 
 import qualified Data.Aeson.KeyMap as KM
-import Data.Aeson.Types (Parser, listParser, listValue)
+import Data.Aeson.Types (JSONPathElement (Index, Key), Parser, listParser, listValue)
+import qualified Data.Vector as V
+import Debug.Trace (traceM)
 import Jvmhs.Data.Code
 import Jvmhs.Format.JsonTH
 
@@ -66,7 +68,9 @@ toJSONList :: (a -> Value) -> [a] -> Value
 toJSONList = listValue
 
 parseJSONList :: (Value -> Parser a) -> Value -> Parser [a]
-parseJSONList = listParser
+parseJSONList f =
+  withArray "Array" $
+    fmap V.toList . V.imapM (\i a -> f a <?> Index i)
 
 instance ToJSON AnnotationValue
 instance FromJSON AnnotationValue
@@ -104,19 +108,38 @@ toJSONAnnotated f = \case
           Object m -> Object (m <> anns)
           a' -> Object $ "content" .= a' <> anns
 
-parseJSONAnnotated :: (Value -> Parser a) -> Value -> Parser (Annotated a)
-parseJSONAnnotated f v =
-  msum
-    [ v & withObject "Annotated" \o -> do
-        a <-
-          maybe (fail "annotations") (parseJSONList parseJSONAnnotation) $
-            KM.lookup "annotations" o
-        c <- msum [f =<< o .: "content", f v]
+parseJSONAnnotated :: Show a => (Value -> Parser a) -> Value -> Parser (Annotated a)
+parseJSONAnnotated f v = case v of
+  Object o ->
+    case KM.lookup "annotations" o of
+      Just x -> do
+        traceM ("Annotations found" <> show x)
+        a <- parseJSONList parseJSONAnnotation x
+        c' <- msum [o .: "content", pure v, fail "bad"]
+        traceM ("content: " <> show c')
+        c <- f c'
+        traceM ("result: " <> show c)
         pure $ Annotated c a
-    , do
+      Nothing -> do
+        traceM ("Annotations not found" <> show o)
         c <- f v
         pure $ Annotated c []
-    ]
+  _ -> do
+    c <- f v
+    pure $ Annotated c []
+
+-- msum
+--   [ v & withObject "Annotated" \o -> do
+--       a <-
+--         maybe (fail "annotations") (parseJSONList parseJSONAnnotation) $
+--           KM.lookup "annotations" o
+--       c <- msum [f =<< o .: "content", f v]
+--       pure $ Annotated c a
+--   , do
+-- [ do
+--     c <- f v
+--     pure $ Annotated c []
+-- ]
 
 instance ToJSON BootstrapMethod
 instance FromJSON BootstrapMethod where
@@ -188,7 +211,7 @@ parseJSONReferenceType v =
   msum
     [ RefClassType <$> parseJSONClassType v
     , RefTypeVariable <$> parseJSONTypeVariable v
-    , RefArrayType . ArrayType <$> parseJSONAnnotated parseJSONType v
+    , fail "recursion" -- RefArrayType . ArrayType <$> parseJSONAnnotated parseJSONType v
     ]
 
 toJSONThrowsType :: ThrowsType -> Value
