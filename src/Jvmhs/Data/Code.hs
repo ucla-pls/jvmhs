@@ -39,6 +39,13 @@ module Jvmhs.Data.Code (
   byteCodeOffset,
   byteCodeOpcode,
 
+  -- * TypeName
+  TypeName (..),
+  fromSmallArithmeticType,
+  fromArithmeticType,
+  fromArrayType,
+  fromLocalType,
+
   -- * Re-exports
   B.StackMapTable (..),
   B.StackMapFrame (..),

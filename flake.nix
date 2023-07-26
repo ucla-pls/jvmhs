@@ -7,6 +7,8 @@
       flake-utils.url = "github:numtide/flake-utils";
       jvm-binary.url = "github:ucla-pls/jvm-binary";
       # autodocodec.url = "github:NorfairKing/autodocodec";
+      # openapi3.url = "github:biocad/openapi3";
+      # openapi3.flake = false;
     };
 
   outputs =
@@ -25,7 +27,7 @@
           root = self;
           name = "jvmhs";
           source-overrides = {
-            inherit (inputs) jvm-binary;
+            inherit (inputs) jvm-binary; # openapi3;
           };
           overrides = hsuper: hself: { };
           modifier = drv:

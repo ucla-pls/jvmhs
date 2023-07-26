@@ -278,7 +278,7 @@ instance HasFieldId FieldId where
   {-# INLINE fieldIdDescriptor #-}
 
 instance Hashable FieldId where
-  hashWithSalt i a = i `hashWithSalt` (view _Wrapped a)
+  hashWithSalt i a = i `hashWithSalt` view _Wrapped a
 
 instance Hashable FieldDescriptor where
   hashWithSalt i (FieldDescriptor a) = i `hashWithSalt` a

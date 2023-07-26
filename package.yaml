@@ -71,6 +71,8 @@ tests:
       - generic-random
       - hspec-discover
       - hspec-expectations-pretty-diff
+      - autodocodec-yaml
+      - autodocodec-schema
       - generic-random
       - typed-process
       - HUnit >= 1.6.0.0 

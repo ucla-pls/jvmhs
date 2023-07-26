@@ -360,7 +360,7 @@ spec_testclasses = do
             cleaned
             classFormat
 
-        runIO . putStrLn . nicify . show $ runValidation (there classFormat cleaned) ^? _Right . classInnerClasses
+      -- runIO . putStrLn . nicify . show $ runValidation (there classFormat cleaned) ^? _Right . classInnerClasses
       Left _ -> return ()
 
   cMethods :: Lens' (B.ClassFile B.High) [B.Method B.High]

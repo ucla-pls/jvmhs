@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 163ee6ffe570bf2d2d74fd9bab928955f2016f72c66c080f5a29f21be82af107
+-- hash: 8cd54a447d61f1bec2961f33c5ca3a9db3affaaa7e33e5fe6e61e8984f8219db
 
 name:           jvmhs
 version:        0.2.0
@@ -95,6 +95,7 @@ library
       Jvmhs.Format.ClassFile.Method
       Jvmhs.Format.ClassFile.Shared
       Jvmhs.Format.ClassFile.Type
+      Jvmhs.Format.Codec
       Jvmhs.Format.Internal
       Jvmhs.Format.Json
       Jvmhs.Format.JsonTH
@@ -142,6 +143,7 @@ test-suite jvmhs-test
       Jvmhs.Analysis.HierarchySpec
       Jvmhs.Data.TypeSpec
       Jvmhs.Format.ClassFileSpec
+      Jvmhs.Format.CodecSpec
       Jvmhs.Format.JsonSpec
       Jvmhs.Inspection.ClassNamesSpec
       Jvmhs.Transform.StubSpec
@@ -158,6 +160,8 @@ test-suite jvmhs-test
     , aeson
     , attoparsec
     , autodocodec
+    , autodocodec-schema
+    , autodocodec-yaml
     , base >=4.10 && <4.18
     , binary
     , bytestring

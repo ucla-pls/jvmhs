@@ -1,0 +1,8 @@
+# one of
+[ eq
+, ne
+, lt
+, ge
+, gt
+, le
+]

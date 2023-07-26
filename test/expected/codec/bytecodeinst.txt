@@ -1,0 +1,20 @@
+# ByteCodeInst
+offset: # required
+  <number> # between 0 and 65535
+# one of
+[ <object>
+  opc: # required
+    swap
+, size: # required
+    <number> # between 1 and 2
+  opc: # required
+    dupx2
+, size: # required
+    <number> # between 1 and 2
+  opc: # required
+    dup
+, size: # required
+    <number> # between 1 and 2
+  opc: # required
+    dupx1
+]
