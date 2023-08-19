@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8cd54a447d61f1bec2961f33c5ca3a9db3affaaa7e33e5fe6e61e8984f8219db
+-- hash: 7e4adab487a285b6d84793dcbf609b5d5476235fd6ead172103d3148bf7701bb
 
 name:           jvmhs
 version:        0.2.0
@@ -108,13 +108,16 @@ library
       src
   ghc-options: -Wall
   build-depends:
-      aeson
+      adjunctions
+    , aeson
     , attoparsec
     , autodocodec
     , base >=4.10 && <4.18
     , binary
     , bytestring
     , cassava
+    , conedec
+    , cones
     , containers
     , deepseq
     , directory
@@ -157,6 +160,7 @@ test-suite jvmhs-test
   build-depends:
       HUnit >=1.6.0.0
     , QuickCheck
+    , adjunctions
     , aeson
     , attoparsec
     , autodocodec
@@ -166,6 +170,8 @@ test-suite jvmhs-test
     , binary
     , bytestring
     , cassava
+    , conedec
+    , cones
     , containers
     , deepseq
     , directory

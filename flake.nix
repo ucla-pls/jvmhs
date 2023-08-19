@@ -6,37 +6,56 @@
       nixpkgs.url = "github:NixOS/nixpkgs/23.05";
       flake-utils.url = "github:numtide/flake-utils";
       jvm-binary.url = "github:ucla-pls/jvm-binary";
-      # autodocodec.url = "github:NorfairKing/autodocodec";
-      # openapi3.url = "github:biocad/openapi3";
-      # openapi3.flake = false;
+      cones.url = "github:kalhauge/cones";
     };
-
   outputs =
     { self
     , nixpkgs
     , flake-utils
     , ...
     }@inputs:
-    flake-utils.lib.eachSystem [ "x86_64-darwin" ] (system:
     let
-      pkgs = (import nixpkgs { inherit system; });
-      haskellPackages = pkgs.haskellPackages;
-      project = returnShellEnv:
-        haskellPackages.developPackage {
-          inherit returnShellEnv;
-          root = self;
-          name = "jvmhs";
-          source-overrides = {
-            inherit (inputs) jvm-binary; # openapi3;
-          };
-          overrides = hsuper: hself: { };
-          modifier = drv:
-            pkgs.haskell.lib.addBuildTools drv
-              (with haskellPackages; [ cabal-install ghcid haskell-language-server hpack fourmolu ]);
-        };
+      packages = p: {
+        "jvmhs" = p.callCabal2nixWithOptions "jvmhs" self "" { };
+        "jvm-binary" = p.callCabal2nixWithOptions "jvm-binary" inputs.jvm-binary "" { };
+      };
+      overlays = final: prev: {
+        haskellPackages = prev.haskellPackages.extend (p: _: packages p);
+      };
     in
     {
-      defaultPackage = project false;
-      devShell = project true;
+      overlays.default = overlays;
+    } // flake-utils.lib.eachDefaultSystem (system:
+    let
+      hpkgs = (import nixpkgs
+        {
+          inherit system;
+          overlays = [ overlays inputs.cones.overlays.default ];
+        }).haskellPackages;
+    in
+    {
+      packages = {
+        default = hpkgs.jvmhs;
+        inherit (hpkgs) jvmhs;
+      };
+      devShells =
+        let
+          buildInputs = with hpkgs; [
+            cabal-install
+            ghcid
+            haskell-language-server
+            hpack
+            fourmolu
+          ];
+          withHoogle = true;
+        in
+        {
+          default = hpkgs.shellFor
+            {
+              name = "jvmhs-shell";
+              packages = p: [ p.jvmhs ];
+              inherit buildInputs withHoogle;
+            };
+        };
     });
 }
