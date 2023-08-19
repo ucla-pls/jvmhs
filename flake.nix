@@ -8,12 +8,7 @@
       jvm-binary.url = "github:ucla-pls/jvm-binary";
       cones.url = "github:kalhauge/cones";
     };
-  outputs =
-    { self
-    , nixpkgs
-    , flake-utils
-    , ...
-    }@inputs:
+  outputs = { self, nixpkgs, flake-utils, ... }@inputs:
     let
       packages = p: {
         "jvmhs" = p.callCabal2nixWithOptions "jvmhs" self "" { };
@@ -21,41 +16,44 @@
       };
       overlays = final: prev: {
         haskellPackages = prev.haskellPackages.extend (p: _: packages p);
+        jvm2json = final.haskell.lib.justStaticExecutables final.haskellPackages.jvmhs;
       };
     in
     {
       overlays.default = overlays;
     } // flake-utils.lib.eachDefaultSystem (system:
-    let
-      hpkgs = (import nixpkgs
-        {
-          inherit system;
-          overlays = [ overlays inputs.cones.overlays.default ];
-        }).haskellPackages;
-    in
-    {
-      packages = {
-        default = hpkgs.jvmhs;
-        inherit (hpkgs) jvmhs;
-      };
-      devShells =
-        let
-          buildInputs = with hpkgs; [
-            cabal-install
-            ghcid
-            haskell-language-server
-            hpack
-            fourmolu
-          ];
-          withHoogle = true;
-        in
-        {
-          default = hpkgs.shellFor
-            {
-              name = "jvmhs-shell";
-              packages = p: [ p.jvmhs ];
-              inherit buildInputs withHoogle;
-            };
+      let
+        pkgs = import nixpkgs
+          {
+            inherit system;
+            overlays = [ overlays inputs.cones.overlays.default ];
+          };
+        hpkgs = pkgs.haskellPackages;
+      in
+      {
+        packages = {
+          default = hpkgs.jvmhs;
+          jvm2json = pkgs.jvm2json;
+          inherit (hpkgs) jvmhs;
         };
-    });
+        devShells =
+          let
+            buildInputs = with hpkgs; [
+              cabal-install
+              ghcid
+              haskell-language-server
+              hpack
+              fourmolu
+            ];
+            withHoogle = true;
+          in
+          {
+            default = hpkgs.shellFor
+              {
+                name = "jvmhs-shell";
+                packages = p: [ p.jvmhs ];
+                inherit buildInputs withHoogle;
+              };
+          };
+      });
 }
