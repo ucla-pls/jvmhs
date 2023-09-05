@@ -5,14 +5,18 @@
 import Conedec
 
 import qualified Data.Aeson.Encoding as Aeson
+import qualified Data.Aeson.Internal as Aeson
+import qualified Data.Aeson.Parser as Aeson
+import qualified Data.Aeson.Parser.Internal as Aeson
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Foldable
-import Jvmhs (deserializeClass)
+import Jvmhs (deserializeClass, serializeClass)
 import Jvmhs.Format.Codec
 import Options.Applicative
 
 data Action
   = OutputJSON
+  | InputJSON
 
 data Config = Config
   { classFile :: FilePath
@@ -35,14 +39,26 @@ main = do
       ]
   case act of
     OutputJSON -> do
-      bytes <- getClassFileBytes config
+      bytes <- readClassFileBytes config
       case deserializeClass True bytes of
         Right cls -> do
           v <- withError fail $ pure <$> toEncodingClass cls
           BL.putStrLn (Aeson.encodingToLazyByteString v)
         Left err ->
           print err
+    InputJSON -> do
+      bytes <- BL.getContents
+      case Aeson.eitherDecodeWith Aeson.jsonEOF' (Aeson.iparse parseJSONClass) bytes of
+        Right cls -> do
+          writeClassFileBytes config (serializeClass cls)
+        Left err ->
+          print err
+      writeClassFileBytes config bytes
 
-getClassFileBytes :: Config -> IO BL.ByteString
-getClassFileBytes Config{..} = do
+readClassFileBytes :: Config -> IO BL.ByteString
+readClassFileBytes Config{..} = do
   BL.readFile classFile
+
+writeClassFileBytes :: Config -> BL.ByteString -> IO ()
+writeClassFileBytes Config{..} bs = do
+  BL.writeFile classFile bs
