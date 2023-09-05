@@ -6,11 +6,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1693907583,
-        "narHash": "sha256-pn9ls9yYJ/ozHD3isNrW7V2Qv8RV7ON4c/+ZpuP1aJU=",
+        "lastModified": 1693919032,
+        "narHash": "sha256-kpjoNDG5sr9iOccxKFuRwy2peDitwY1glw1sMagrdPU=",
         "ref": "refs/heads/main",
-        "rev": "a0d6960ff836db6cbd8d4526f0137d052edb5750",
-        "revCount": 28,
+        "rev": "bfa377f74eee7293fa6af547e494ddeff910a43a",
+        "revCount": 29,
         "type": "git",
         "url": "file:///Users/chrg/Develop/repos/cones"
       },

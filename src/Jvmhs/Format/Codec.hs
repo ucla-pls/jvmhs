@@ -16,7 +16,11 @@
 An autodocodec
 
 -}
-module Jvmhs.Format.Codec (test) where
+module Jvmhs.Format.Codec (
+  toJSONClass,
+  toEncodingClass,
+  parseJSONClass,
+) where
 
 -- class
 import Jvmhs.Data.Class
@@ -26,6 +30,7 @@ import Conedec
 
 import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as AesonKey
+import qualified Data.Aeson.Types as Aeson
 import Data.Bifunctor (first)
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.IntMap as IntMap
@@ -35,12 +40,6 @@ import Jvmhs.Data.Code
 import Jvmhs.Data.Type
 import qualified Language.JVM as B
 import Prelude hiding (all, any, null)
-
--- $> import Jvmhs.Format.Codec
-
--- $> test
-test :: IO ()
-test = debugCodec @V1 (ref @"Class")
 
 data V1
 
@@ -345,9 +344,6 @@ instance Def "StackMapTable" ValueCodec V1 (StackMapTable B.High) where
           )
       )
       <?> "see https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.7.4 for more info"
-
-tbd :: Applicative m => m ()
-tbd = pure ()
 
 instance Def "CmpOpr" ValueCodec V1 B.CmpOpr where
   unref = any do
@@ -681,7 +677,7 @@ instance Def "ByteCodeInst" ValueCodec V1 ByteCodeInst where
                 <: manyOf
                   ( object $ all do
                       #fst ~ "key" <: boundIntegral
-                      #fst ~ "target" <: boundIntegral
+                      #snd ~ "target" <: boundIntegral
                   )
            )
         <?> "jump to $key = $index in $targets, otherwise jump to $default"
@@ -729,21 +725,20 @@ instance Def "ByteCodeInst" ValueCodec V1 ByteCodeInst where
         =: ( "invoke"
               // tagged "access" do
                 given ifInvkSpecial
-                  =: ("special" // codecAbsVariableMethodId)
+                  =: ("special" // "method" ~: ref @"RefVariableMethodId")
                 given ifInvkVirtual
-                  =: ("virtual" // codecInRefType codecMethodId)
+                  =: ("virtual" // "method" ~: ref @"RefMethodId")
                 given ifInvkStatic
-                  =: ( "static" // codecAbsVariableMethodId
-                     )
+                  =: ("static" // "method" ~: ref @"RefVariableMethodId")
                 given ifInvkInterface
                   =: ( "interface" // all do
                         #fst ~ "stack_size" <: boundIntegral
-                        #snd =: simply (codecInRefType codecMethodId)
+                        #snd ~ "method" <: simply (ref @"RefMethodId")
                      )
                 given ifInvkDynamic
                   =: ( "dynamic" // all do
                         given getInvokeDynamicAttrIndex ~ "index" <: boundIntegral
-                        given getInvokeDynamicMethod =: codecMethodId
+                        given getInvokeDynamicMethod ~ "method" <: object (ref @"MethodId")
                      )
            )
         <?> "invoke a method, consult the documentation"
@@ -896,3 +891,12 @@ instance Def "BootstrapMethod" ValueCodec V1 BootstrapMethod where
 
 codecTextSerializeable :: B.TextSerializable x => Codec ValueCodec ctx x
 codecTextSerializeable = dimap (pure . B.serialize) B.deserialize text
+
+toJSONClass :: Class -> WithError Value
+toJSONClass = toJSONViaCodec @V1 (ref @"Class")
+
+toEncodingClass :: Class -> WithError Aeson.Encoding
+toEncodingClass = toEncodingViaCodec @V1 (ref @"Class")
+
+parseJSONClass :: Value -> Aeson.Parser Class
+parseJSONClass = parseJSONViaCodec @V1 (ref @"Class")
