@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -114,6 +115,9 @@ import Language.JVM.AccessFlag
 import qualified Language.JVM.Constant as B
 import Language.JVM.TextSerializable
 import Language.JVM.Type
+
+-- cones
+import Data.Cone.TH
 
 makeWrapped ''FieldId
 makeWrapped ''MethodId
@@ -445,3 +449,9 @@ $( deriveJSON
     )
     ''B.JValue
  )
+
+$(makeDiagram ''CAccessFlag)
+$(makeDiagram ''MAccessFlag)
+$(makeDiagram ''FAccessFlag)
+$(makeDiagram ''ICAccessFlag)
+$(makeDiagram ''PAccessFlag)

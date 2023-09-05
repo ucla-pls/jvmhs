@@ -1,2 +1,0 @@
-# A classname seperated by '/'
-<string>

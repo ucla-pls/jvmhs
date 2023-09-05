@@ -1,14 +1,18 @@
 {-# LANGUAGE BangPatterns #-}
 {-# HLINT ignore "Use record patterns" #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -46,6 +50,9 @@ module Jvmhs.Data.Code (
   fromArrayType,
   fromLocalType,
 
+  -- * Diagrams
+  Data.Cone.Diagram (..),
+
   -- * Re-exports
   B.StackMapTable (..),
   B.StackMapFrame (..),
@@ -65,7 +72,6 @@ import Control.Lens hiding ((.=))
 
 -- aeson
 import Data.Aeson
-import Data.Aeson.TH
 import Data.Aeson.Types
 
 -- text
@@ -75,6 +81,10 @@ import qualified Data.Vector as V
 -- jvm-binary
 import qualified Language.JVM as B
 import qualified Language.JVM.Attribute.StackMapTable as B
+
+-- cones
+import qualified Data.Cone
+import Data.Cone.TH
 
 import Jvmhs.Data.Identifier
 import Jvmhs.Data.Type
@@ -123,7 +133,7 @@ verificationTypeInfo g (B.StackMapTable s) =
       _ -> pure ft
 
 instance FromJSON ByteCodeInst where
-  parseJSON v = fail "Not yet implemented"
+  parseJSON _ = fail "Not yet implemented"
 
 instance ToJSON ByteCodeInst where
   toJSON bopr =
@@ -335,7 +345,7 @@ getInvocationAttributes = \case
   B.InvkInterface count avmi ->
     (["kind" .= String "interface", "count" .= count] <> getAbsInterfaceMethodId avmi)
   B.InvkDynamic invokeDynamicMethod ->
-    ("kind" .= String "dynamic") : getInvokeDynamicMethod invokeDynamicMethod
+    ("kind" .= String "dynamic") : getInvokeDynamicMethod' invokeDynamicMethod
 
 getAbsInterfaceMethodId :: B.AbsInterfaceMethodId -> [Pair]
 getAbsInterfaceMethodId (B.AbsInterfaceMethodId interfaceMethodId) =
@@ -350,8 +360,8 @@ getAbsInterfaceMethodId (B.AbsInterfaceMethodId interfaceMethodId) =
 getInRefTypeMethod :: InRefType MethodId -> [Pair]
 getInRefTypeMethod (InRefType a b) = ["reftype" .= a, "method" .= b]
 
-getInvokeDynamicMethod :: B.InvokeDynamic B.High -> [Pair]
-getInvokeDynamicMethod = \case
+getInvokeDynamicMethod' :: B.InvokeDynamic B.High -> [Pair]
+getInvokeDynamicMethod' = \case
   (B.InvokeDynamic attrIndex methodid) ->
     ["attr" .= attrIndex, "method" .= methodid]
 
@@ -443,3 +453,32 @@ getFrameDetails = \case
 -- $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 3} ''ExceptionHandler)
 
 -- $(deriveJSON defaultOptions{fieldLabelModifier = camelTo2 '_' . drop 5} ''Code)
+$(makeDiagram ''Code)
+$(makeDiagram ''ExceptionHandler)
+$(makeDiagram ''B.ByteCodeInst)
+$(makeDiagram ''B.StackMapFrameType)
+
+$(makeDiagramLite ''VerificationTypeInfo)
+
+-- $(makeDiagram ''B.StackMapTable)
+
+-- $(makeDiagram ''B.StackMapFrame)
+$(makeDiagram ''TypeName)
+
+type ByteCodeOpr = B.ByteCodeOpr B.High
+$(makeDiagramLite ''ByteCodeOpr)
+
+$(makeDiagram ''B.BinOpr)
+$(makeDiagram ''B.OneOrTwo)
+$(makeDiagram ''B.BitOpr)
+$(makeDiagram ''B.CastOpr)
+$(makeDiagram ''B.CmpOpr)
+
+type SwitchTable = B.SwitchTable B.High
+$(makeDiagramLite ''SwitchTable)
+
+type Invocation = B.Invocation B.High
+$(makeDiagramLite ''Invocation)
+
+type InvokeDynamic = B.InvokeDynamic B.High
+$(makeDiagramLite ''InvokeDynamic)

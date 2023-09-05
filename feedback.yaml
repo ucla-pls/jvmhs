@@ -3,3 +3,7 @@ loops:
     command: "cabal test --test-show-details=streaming --test-options='--failure-report=failures.txt --rerun --fail-fast'"
     filter:
       find: src test -name '*.hs'
+  test-jvm2json: 
+    command: "./test/testJvm2Json.sh"
+    filter:
+      find: src test bin -name '*.hs'

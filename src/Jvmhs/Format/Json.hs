@@ -81,7 +81,7 @@ instance ToJSON (B.EnumValue B.High) where
       Object $
         fold
           [ "type" .= enumTypeName
-          , "const" .= enunConstName
+          , "const" .= enumConstName
           ]
 
 instance FromJSON (B.EnumValue B.High) where

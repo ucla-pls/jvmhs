@@ -1,5 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
@@ -19,6 +20,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 {- |
 Module : Jvmhs.Data.Type
@@ -215,15 +217,16 @@ import qualified Data.Text as Text
 -- lens
 import Control.Lens hiding ((.=))
 
--- jvm-binary
-
+-- aeson
 import Data.Aeson
-import qualified Data.ByteString as BS
-import Data.String (IsString)
-import qualified Data.Text.Encoding as Text
+
+-- jvm-binary
 import qualified Language.JVM as B
 import qualified Language.JVM.Attribute.Annotations as B
 import Language.JVM.Type
+
+-- cones
+import Data.Cone.TH
 
 {- | This is an annotated type paramater, modeled after `B.TypeParameter`.
  NOTE While the class bound and can technicaly be any reference type, it
@@ -658,7 +661,7 @@ instance HasTypeAnnotations ClassType where
 
             pure $ ClassType _classTypeName (Just nested) typeargs
        where
-        icn = (cn <> "$" <> ict ^. annotatedContent . classTypeName)
+        icn = cn <> "$" <> ict ^. annotatedContent . classTypeName
       Nothing -> do
         typeargs <-
           icompose
@@ -761,3 +764,20 @@ instance HasSimpleType ClassType where
 --     AClass      a                 -> object ["class_info" .= a]
 --     AAnnotation (name, a) -> object ["annotation" .= name, "values" .= a]
 --     AArray      a                 -> object ["array" .= a]
+
+$(makeDiagram ''Annotated)
+$(makeDiagram ''ClassType)
+$(makeDiagram ''Annotation)
+$(makeDiagram ''TypeParameter)
+$(makeDiagram ''B.ArrayType)
+$(makeDiagram ''B.LocalType)
+$(makeDiagram ''B.ArithmeticType)
+$(makeDiagram ''B.SmallArithmeticType)
+$(makeDiagram ''B.InRefType)
+$(makeDiagram ''B.InClass)
+$(makeDiagram ''MethodDescriptor)
+$(makeDiagram ''JType)
+$(makeDiagram ''JBaseType)
+$(makeDiagram ''JRefType)
+$(makeDiagram ''B.AbsVariableMethodId)
+$(makeDiagram ''B.JValue)

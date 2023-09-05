@@ -1,0 +1,7 @@
+Build profile: -w ghc-9.2.7 -O1
+In order, the following will be built (use -v for more details):
+ - jvmhs-0.2.0 (lib) (file src/Jvmhs/Format/Codec.hs changed)
+ - jvmhs-0.2.0 (exe:jvm2json) (dependency rebuilt)
+Preprocessing library for jvmhs-0.2.0..
+Building library for jvmhs-0.2.0..
+[24 of 24] Compiling Jvmhs.Format.Codec ( src/Jvmhs/Format/Codec.hs, /Users/chrg/Develop/repos/jvmhs/dist-newstyle/build/x86_64-osx/ghc-9.2.7/jvmhs-0.2.0/build/Jvmhs/Format/Codec.o, /Users/chrg/Develop/repos/jvmhs/dist-newstyle/build/x86_64-osx/ghc-9.2.7/jvmhs-0.2.0/build/Jvmhs/Format/Codec.dyn_o )

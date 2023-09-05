@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -144,6 +145,9 @@ import qualified Language.JVM as B
 import Jvmhs.Data.Code
 import Jvmhs.Data.Identifier
 import Jvmhs.Data.Type
+
+-- cones
+import Data.Cone.TH
 
 -- | This is the class
 data Class = Class
@@ -349,3 +353,9 @@ reindexBootstrapMethods = runState $ do
       a -> a
 
   return bootmethods
+
+$(makeDiagram ''Class)
+$(makeDiagram ''Method)
+$(makeDiagram ''Field)
+$(makeDiagram ''BootstrapMethod)
+$(makeDiagram ''InnerClass)
