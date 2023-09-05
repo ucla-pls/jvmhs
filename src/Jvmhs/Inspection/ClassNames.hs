@@ -341,10 +341,10 @@ instance HasClassNames AnnotationValue where
 classNamesOfAnnotationValue :: ClassNamer AnnotationValue
 classNamesOfAnnotationValue =
   fold
-    [ _AAnnotation . (_1 <> _2 . folded . classNamesOfAnnotationValue)
-    , _AArray . folded . classNamesOfAnnotationValue
-    , _AClass . coerced . _Just . classNamesOfJType
-    , _AEnum . to enumTypeName . coerced . classNamesOfJType
+    [ _AVAnnotation . (_1 <> _2 . folded . classNamesOfAnnotationValue)
+    , _AVArray . folded . classNamesOfAnnotationValue
+    , _AVClass . coerced . _Just . classNamesOfJType
+    , _AVEnum . to enumTypeName . coerced . classNamesOfJType
     ]
 
 instance HasClassNames FieldDescriptor where

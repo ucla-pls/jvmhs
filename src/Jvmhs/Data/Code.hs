@@ -482,3 +482,6 @@ $(makeDiagramLite ''Invocation)
 
 type InvokeDynamic = B.InvokeDynamic B.High
 $(makeDiagramLite ''InvokeDynamic)
+
+type StackMapFrame = B.StackMapFrame B.High
+$(makeDiagramLite ''StackMapFrame)

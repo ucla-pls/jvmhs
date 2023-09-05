@@ -150,19 +150,19 @@ module Jvmhs.Data.Type (
 
   -- ** AnnotationValue
   AnnotationValue (..),
-  _AByte,
-  _AChar,
-  _ADouble,
-  _AFloat,
-  _AInt,
-  _ALong,
-  _AShort,
-  _ABoolean,
-  _AString,
-  _AEnum,
-  _AClass,
-  _AAnnotation,
-  _AArray,
+  _AVByte,
+  _AVChar,
+  _AVDouble,
+  _AVFloat,
+  _AVInt,
+  _AVLong,
+  _AVShort,
+  _AVBoolean,
+  _AVString,
+  _AVEnum,
+  _AVClass,
+  _AVAnnotation,
+  _AVArray,
 
   -- * Helpers
   fromJType,
@@ -190,6 +190,9 @@ module Jvmhs.Data.Type (
 
   -- *** Values
   B.JValue (..),
+
+  -- *** exports,
+  Data.Cone.Diagram (..),
 )
 where
 
@@ -226,6 +229,8 @@ import qualified Language.JVM.Attribute.Annotations as B
 import Language.JVM.Type
 
 -- cones
+
+import qualified Data.Cone
 import Data.Cone.TH
 
 {- | This is an annotated type paramater, modeled after `B.TypeParameter`.
@@ -337,21 +342,21 @@ data Annotated a = Annotated
 
 -- | An annoation contains values which can be set using multiple types.
 data AnnotationValue
-  = AByte !B.VInteger
-  | AChar !B.VInteger
-  | ADouble !B.VDouble
-  | AFloat !B.VFloat
-  | AInt !B.VInteger
-  | ALong !B.VLong
-  | AShort !B.VInteger
-  | ABoolean !B.VInteger
-  | AString !B.VString
-  | AEnum !(B.EnumValue B.High)
-  | AClass !B.ReturnDescriptor
+  = AVByte !B.VInteger
+  | AVChar !B.VInteger
+  | AVDouble !B.VDouble
+  | AVFloat !B.VFloat
+  | AVInt !B.VInteger
+  | AVLong !B.VLong
+  | AVShort !B.VInteger
+  | AVBoolean !B.VInteger
+  | AVString !B.VString
+  | AVEnum !(B.EnumValue B.High)
+  | AVClass !B.ReturnDescriptor
   | -- | Almost a complete annotation without the information about
     -- visibility this information is inheirited from
-    AAnnotation !(ClassName, AnnotationMap)
-  | AArray ![AnnotationValue]
+    AVAnnotation !(ClassName, AnnotationMap)
+  | AVArray ![AnnotationValue]
   deriving (Show, Eq, Generic, NFData)
 
 makeLenses ''ClassType
@@ -768,6 +773,7 @@ instance HasSimpleType ClassType where
 $(makeDiagram ''Annotated)
 $(makeDiagram ''ClassType)
 $(makeDiagram ''Annotation)
+$(makeDiagram ''AnnotationValue)
 $(makeDiagram ''TypeParameter)
 $(makeDiagram ''B.ArrayType)
 $(makeDiagram ''B.LocalType)
@@ -781,3 +787,12 @@ $(makeDiagram ''JBaseType)
 $(makeDiagram ''JRefType)
 $(makeDiagram ''B.AbsVariableMethodId)
 $(makeDiagram ''B.JValue)
+
+$(makeDiagram ''ThrowsType)
+$(makeDiagram ''Type)
+$(makeDiagram ''TypeVariable)
+$(makeDiagram ''TypeArgument)
+$(makeDiagram ''ReferenceType)
+
+type EnumValue = B.EnumValue B.High
+$(makeDiagramLite ''EnumValue)

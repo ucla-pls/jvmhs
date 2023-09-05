@@ -217,11 +217,11 @@ classTypeFormat =
         pure $ B.ClassType nm t ta
     )
  where
-  go ::
-    ClassType ->
-    Validation
-      [FormatError]
-      (Text.Text, Maybe B.InnerClassType, [Maybe B.TypeArgument])
+  go
+    :: ClassType
+    -> Validation
+        [FormatError]
+        (Text.Text, Maybe B.InnerClassType, [Maybe B.TypeArgument])
   go (ClassType n t ta) = do
     ta' <- mapM (back typeArgumentFromSignature . view annotatedContent) ta
     case ta' of
@@ -232,11 +232,11 @@ classTypeFormat =
       _ ->
         (n,,ta') <$> traverse (goInner . view annotatedContent) t
 
-  goInner ::
-    ClassType ->
-    Validation
-      [FormatError]
-      B.InnerClassType
+  goInner
+    :: ClassType
+    -> Validation
+        [FormatError]
+        B.InnerClassType
   goInner (ClassType n t ta) = do
     ta' <- mapM (back typeArgumentFromSignature . view annotatedContent) ta
     traverse (goInner . view annotatedContent) t <&> \i ->
@@ -285,58 +285,58 @@ constantValueFormat = coerceFormat . singletonList
 
 -- * Annotations
 
-mkBAnnotation ::
-  Formatter (FieldDescriptor, [B.ValuePair B.High]) (B.Annotation B.High)
+mkBAnnotation
+  :: Formatter (FieldDescriptor, [B.ValuePair B.High]) (B.Annotation B.High)
 mkBAnnotation =
   fromIso
     (uncurry B.Annotation)
     ((,) <$> B.annotationType <*> B.annotationValuePairs)
-    . (inSecond coerceFormat)
+    . inSecond coerceFormat
 
 annotationValueFormat :: Formatter (B.ElementValue B.High) AnnotationValue
 annotationValueFormat = PartIso{there = valueThere, back = valueBack}
  where
   valueThere = \case
-    B.EByte i -> pure $ AByte i
-    B.EShort i -> pure $ AShort i
-    B.EChar i -> pure $ AChar i
-    B.EFloat i -> pure $ AFloat i
-    B.EInt i -> pure $ AInt i
-    B.EDouble i -> pure $ ADouble i
-    B.ELong i -> pure $ ALong i
-    B.EBoolean i -> pure $ ABoolean i
-    B.EString i -> pure $ AString i
-    B.EEnum i -> pure $ AEnum i
-    B.EClass c -> pure $ AClass c
+    B.EByte i -> pure $ AVByte i
+    B.EShort i -> pure $ AVShort i
+    B.EChar i -> pure $ AVChar i
+    B.EFloat i -> pure $ AVFloat i
+    B.EInt i -> pure $ AVInt i
+    B.EDouble i -> pure $ AVDouble i
+    B.ELong i -> pure $ AVLong i
+    B.EBoolean i -> pure $ AVBoolean i
+    B.EString i -> pure $ AVString i
+    B.EEnum i -> pure $ AVEnum i
+    B.EClass c -> pure $ AVClass c
     B.EAnnotationType a -> do
-      (n, c) <- there (annotationMapFormat . (flipDirection mkBAnnotation)) a
-      pure $ AAnnotation (n, c)
+      (n, c) <- there (annotationMapFormat . flipDirection mkBAnnotation) a
+      pure $ AVAnnotation (n, c)
     B.EArrayType (B.SizedList as) ->
-      AArray <$> there (isomap annotationValueFormat) as
+      AVArray <$> there (isomap annotationValueFormat) as
 
   valueBack = \case
-    AByte i -> pure $ B.EByte i
-    AShort i -> pure $ B.EShort i
-    AChar i -> pure $ B.EChar i
-    AFloat i -> pure $ B.EFloat i
-    AInt i -> pure $ B.EInt i
-    ADouble i -> pure $ B.EDouble i
-    ALong i -> pure $ B.ELong i
-    ABoolean i -> pure $ B.EBoolean i
-    AString i -> pure $ B.EString i
-    AEnum i -> pure $ B.EEnum i
-    AClass c -> pure $ B.EClass c
-    AAnnotation (t, c) ->
+    AVByte i -> pure $ B.EByte i
+    AVShort i -> pure $ B.EShort i
+    AVChar i -> pure $ B.EChar i
+    AVFloat i -> pure $ B.EFloat i
+    AVInt i -> pure $ B.EInt i
+    AVDouble i -> pure $ B.EDouble i
+    AVLong i -> pure $ B.ELong i
+    AVBoolean i -> pure $ B.EBoolean i
+    AVString i -> pure $ B.EString i
+    AVEnum i -> pure $ B.EEnum i
+    AVClass c -> pure $ B.EClass c
+    AVAnnotation (t, c) ->
       B.EAnnotationType
-        <$> back (annotationMapFormat . (flipDirection mkBAnnotation)) (t, c)
-    AArray a -> do
+        <$> back (annotationMapFormat . flipDirection mkBAnnotation) (t, c)
+    AVArray a -> do
       ev <- back (isomap annotationValueFormat) a
       pure . B.EArrayType $ B.SizedList ev
 
-annotationMapFormat ::
-  Formatter
-    (FieldDescriptor, [B.ValuePair B.High])
-    (ClassName, AnnotationMap)
+annotationMapFormat
+  :: Formatter
+      (FieldDescriptor, [B.ValuePair B.High])
+      (ClassName, AnnotationMap)
 annotationMapFormat =
   ( (expectClass . coerceFormat)
       *** ( mkHashMap
@@ -345,8 +345,8 @@ annotationMapFormat =
           )
   )
  where
-  mkBValuePair ::
-    Formatter (Text.Text, B.ElementValue B.High) (B.ValuePair B.High)
+  mkBValuePair
+    :: Formatter (Text.Text, B.ElementValue B.High) (B.ValuePair B.High)
   mkBValuePair = fromIso (uncurry B.ValuePair) ((,) <$> B.name <*> B.value)
 
   expectClass :: Formatter JType ClassName
@@ -370,38 +370,38 @@ annotationsFormat visible =
   mkAnnotation =
     fromIso (\(a, c) -> Annotation a visible c) (\(Annotation a _ c) -> (a, c))
 
-typeAnnotationsFormat ::
-  forall a.
-  Formatter
-    ( [B.RuntimeVisibleTypeAnnotations a B.High]
-    , [B.RuntimeInvisibleTypeAnnotations a B.High]
-    )
-    [(a B.High, (TypePath, Annotation))]
+typeAnnotationsFormat
+  :: forall a
+   . Formatter
+      ( [B.RuntimeVisibleTypeAnnotations a B.High]
+      , [B.RuntimeInvisibleTypeAnnotations a B.High]
+      )
+      [(a B.High, (TypePath, Annotation))]
 typeAnnotationsFormat =
   flipDirection (partitionList (view (_2 . _2 . annotationIsRuntimeVisible)))
     . (runtimeVisibleAnnotationsFormat *** runtimeInvisibleAnnotationsFormat)
  where
-  runtimeVisibleAnnotationsFormat ::
-    Formatter
-      [B.RuntimeVisibleTypeAnnotations a B.High]
-      [(a B.High, (TypePath, Annotation))]
+  runtimeVisibleAnnotationsFormat
+    :: Formatter
+        [B.RuntimeVisibleTypeAnnotations a B.High]
+        [(a B.High, (TypePath, Annotation))]
 
   runtimeVisibleAnnotationsFormat =
     isomap (typeAnnotationFormat True) . compressList coerceFormat
 
-  runtimeInvisibleAnnotationsFormat ::
-    Formatter
-      [B.RuntimeInvisibleTypeAnnotations a B.High]
-      [(a B.High, (TypePath, Annotation))]
+  runtimeInvisibleAnnotationsFormat
+    :: Formatter
+        [B.RuntimeInvisibleTypeAnnotations a B.High]
+        [(a B.High, (TypePath, Annotation))]
 
   runtimeInvisibleAnnotationsFormat =
     isomap (typeAnnotationFormat False) . compressList coerceFormat
 
-  typeAnnotationFormat ::
-    Bool ->
-    Formatter
-      (B.TypeAnnotation a B.High)
-      (a B.High, (TypePath, Annotation))
+  typeAnnotationFormat
+    :: Bool
+    -> Formatter
+        (B.TypeAnnotation a B.High)
+        (a B.High, (TypePath, Annotation))
   typeAnnotationFormat visible =
     inSecond (coerceFormat *** mkAnnotation . annotationMapFormat)
       . flipDirection mkBTypeAnnotation
@@ -412,41 +412,41 @@ typeAnnotationsFormat =
         (\(a, c) -> Annotation a visible c)
         (\(Annotation a _ c) -> (a, c))
 
-    mkBTypeAnnotation ::
-      Formatter
-        (a B.High, (B.TypePath, (FieldDescriptor, [B.ValuePair B.High])))
-        (B.TypeAnnotation a B.High)
+    mkBTypeAnnotation
+      :: Formatter
+          (a B.High, (B.TypePath, (FieldDescriptor, [B.ValuePair B.High])))
+          (B.TypeAnnotation a B.High)
     mkBTypeAnnotation =
       fromIso
         (\(a, (tp, (fd, vm))) -> B.TypeAnnotation a tp fd (B.SizedList vm))
         (\(B.TypeAnnotation a tp fd vm) -> (a, (tp, (fd, (B.unSizedList vm)))))
 
 -- | a converation between annotations
-runtimeAnnotationsFormat ::
-  Formatter
-    ( [B.RuntimeVisibleAnnotations B.High]
-    , [B.RuntimeInvisibleAnnotations B.High]
-    )
-    Annotations
+runtimeAnnotationsFormat
+  :: Formatter
+      ( [B.RuntimeVisibleAnnotations B.High]
+      , [B.RuntimeInvisibleAnnotations B.High]
+      )
+      Annotations
 runtimeAnnotationsFormat =
   flipDirection (partitionList (view annotationIsRuntimeVisible))
     . (runtimeVisibleAnnotationsFormat *** runtimeInvisibleAnnotationsFormat)
  where
-  runtimeVisibleAnnotationsFormat ::
-    Formatter [B.RuntimeVisibleAnnotations B.High] Annotations
+  runtimeVisibleAnnotationsFormat
+    :: Formatter [B.RuntimeVisibleAnnotations B.High] Annotations
   runtimeVisibleAnnotationsFormat =
     annotationsFormat True . compressList coerceFormat
 
-  runtimeInvisibleAnnotationsFormat ::
-    Formatter [B.RuntimeInvisibleAnnotations B.High] Annotations
+  runtimeInvisibleAnnotationsFormat
+    :: Formatter [B.RuntimeInvisibleAnnotations B.High] Annotations
   runtimeInvisibleAnnotationsFormat =
     annotationsFormat False . compressList coerceFormat
 
-annotateType ::
-  forall a.
-  (Show a, HasTypeAnnotations a) =>
-  (ClassName -> Bool) ->
-  Formatter ([(TypePath, Annotation)], a) (Annotated a)
+annotateType
+  :: forall a
+   . (Show a, HasTypeAnnotations a)
+  => (ClassName -> Bool)
+  -> Formatter ([(TypePath, Annotation)], a) (Annotated a)
 annotateType isStatic = PartIso anThere anBack
  where
   anThere (p, t) =

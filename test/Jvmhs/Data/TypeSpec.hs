@@ -59,7 +59,7 @@ spec = do
                         [ Annotation
                             "Annotations$TestType"
                             False
-                            (HashMap.fromList [("value", AInt 0)])
+                            (HashMap.fromList [("value", AVInt 0)])
                         ]
                   )
                   []
@@ -73,7 +73,7 @@ spec = do
                      , Annotation
                         "Annotations$TestType"
                         False
-                        (HashMap.fromList [("value", AInt 0)])
+                        (HashMap.fromList [("value", AVInt 0)])
                      )
                    ]
 
@@ -85,7 +85,7 @@ spec = do
           , Annotation
               "Annotations$TestType"
               False
-              (HashMap.fromList [("value", AInt 0)])
+              (HashMap.fromList [("value", AVInt 0)])
           )
         ]
         ( ReferenceType . RefClassType $
@@ -289,19 +289,19 @@ genAnnotationValue :: Gen AnnotationValue
 genAnnotationValue =
   scale (`div` 2) $
     oneof
-      [ AByte <$> arbitrary
-      , AChar <$> arbitrary
-      , ADouble <$> arbitrary
-      , AFloat <$> arbitrary
-      , AInt <$> arbitrary
-      , ALong <$> arbitrary
-      , AShort <$> arbitrary
-      , ABoolean <$> arbitrary
-      , AString <$> elements ["some", "wierd", "strings"]
-      , AEnum <$> arbitrary
-      , AClass <$> genericArbitraryU
-      , AAnnotation <$> ((,) <$> elements ["a", "b", "c"] <*> genAnnotationMap)
-      , AArray <$> arbitrary
+      [ AVByte <$> arbitrary
+      , AVChar <$> arbitrary
+      , AVDouble <$> arbitrary
+      , AVFloat <$> arbitrary
+      , AVInt <$> arbitrary
+      , AVLong <$> arbitrary
+      , AVShort <$> arbitrary
+      , AVBoolean <$> arbitrary
+      , AVString <$> elements ["some", "wierd", "strings"]
+      , AVEnum <$> arbitrary
+      , AVClass <$> genericArbitraryU
+      , AVAnnotation <$> ((,) <$> elements ["a", "b", "c"] <*> genAnnotationMap)
+      , AVArray <$> arbitrary
       ]
 
 instance Arbitrary Annotation where

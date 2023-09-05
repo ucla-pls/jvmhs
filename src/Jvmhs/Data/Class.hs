@@ -14,6 +14,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 {- |
 Module      : Jvmhs.Data.Class
@@ -106,6 +107,7 @@ module Jvmhs.Data.Class (
   _MHField,
   _MHMethod,
   _MHInterface,
+  Data.Cone.Diagram (..),
 
   -- * Re-exports
   CAccessFlag (..),
@@ -147,6 +149,8 @@ import Jvmhs.Data.Identifier
 import Jvmhs.Data.Type
 
 -- cones
+
+import qualified Data.Cone
 import Data.Cone.TH
 
 -- | This is the class
@@ -359,3 +363,13 @@ $(makeDiagram ''Method)
 $(makeDiagram ''Field)
 $(makeDiagram ''BootstrapMethod)
 $(makeDiagram ''InnerClass)
+$(makeDiagram ''Parameter)
+
+type MethodHandle = B.MethodHandle B.High
+$(makeDiagramLite ''MethodHandle)
+
+type MethodHandleField = B.MethodHandleField B.High
+$(makeDiagramLite ''MethodHandleField)
+type MethodHandleMethod = B.MethodHandleMethod B.High
+$(makeDiagramLite ''MethodHandleMethod)
+$(makeDiagramLite ''B.MethodHandleFieldKind)
