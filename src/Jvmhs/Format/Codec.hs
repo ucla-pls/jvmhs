@@ -892,11 +892,11 @@ instance Def "BootstrapMethod" ValueCodec V1 BootstrapMethod where
 codecTextSerializeable :: B.TextSerializable x => Codec ValueCodec ctx x
 codecTextSerializeable = dimap (pure . B.serialize) B.deserialize text
 
-toJSONClass :: Class -> WithError Value
-toJSONClass = toJSONViaCodec @V1 (ref @"Class")
+toJSONClass :: Class -> Either String Value
+toJSONClass = runWithError . toJSONViaCodec @V1 (ref @"Class")
 
-toEncodingClass :: Class -> WithError Aeson.Encoding
-toEncodingClass = toEncodingViaCodec @V1 (ref @"Class")
+toEncodingClass :: Class -> Either String Aeson.Encoding
+toEncodingClass = runWithError . toEncodingViaCodec @V1 (ref @"Class")
 
 parseJSONClass :: Value -> Aeson.Parser Class
 parseJSONClass = parseJSONViaCodec @V1 (ref @"Class")
