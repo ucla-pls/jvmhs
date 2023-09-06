@@ -8,15 +8,15 @@
       "locked": {
         "lastModified": 1693919032,
         "narHash": "sha256-kpjoNDG5sr9iOccxKFuRwy2peDitwY1glw1sMagrdPU=",
-        "ref": "refs/heads/main",
+        "owner": "kalhauge",
+        "repo": "cones",
         "rev": "bfa377f74eee7293fa6af547e494ddeff910a43a",
-        "revCount": 29,
-        "type": "git",
-        "url": "file:///Users/chrg/Develop/repos/cones"
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "file:///Users/chrg/Develop/repos/cones"
+        "owner": "kalhauge",
+        "repo": "cones",
+        "type": "github"
       }
     },
     "flake-utils": {

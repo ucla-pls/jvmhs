@@ -59,15 +59,6 @@ dependencies:
 library:
   source-dirs: src
 
-executables:
-  jvm2json:
-    source-dirs: bin/jvm2json
-    main: Main.hs
-    dependencies:
-      - jvmhs
-      - optparse-applicative
-      - prettyprinter
-
 tests:
   jvmhs-test:
     source-dirs: test

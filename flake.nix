@@ -6,7 +6,7 @@
       nixpkgs.url = "github:NixOS/nixpkgs/23.05";
       flake-utils.url = "github:numtide/flake-utils";
       jvm-binary.url = "github:ucla-pls/jvm-binary";
-      cones.url = "/Users/chrg/Develop/repos/cones"; # -- "github:kalhauge/cones";
+      cones.url = "github:kalhauge/cones";
     };
   outputs = { self, nixpkgs, flake-utils, ... }@inputs:
     let
