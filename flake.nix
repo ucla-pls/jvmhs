@@ -20,7 +20,10 @@
       };
     in
     {
-      overlays.default = overlays;
+      overlays = {
+        default = overlays;
+        all = [ overlays inputs.cones.overlays.default ];
+      };
     } // flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs
@@ -33,7 +36,6 @@
       {
         packages = {
           default = hpkgs.jvmhs;
-          jvm2json = pkgs.jvm2json;
           inherit (hpkgs) jvmhs;
         };
         devShells =
