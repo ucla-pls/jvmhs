@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 899c1d29829eda4660f15e109120db90fd7996d620224fad49efb792b638e227
+-- hash: 915fac5b6a11da36b0f8f4d70354caedc1ae85256aafa6b1e2de85a2843f4034
 
 name:           jvmhs
 version:        0.2.0
@@ -120,7 +120,7 @@ library
     , fgl-visualize
     , filepath
     , hashable
-    , jvm-binary >=0.6.0 && <0.13.0
+    , jvm-binary >=0.13.0
     , lens
     , lens-action
     , mtl
@@ -171,7 +171,7 @@ test-suite jvmhs-test
     , hspec
     , hspec-discover
     , hspec-expectations-pretty-diff
-    , jvm-binary >=0.6.0 && <0.13.0
+    , jvm-binary >=0.13.0
     , jvmhs
     , lens
     , lens-action

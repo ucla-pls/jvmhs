@@ -671,20 +671,23 @@ typecheck = \case
         pop >>= (`checkSubtypeOf` TDouble)
         pop >>= (`checkSubtypeOf` TDouble)
     push TInt
-  B.If _ a off -> do
+  B.IfZ a off -> do
     case a of
-      B.One -> pop >>= (`checkSubtypeOf` TInt)
-      B.Two -> do
-        pop >>= (`checkSubtypeOf` TInt)
-        pop >>= (`checkSubtypeOf` TInt)
+      B.CIs -> pop >>= (`checkSubtypeOf` TRef [])
+      B.CIsNot -> pop >>= (`checkSubtypeOf` TRef [])
+      _ -> pop >>= (`checkSubtypeOf` TInt)
     addNext off
-  B.IfRef _ a off -> do
+  B.If a off -> do
     case a of
-      B.One -> do
-        pop >>= (`checkSubtypeOf` TRef [])
-      B.Two -> do
+      B.CIs -> do
         pop >>= (`checkSubtypeOf` TRef [])
         pop >>= (`checkSubtypeOf` TRef [])
+      B.CIsNot -> do
+        pop >>= (`checkSubtypeOf` TRef [])
+        pop >>= (`checkSubtypeOf` TRef [])
+      _ -> do
+        pop >>= (`checkSubtypeOf` TInt)
+        pop >>= (`checkSubtypeOf` TInt)
     addNext off
   B.Goto off -> do
     setNext off
