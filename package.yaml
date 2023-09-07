@@ -50,7 +50,6 @@ dependencies:
   - transformers
   - unordered-containers
   - vector
-  - zip-archive
   - template-haskell
   - adjunctions
   - conedec
