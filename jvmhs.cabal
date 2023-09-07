@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9c28a55c457a86d35866dc99cddf9cd942266756972d6170a73376a023108638
+-- hash: 899c1d29829eda4660f15e109120db90fd7996d620224fad49efb792b638e227
 
 name:           jvmhs
 version:        0.2.0
@@ -95,10 +95,7 @@ library
       Jvmhs.Format.ClassFile.Method
       Jvmhs.Format.ClassFile.Shared
       Jvmhs.Format.ClassFile.Type
-      Jvmhs.Format.Codec
       Jvmhs.Format.Internal
-      Jvmhs.Format.Json
-      Jvmhs.Format.JsonTH
       Jvmhs.Inspection.ClassNames
       Jvmhs.Transform.Stub
       Jvmhs.TypeCheck
@@ -111,12 +108,10 @@ library
       adjunctions
     , aeson
     , attoparsec
-    , autodocodec
     , base >=4.10 && <4.18
     , binary
     , bytestring
     , cassava
-    , conedec
     , cones
     , containers
     , deepseq
@@ -145,8 +140,6 @@ test-suite jvmhs-test
       Jvmhs.Analysis.HierarchySpec
       Jvmhs.Data.TypeSpec
       Jvmhs.Format.ClassFileSpec
-      Jvmhs.Format.CodecSpec
-      Jvmhs.Format.JsonSpec
       Jvmhs.Inspection.ClassNamesSpec
       Jvmhs.Transform.StubSpec
       Jvmhs.TypeCheckSpec
@@ -162,14 +155,10 @@ test-suite jvmhs-test
     , adjunctions
     , aeson
     , attoparsec
-    , autodocodec
-    , autodocodec-schema
-    , autodocodec-yaml
     , base >=4.10 && <4.18
     , binary
     , bytestring
     , cassava
-    , conedec
     , cones
     , containers
     , deepseq

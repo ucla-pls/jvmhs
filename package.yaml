@@ -28,9 +28,7 @@ extra-source-files:
 dependencies:
   - base >= 4.10 && < 4.18
   - jvm-binary >= 0.6.0 && < 0.13.0
-  - aeson 
   - attoparsec
-  - autodocodec
   - binary
   - bytestring
   - cassava
@@ -47,12 +45,12 @@ dependencies:
   - primitive
   - process
   - text
+  - aeson
   - transformers
   - unordered-containers
   - vector
   - template-haskell
   - adjunctions
-  - conedec
   - cones
 
 library:
@@ -73,8 +71,6 @@ tests:
       - generic-random
       - hspec-discover
       - hspec-expectations-pretty-diff
-      - autodocodec-yaml
-      - autodocodec-schema
       - generic-random
       - typed-process
       - HUnit >= 1.6.0.0 

@@ -220,9 +220,6 @@ import qualified Data.Text as Text
 -- lens
 import Control.Lens hiding ((.=))
 
--- aeson
-import Data.Aeson
-
 -- jvm-binary
 import qualified Language.JVM as B
 import qualified Language.JVM.Attribute.Annotations as B
@@ -314,7 +311,7 @@ newtype TypeVariableName = TypeVariableName
   { _unTypeVariableName :: Text.Text
   }
   deriving (Show, Eq, Generic)
-  deriving newtype (NFData, ToJSON, FromJSON)
+  deriving newtype (NFData)
 
 -- | An annotation is a map of names to values.
 data Annotation = Annotation
@@ -749,26 +746,6 @@ instance HasSimpleType ClassType where
   type SimpleType ClassType = ClassName
   simpleType = to classNameFromType
   {-# INLINE simpleType #-}
-
--- instance ToJSON Annotations where
---   toJSON Annotations {..} = object
---     ["visible" .= _visibleAnnotations, "invisible" .= _invisibleAnnotations]
-
--- instance ToJSON AnnotationValue where
---   toJSON = \case
---     AByte       a                 -> object ["byte" .= a]
---     AChar       a                 -> object ["char" .= chr (fromIntegral a)]
---     ADouble     a                 -> object ["double" .= a]
---     AFloat      a                 -> object ["float" .= a]
---     AInt        a                 -> object ["int" .= a]
---     ALong       a                 -> object ["long" .= a]
---     AShort      a                 -> object ["short" .= a]
---     ABoolean    a                 -> object ["boolean" .= (a /= 0)]
---     AString     a                 -> object ["string" .= a]
---     AEnum       (B.EnumValue a b) -> object ["enum" .= b, "enum_class" .= a]
---     AClass      a                 -> object ["class_info" .= a]
---     AAnnotation (name, a) -> object ["annotation" .= name, "values" .= a]
---     AArray      a                 -> object ["array" .= a]
 
 $(makeDiagram ''Annotated)
 $(makeDiagram ''ClassType)
