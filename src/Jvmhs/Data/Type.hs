@@ -178,7 +178,7 @@ module Jvmhs.Data.Type (
   B.MethodTypeAnnotation (..),
   B.FieldTypeAnnotation (..),
   B.ClassTypeAnnotation (..),
-  B.CodeTypeAnnotation (..),
+  -- B.CodeTypeAnnotation (..),
 
   -- *** TypePath
   TypePath,
@@ -426,9 +426,9 @@ insertTypeArgument ta ct@(ClassType _ x _) = case x of
   Nothing -> ct & classTypeArguments .~ ta
   Just x' ->
     ct
-      & classTypeInner
-        .~ Just
-          (over annotatedContent (insertTypeArgument ta) x')
+      & ( classTypeInner
+            ?~ over annotatedContent (insertTypeArgument ta) x'
+        )
 
 -- | Creates a ClassType without any annotations and typesignatures
 innerClassTypeFromName :: Text.Text -> ClassType
@@ -693,7 +693,7 @@ instance HasTypeAnnotations TypeArgument where
           (typeAnnotations isStatic)
           afb
           t'
-    TypeArg a -> TypeArg <$> (typeAnnotations isStatic) afb a
+    TypeArg a -> TypeArg <$> typeAnnotations isStatic afb a
     AnyTypeArg -> pure AnyTypeArg
 
 {- | Even though TypeParameter have type annotations they are not

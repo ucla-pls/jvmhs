@@ -1,15 +1,17 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Jvmhs.Format.Internal where
 
 import Control.Category
 import Control.Monad
 import Data.Coerce
-import qualified Data.List as List
+import Data.List qualified as List
 import Data.Maybe
 import Prelude hiding (
   id,
@@ -20,7 +22,7 @@ import Prelude hiding (
 import Data.Hashable
 
 -- unordered-containers
-import qualified Data.HashMap.Strict as HashMap
+import Data.HashMap.Strict qualified as HashMap
 
 import Control.Lens
 
@@ -101,8 +103,8 @@ instance Semigroup e => Category (PartIso e) where
   {-# INLINE (.) #-}
 
 infixr 3 ***
-(***) ::
-  Semigroup e => PartIso e a c -> PartIso e b d -> PartIso e (a, b) (c, d)
+(***)
+  :: Semigroup e => PartIso e a c -> PartIso e b d -> PartIso e (a, b) (c, d)
 (***) (PartIso f1 t1) (PartIso f2 t2) =
   PartIso (\(a, b) -> (,) <$> f1 a <*> f2 b) (\(c, d) -> (,) <$> t1 c <*> t2 d)
 {-# INLINE (***) #-}
@@ -115,37 +117,37 @@ inFirst :: Semigroup e => PartIso e a c -> PartIso e (a, b) (c, b)
 inFirst f = f *** id
 {-# INLINE inFirst #-}
 
-triple ::
-  Semigroup e =>
-  PartIso e a a' ->
-  PartIso e b b' ->
-  PartIso e c c' ->
-  PartIso e (a, b, c) (a', b', c')
+triple
+  :: Semigroup e
+  => PartIso e a a'
+  -> PartIso e b b'
+  -> PartIso e c c'
+  -> PartIso e (a, b, c) (a', b', c')
 triple (PartIso f1 t1) (PartIso f2 t2) (PartIso f3 t3) =
   PartIso
     (\(a, b, c) -> (,,) <$> f1 a <*> f2 b <*> f3 c)
     (\(a, b, c) -> (,,) <$> t1 a <*> t2 b <*> t3 c)
 
-quadruple ::
-  Semigroup e =>
-  PartIso e a a' ->
-  PartIso e b b' ->
-  PartIso e c c' ->
-  PartIso e d d' ->
-  PartIso e (a, b, c, d) (a', b', c', d')
+quadruple
+  :: Semigroup e
+  => PartIso e a a'
+  -> PartIso e b b'
+  -> PartIso e c c'
+  -> PartIso e d d'
+  -> PartIso e (a, b, c, d) (a', b', c', d')
 quadruple (PartIso f1 t1) (PartIso f2 t2) (PartIso f3 t3) (PartIso f4 t4) =
   PartIso
     (\(a, b, c, d) -> (,,,) <$> f1 a <*> f2 b <*> f3 c <*> f4 d)
     (\(a, b, c, d) -> (,,,) <$> t1 a <*> t2 b <*> t3 c <*> t4 d)
 
-quintuple ::
-  Semigroup e =>
-  PartIso e a a' ->
-  PartIso e b b' ->
-  PartIso e c c' ->
-  PartIso e d d' ->
-  PartIso e f f' ->
-  PartIso e (a, b, c, d, f) (a', b', c', d', f')
+quintuple
+  :: Semigroup e
+  => PartIso e a a'
+  -> PartIso e b b'
+  -> PartIso e c c'
+  -> PartIso e d d'
+  -> PartIso e f f'
+  -> PartIso e (a, b, c, d, f) (a', b', c', d', f')
 quintuple (PartIso f1 t1) (PartIso f2 t2) (PartIso f3 t3) (PartIso f4 t4) (PartIso f5 t5) =
   PartIso
     (\(a, b, c, d, f) -> (,,,,) <$> f1 a <*> f2 b <*> f3 c <*> f4 d <*> f5 f)
@@ -160,11 +162,11 @@ introItem x =
 {-# INLINE introItem #-}
 
 introFirst :: Semigroup e => PartIso e a ((), a)
-introFirst = fromIso (\a -> ((), a)) (\((), a) -> a)
+introFirst = fromIso ((),) snd
 {-# INLINE introFirst #-}
 
 introSecond :: Semigroup e => PartIso e a (a, ())
-introSecond = fromIso (\a -> (a, ())) (\(a, ()) -> a)
+introSecond = fromIso (,()) fst
 {-# INLINE introSecond #-}
 
 constFirst :: Eq x => x -> PartIso [String] a (x, a)
@@ -235,8 +237,8 @@ singletonList = fromIso listToMaybe maybeToList
 zipPadList :: Semigroup e => PartIso e (a, a) a -> PartIso e ([a], [a]) [a]
 zipPadList (PartIso th bk) =
   PartIso
-    (\(as, bs) -> zipPad as bs)
-    (\xs -> List.unzip <$> mapM bk xs)
+    (uncurry zipPad)
+    (mapAndUnzipM bk)
  where
   zipPad [] [] = pure []
   zipPad (a : as) [] = (a :) <$> zipPad as []
@@ -261,7 +263,7 @@ zipList =
 withDefaultF :: (a -> Bool) -> PartIso e (a, Maybe a) a
 withDefaultF fn =
   fromIso
-    (\(a, ma) -> fromMaybe a ma)
+    (uncurry fromMaybe)
     (\a -> (a, if fn a then Just a else Nothing))
 
 -- | Merge formatter.

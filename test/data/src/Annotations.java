@@ -37,7 +37,7 @@ public class Annotations <O> {
     return 0;
   }
   
-  <@B(10) T extends Throwable & List<Object[]>> int n () throws T, Exception{
+  <@B(11) T extends Throwable & List<Object[]>> int n () throws T, Exception{
     return 0;
   }
 
@@ -46,6 +46,11 @@ public class Annotations <O> {
   }
   
   <T extends List<T> & Comparable > T j () {
+    return null;
+  }
+  
+  void inside () {
+    @TestType(12) Integer i = null;
     return null;
   }
   

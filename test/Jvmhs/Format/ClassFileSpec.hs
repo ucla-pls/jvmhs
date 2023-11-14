@@ -56,6 +56,7 @@ import Jvmhs.Data.Code
 import Jvmhs.Data.Identifier
 import Jvmhs.Data.Type
 
+import Data.Foldable
 import Jvmhs.Data.TypeSpec
 
 spec :: Spec
@@ -148,6 +149,8 @@ spec_code = describe "codeFormat" $ do
     _codeExceptionTable <- listOf genExceptionHandler
     _codeByteCode <- pure (V.fromList [])
     _codeStackMap <- liftArbitrary genStackMap
+    _codeLineNumbers <- pure Nothing -- TODO
+    _codeAnnotations <- pure [] -- TODO
     pure Code{..}
 
   genExceptionHandler =
@@ -463,11 +466,13 @@ test_formatter gen PartIso{there, back} =
     let b = there a
         a' = b >>= back
      in counterexample
-          ( nicify (show a)
-              ++ "\n--- there --> \n"
-              ++ nicify (show b)
-              ++ "\n <-- back  --- \n"
-              ++ nicify (show a')
+          ( fold
+              [ nicify (show a)
+              , "\n--- there --> \n"
+              , nicify (show b)
+              , "\n <-- back  --- \n"
+              , nicify (show a')
+              ]
           )
           $ do
             (there =<< a') `shouldBe` there a

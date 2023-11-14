@@ -1,7 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 {- |
 Module      : Jvmhs.Transform.Stub
@@ -27,6 +26,8 @@ import qualified Language.JVM.ByteCode as B
 import qualified Language.JVM.Constant as B
 
 -- jvmhs
+
+import Data.Foldable
 import Jvmhs.Data.Class
 import Jvmhs.Data.Code
 import Jvmhs.Data.Identifier
@@ -83,25 +84,29 @@ makeStub requiredLocals jt =
   Code
     { _codeMaxStack = maybe 1 typeSize jt
     , _codeMaxLocals = requiredLocals
-    , _codeByteCode = V.fromList . map (B.ByteCodeInst 0) $ case jt of
+    , _codeByteCode = V.fromList . fmap (B.ByteCodeInst 0) $ case jt of
         Nothing -> [B.Return Nothing]
         Just r -> [pushDefaultValueT r, returnT r]
     , _codeExceptionTable = []
     , _codeStackMap = Nothing
+    , _codeLineNumbers = Nothing
+    , _codeAnnotations = []
     }
 
 -- | Create a constructor stub
 makeConstructorStub :: AbsMethodId -> Word16 -> Code
 makeConstructorStub m requiredLocals =
   Code
-    { _codeMaxStack = 1 + sum (map typeSize arguments)
+    { _codeMaxStack = 1 + sum (fmap typeSize arguments)
     , _codeMaxLocals = requiredLocals
     , _codeByteCode =
         V.fromList
-          . map (B.ByteCodeInst 0)
-          $ [B.Load B.LRef 0]
-            ++ [pushDefaultValueT t | t <- arguments]
-            ++ [ B.Invoke
+          . fmap (B.ByteCodeInst 0)
+          $ fold
+            [ [B.Load B.LRef 0]
+            , [pushDefaultValueT t | t <- arguments]
+            ,
+              [ B.Invoke
                   ( B.InvkSpecial
                       ( B.AbsVariableMethodId
                           False
@@ -111,10 +116,13 @@ makeConstructorStub m requiredLocals =
                           )
                       )
                   )
-               , B.Return Nothing
-               ]
+              , B.Return Nothing
+              ]
+            ]
     , _codeExceptionTable = []
     , _codeStackMap = Nothing
+    , _codeLineNumbers = Nothing
+    , _codeAnnotations = []
     }
  where
   arguments = m ^. methodIdArgumentTypes

@@ -33,6 +33,7 @@ import Prelude hiding (
  )
 
 -- containers
+import qualified Data.IntMap as IntMap
 import qualified Data.Map.Strict as Map
 
 -- lens
@@ -54,6 +55,8 @@ import Jvmhs.Data.Type
 import Jvmhs.Format.ClassFile.Shared
 import Jvmhs.Format.ClassFile.Type
 import Jvmhs.Format.Internal
+import Language.JVM.Attribute.LineNumberTable (LineNumber)
+import qualified Language.JVM.Attribute.LineNumberTable as B
 
 methodFormat :: (ClassName -> Bool) -> Formatter (B.Method B.High) Method
 methodFormat isStatic = PartIso methodThere methodBack
@@ -478,14 +481,14 @@ codeFormat =
             (there exceptionHandlerFormat)
             (coerce (B.codeExceptionTable c))
         let _codeByteCode = B.unByteCode (B.codeByteCode c)
-        _codeStackMap <- there codeAttributesFormat (B.codeAttributes c)
+        (_codeStackMap, _codeLineNumbers, _codeAnnotations) <- there codeAttributesFormat (B.codeAttributes c)
         pure Code{..}
     )
     ( \Code{..} -> do
         codeExceptionTable' <-
           coerce
             <$> mapM (back exceptionHandlerFormat) _codeExceptionTable
-        codeAttributes' <- back codeAttributesFormat _codeStackMap
+        codeAttributes' <- back codeAttributesFormat (_codeStackMap, _codeLineNumbers, _codeAnnotations)
         pure
           B.Code
             { codeMaxStack = _codeMaxStack
@@ -497,18 +500,45 @@ codeFormat =
     )
 
 codeAttributesFormat
-  :: Formatter (B.CodeAttributes B.High) (Maybe (B.StackMapTable B.High))
+  :: Formatter
+      (B.CodeAttributes B.High)
+      ( Maybe (B.StackMapTable B.High)
+      , Maybe (IntMap.IntMap LineNumber)
+      , [CodeAnnotation]
+      )
 codeAttributesFormat =
   PartIso
-    (\B.CodeAttributes{..} -> there singletonList caStackMapTable)
-    ( \a -> do
-        caStackMapTable <- back singletonList a
-        let caLineNumberTable = []
-        let caVisibleTypeAnnotations = []
-        let caInvisibleTypeAnnotations = []
+    ( \B.CodeAttributes{..} -> do
+        stackMapTable <- there singletonList caStackMapTable
+        lineNumberTable <- fmap B.lineNumberTable <$> there singletonList caLineNumberTable
+        annotations <- there codeTypeAnnotationsFormat (caVisibleTypeAnnotations, caInvisibleTypeAnnotations)
+        pure
+          ( stackMapTable
+          , lineNumberTable
+          , annotations
+          )
+    )
+    ( \(stackMapTable, lineNumberTable, annotations) -> do
+        caStackMapTable <- back singletonList stackMapTable
+        caLineNumberTable <- fmap B.LineNumberTable <$> back singletonList lineNumberTable
+        (caVisibleTypeAnnotations, caInvisibleTypeAnnotations) <- back codeTypeAnnotationsFormat annotations
         let caOthers = []
         pure B.CodeAttributes{..}
     )
+
+codeTypeAnnotationsFormat
+  :: Formatter
+      ( [B.RuntimeVisibleTypeAnnotations B.CodeTypeAnnotation B.High]
+      , [B.RuntimeInvisibleTypeAnnotations B.CodeTypeAnnotation B.High]
+      )
+      [CodeAnnotation]
+codeTypeAnnotationsFormat =
+  PartIso (mapM thereX) (mapM backX) . typeAnnotationsFormat
+ where
+  thereX (_ctTarget, (_ctPath, _ctAnnotation)) =
+    pure (CodeAnnotation{..})
+  backX CodeAnnotation{..} =
+    pure (_ctTarget, (_ctPath, _ctAnnotation))
 
 exceptionHandlerFormat :: Formatter (B.ExceptionTable B.High) ExceptionHandler
 exceptionHandlerFormat =

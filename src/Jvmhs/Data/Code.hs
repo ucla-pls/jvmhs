@@ -31,6 +31,8 @@ module Jvmhs.Data.Code (
   codeByteCode,
   codeExceptionTable,
   codeStackMap,
+  codeLineNumbers,
+  codeAnnotations,
   ExceptionHandler (..),
   ehStart,
   ehEnd,
@@ -50,6 +52,9 @@ module Jvmhs.Data.Code (
   fromArrayType,
   fromLocalType,
 
+  -- * CodeTypeAnnotations
+  CodeAnnotation (..),
+
   -- * Diagrams
   Data.Cone.Diagram (..),
 
@@ -58,6 +63,11 @@ module Jvmhs.Data.Code (
   B.StackMapFrame (..),
   B.StackMapFrameType (..),
   B.VerificationTypeInfo (..),
+  B.CodeTypeAnnotation (..),
+  B.LocalVarEntry (..),
+  B.LocalVarTarget,
+  B.CatchTarget,
+  B.OffsetTarget,
 ) where
 
 -- base
@@ -71,7 +81,6 @@ import Control.DeepSeq
 import Control.Lens hiding ((.=))
 
 -- text
-import qualified Data.Text as Text
 import qualified Data.Vector as V
 
 -- jvm-binary
@@ -82,11 +91,16 @@ import qualified Language.JVM.Attribute.StackMapTable as B
 import qualified Data.Cone
 import Data.Cone.TH
 
+import Data.IntMap (IntMap)
 import Jvmhs.Data.Identifier
+import Jvmhs.Data.Type (Annotation, TypePath)
+import qualified Language.JVM.Attribute.Annotations as B
+import Language.JVM.Attribute.LineNumberTable (LineNumber)
 
 type ByteCodeInst = B.ByteCodeInst B.High
 
 type StackMapTable = B.StackMapTable B.High
+type LineNumberTable = IntMap LineNumber
 type VerificationTypeInfo = B.VerificationTypeInfo B.High
 
 data Code = Code
@@ -95,8 +109,17 @@ data Code = Code
   , _codeByteCode :: !(V.Vector ByteCodeInst)
   , _codeExceptionTable :: ![ExceptionHandler]
   , _codeStackMap :: !(Maybe StackMapTable)
+  , _codeLineNumbers :: !(Maybe LineNumberTable)
+  , _codeAnnotations :: ![CodeAnnotation]
   }
   deriving (Show, Eq, Generic, NFData)
+
+data CodeAnnotation = CodeAnnotation
+  { _ctTarget :: !(B.CodeTypeAnnotation B.High)
+  , _ctPath :: !TypePath
+  , _ctAnnotation :: !Annotation
+  }
+  deriving (Eq, Show, Generic, NFData)
 
 data ExceptionHandler = ExceptionHandler
   { _ehStart :: !Int
@@ -200,3 +223,9 @@ $(makeDiagramLite ''InvokeDynamic)
 
 type StackMapFrame = B.StackMapFrame B.High
 $(makeDiagramLite ''StackMapFrame)
+
+type LocalVarEntry = B.LocalVarEntry B.High
+$(makeDiagramLite ''LocalVarEntry)
+
+type CodeTypeAnnotation = B.CodeTypeAnnotation B.High
+$(makeDiagramLite ''CodeTypeAnnotation)
