@@ -767,6 +767,8 @@ $(makeDiagram ''B.JValue)
 
 $(makeDiagram ''ThrowsType)
 $(makeDiagram ''Type)
+$(makeDiagram ''B.TypePathItem)
+$(makeDiagram ''B.TypePathKind)
 $(makeDiagram ''TypeVariable)
 $(makeDiagram ''TypeArgument)
 $(makeDiagram ''ReferenceType)
