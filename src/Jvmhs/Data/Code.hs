@@ -54,6 +54,9 @@ module Jvmhs.Data.Code (
 
   -- * CodeTypeAnnotations
   CodeAnnotation (..),
+  ctTarget,
+  ctPath,
+  ctAnnotation,
 
   -- * Diagrams
   Data.Cone.Diagram (..),
@@ -66,6 +69,7 @@ module Jvmhs.Data.Code (
   B.CodeTypeAnnotation (..),
   B.LocalVarEntry (..),
   B.LocalVarTarget,
+  B.TypeArgumentTarget (..),
   B.CatchTarget,
   B.OffsetTarget,
 ) where
@@ -130,6 +134,7 @@ data ExceptionHandler = ExceptionHandler
   deriving (Show, Eq, Generic, NFData)
 
 makeLenses ''Code
+makeLenses ''CodeAnnotation
 makeLenses ''ExceptionHandler
 
 byteCodeOffset :: Lens' ByteCodeInst B.ByteCodeOffset
@@ -197,6 +202,7 @@ fromLocalType = \case
 
 $(makeDiagram ''Code)
 $(makeDiagram ''ExceptionHandler)
+$(makeDiagram ''CodeAnnotation)
 $(makeDiagram ''B.ByteCodeInst)
 $(makeDiagram ''B.StackMapFrameType)
 
@@ -224,8 +230,11 @@ $(makeDiagramLite ''InvokeDynamic)
 type StackMapFrame = B.StackMapFrame B.High
 $(makeDiagramLite ''StackMapFrame)
 
-type LocalVarEntry = B.LocalVarEntry B.High
-$(makeDiagramLite ''LocalVarEntry)
+type TypeArgumentTarget = B.TypeArgumentTarget B.High
+$(makeDiagramLite ''TypeArgumentTarget)
 
 type CodeTypeAnnotation = B.CodeTypeAnnotation B.High
 $(makeDiagramLite ''CodeTypeAnnotation)
+
+type LocalVarEntry = B.LocalVarEntry B.High
+$(makeDiagramLite ''LocalVarEntry)
