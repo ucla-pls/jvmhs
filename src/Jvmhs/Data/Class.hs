@@ -225,7 +225,7 @@ data Method = Method
 
 -- | A parameter
 data Parameter = Parameter
-  { _parameterNameAndFlags :: !(Maybe (Text.Text, Set.Set PAccessFlag))
+  { _parameterNameAndFlags :: !(Maybe (Maybe Text.Text, Set.Set PAccessFlag))
   -- ^ The name and access flags of the parameter as saved in the
   -- MethodParameter attribute.
   , _parameterVisible :: Bool

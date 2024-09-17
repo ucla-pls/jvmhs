@@ -76,11 +76,11 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1699955037,
-        "narHash": "sha256-6TzDnnchJznA4OO9NJXGLAJ5Up52Qw5T5p6MtU9Z9cQ=",
+        "lastModified": 1726562967,
+        "narHash": "sha256-nWuE+f/OOEOJuBhpwY83jCIUlOCMLohylsfrUXQ3z7o=",
         "owner": "ucla-pls",
         "repo": "jvm-binary",
-        "rev": "6c90146ebfb473b1eb699801431bdd5911eb4683",
+        "rev": "4367a4e74463c5c5502e7768c51422ec5b4584c2",
         "type": "github"
       },
       "original": {

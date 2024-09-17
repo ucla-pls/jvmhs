@@ -1,5 +1,9 @@
 # Jvmhs
 
+# Version 0.3.0
+
+- Upgrade to jvm-binary version 0.14.0
+
 # Version 0.2.0
 
 - Many changes made

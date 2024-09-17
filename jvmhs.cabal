@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 915fac5b6a11da36b0f8f4d70354caedc1ae85256aafa6b1e2de85a2843f4034
+-- hash: 0bb9864bb841be388186dab827f82ec825a066e74c95aa2a85189f4266db79af
 
 name:           jvmhs
-version:        0.2.0
+version:        0.3.0
 synopsis:       A library for reading Java class-files
 description:    A library to sematically read a class from a file.
 category:       Language, Java, JVM
@@ -120,7 +120,7 @@ library
     , fgl-visualize
     , filepath
     , hashable
-    , jvm-binary >=0.13.0
+    , jvm-binary >=0.14.0
     , lens
     , lens-action
     , mtl
@@ -171,7 +171,7 @@ test-suite jvmhs-test
     , hspec
     , hspec-discover
     , hspec-expectations-pretty-diff
-    , jvm-binary >=0.13.0
+    , jvm-binary >=0.14.0
     , jvmhs
     , lens
     , lens-action
