@@ -64,10 +64,12 @@ import Data.Maybe (
   mapMaybe,
  )
 import Data.Monoid
+import Data.Foldable
 import GHC.Generics (Generic)
 
 -- lens
 import Control.Lens
+import Control.Monad
 
 import Control.DeepSeq
 import Control.Monad.Reader

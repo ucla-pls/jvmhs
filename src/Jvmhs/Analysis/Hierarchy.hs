@@ -122,14 +122,14 @@ import System.Directory
 import Data.Binary
 
 -- mtl
-import Control.Monad.Reader hiding (fail)
-import Control.Monad.Writer hiding (fail)
+import Control.Monad.Reader 
+import Control.Monad.Writer
 
 -- base
-
 import Control.Applicative
 import Control.Monad.Fail
 import Data.Foldable
+import Data.Monoid
 import Data.Function
 import Data.Functor
 import Data.Functor.Contravariant

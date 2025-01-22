@@ -112,6 +112,8 @@ import qualified Data.HashMap.Strict           as M
 import qualified Data.HashSet                  as S
 import           Data.Maybe
 import           Data.Foldable                 as F
+import           Control.Monad
+import           Data.Monoid
 
 -- bytestring
 import qualified Data.ByteString.Lazy          as BL
