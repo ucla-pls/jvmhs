@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.2.
+-- This file has been generated from package.yaml by hpack version 0.36.1.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0bb9864bb841be388186dab827f82ec825a066e74c95aa2a85189f4266db79af
+-- hash: e02d504b7440c6eb9b64e24f5b6465e7d178d7847722097fa721e6f846f87e38
 
 name:           jvmhs
 version:        0.3.0
@@ -108,7 +108,7 @@ library
       adjunctions
     , aeson
     , attoparsec
-    , base >=4.10 && <4.18
+    , base >=4.10 && <=4.19
     , binary
     , bytestring
     , cassava
@@ -155,7 +155,7 @@ test-suite jvmhs-test
     , adjunctions
     , aeson
     , attoparsec
-    , base >=4.10 && <4.18
+    , base >=4.10 && <=4.19
     , binary
     , bytestring
     , cassava
