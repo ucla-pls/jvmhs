@@ -1,13 +1,13 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.36.1.
+-- This file has been generated from package.yaml by hpack version 0.37.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e02d504b7440c6eb9b64e24f5b6465e7d178d7847722097fa721e6f846f87e38
+-- hash: 129295280af833cbb5214bdfb6409a3d54ba0e7b8344fbe76159c43860c69eb1
 
 name:           jvmhs
-version:        0.3.0
+version:        0.3.1
 synopsis:       A library for reading Java class-files
 description:    A library to sematically read a class from a file.
 category:       Language, Java, JVM
@@ -108,7 +108,7 @@ library
       adjunctions
     , aeson
     , attoparsec
-    , base >=4.10 && <=4.19
+    , base >=4.10 && <=4.20
     , binary
     , bytestring
     , cassava
@@ -155,7 +155,7 @@ test-suite jvmhs-test
     , adjunctions
     , aeson
     , attoparsec
-    , base >=4.10 && <=4.19
+    , base >=4.10 && <=4.20
     , binary
     , bytestring
     , cassava
